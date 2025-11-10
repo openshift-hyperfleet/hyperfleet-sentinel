@@ -1,0 +1,54 @@
+# === RESOURCE MONITORING ===
+resource_type: clusters  # Options: clusters, nodepools, manifests, workloads
+
+# === POLLING CONFIGURATION ===
+poll_interval: 5s
+backoff_not_ready: 10s
+backoff_ready: 30m
+
+# === RESOURCE SELECTOR (optional) ===
+# Filter resources by labels - empty list means watch all resources
+resource_selector:
+  - label: region
+    value: us-east
+  - label: environment
+    value: production
+
+# === HYPERFLEET API ===
+hyperfleet_api:
+  endpoint: https://api.hyperfleet.example.com
+  timeout: 30s
+  # Token must be provided via HYPERFLEET_API_TOKEN environment variable
+
+# === MESSAGE DATA COMPOSITION ===
+# CloudEvent data payload using Go template syntax
+# Template context: resource object available as . (dot)
+# Field access: use dot notation (.id, .kind, .metadata.labels.region)
+# Templates are validated at startup - invalid syntax will fail the service
+message_data:
+  resource_id: .id
+  resource_href: .href
+  resource_type: .kind
+  cluster_id: .ownerResource.id
+  generation: .generation
+  region: .metadata.labels.region
+
+# === BROKER CONFIGURATION ===
+# Broker configuration is loaded from environment variables:
+#
+# For Google Cloud Pub/Sub:
+#   BROKER_TYPE=pubsub
+#   BROKER_PROJECT_ID=<gcp-project-id>
+#
+# For AWS SQS:
+#   BROKER_TYPE=awsSqs
+#   BROKER_REGION=<aws-region>
+#   BROKER_QUEUE_URL=<sqs-queue-url>
+#
+# For RabbitMQ:
+#   BROKER_TYPE=rabbitmq
+#   BROKER_HOST=<rabbitmq-host>
+#   BROKER_PORT=<rabbitmq-port>
+#   BROKER_EXCHANGE=<exchange-name>
+#   BROKER_VHOST=<virtual-host>        # Optional, defaults to "/"
+#   BROKER_EXCHANGE_TYPE=<type>        # Optional, defaults to "fanout"

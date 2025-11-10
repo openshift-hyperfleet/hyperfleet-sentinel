@@ -1,0 +1,88 @@
+openapi: 3.0.0
+info:
+  title: HyperFleet API
+  version: 1.0.0
+  description: |
+    HyperFleet API specification
+
+    TODO: Replace this with the actual HyperFleet API spec when available
+paths:
+  /api/hyperfleet/v1/clusters:
+    get:
+      summary: List clusters
+      operationId: listClusters
+      parameters:
+        - name: labels
+          in: query
+          schema:
+            type: object
+            additionalProperties:
+              type: string
+      responses:
+        '200':
+          description: List of clusters
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResourceList'
+components:
+  schemas:
+    ResourceList:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+        total:
+          type: integer
+    Resource:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+          description: Self link to the resource
+        kind:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+        status:
+          $ref: '#/components/schemas/ResourceStatus'
+        metadata:
+          type: object
+          additionalProperties: true
+    ResourceStatus:
+      type: object
+      properties:
+        phase:
+          type: string
+        lastTransitionTime:
+          type: string
+          format: date-time
+          description: Updates only when status.phase changes
+        lastUpdated:
+          type: string
+          format: date-time
+          description: Updates every time an adapter checks the resource
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Condition'
+    Condition:
+      type: object
+      properties:
+        type:
+          type: string
+        status:
+          type: string
+        lastTransitionTime:
+          type: string
+          format: date-time
+        reason:
+          type: string
+        message:
+          type: string
