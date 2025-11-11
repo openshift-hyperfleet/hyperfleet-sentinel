@@ -1,0 +1,20 @@
+resource_type: nodepools
+poll_interval: 3s
+backoff_not_ready: 5s
+backoff_ready: 15m
+
+resource_selector:
+  - label: cluster-id
+    value: cls-123
+  - label: region
+    value: eu-west
+
+hyperfleet_api:
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+  timeout: 20s
+
+message_data:
+  resource_id: .id
+  resource_type: .kind
+  cluster_id: .ownerResource.id
+  generation: .generation

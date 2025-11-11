@@ -1,0 +1,78 @@
+# HyperFleet Sentinel - golangci-lint configuration
+# Follows HyperFleet architecture testing standards
+
+# This file contains only configs which differ from defaults.
+# All possible options can be found at https://golangci-lint.run/usage/configuration
+
+version: 2
+
+run:
+  timeout: 5m
+  tests: true
+  go: '1.25'
+  skip-dirs:
+    - pkg/api/openapi  # Generated code
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+
+  govet:
+    enable-all: true
+
+  goconst:
+    min-len: 3
+    min-occurrences: 3
+
+  misspell:
+    locale: US
+
+  lll:
+    line-length: 120
+
+  unused:
+    check-exported: false
+
+  unparam:
+    check-exported: false
+
+linters:
+  enable:
+    - errcheck       # Check for unchecked errors
+    - govet          # Vet examines Go source code
+    - ineffassign    # Detect ineffectual assignments
+    - staticcheck    # Go static analysis
+    - unused         # Check for unused code
+    - misspell       # Check for misspelled words
+    - unconvert      # Remove unnecessary type conversions
+    - unparam        # Find unused function parameters
+    - gosec          # Security issues
+
+issues:
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gosec       # Security checks less critical in tests
+        - errcheck    # Error checking less critical in tests
+        - unparam     # Unused params acceptable in test helpers
+
+    # Exclude generated code
+    - path: pkg/api/openapi/
+      linters:
+        - all
+
+  # Maximum issues count per one linter
+  max-issues-per-linter: 0
+
+  # Maximum count of issues with the same text
+  max-same-issues: 0
+
+  # Show only new issues
+  new: false
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true

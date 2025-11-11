@@ -36,7 +36,6 @@ type SentinelConfig struct {
 type HyperFleetAPIConfig struct {
 	Endpoint string        `mapstructure:"endpoint"`
 	Timeout  time.Duration `mapstructure:"timeout"`
-	Token    string        `mapstructure:"-"` // Loaded from HYPERFLEET_API_TOKEN env var
 }
 
 // BrokerConfig is the interface for broker configurations
@@ -133,7 +132,6 @@ func NewSentinelConfig() *SentinelConfig {
 		HyperFleetAPI: &HyperFleetAPIConfig{
 			Endpoint: "",
 			Timeout:  10 * time.Second,
-			Token:    "",
 		},
 		MessageData: make(map[string]string),
 		Broker:      nil, // Loaded from environment variables
@@ -142,7 +140,7 @@ func NewSentinelConfig() *SentinelConfig {
 
 // LoadConfig loads configuration from YAML file and environment variables
 // Precedence: Environment variables > YAML file > Defaults
-// Secrets (tokens, broker credentials) are loaded exclusively from environment variables
+// Broker credentials are loaded exclusively from environment variables
 func LoadConfig(configFile string) (*SentinelConfig, error) {
 	cfg := NewSentinelConfig()
 
@@ -163,9 +161,6 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 	if err := v.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
-
-	// Override with environment variables
-	applyEnvVarOverrides(cfg)
 
 	// Load broker configuration from environment variables
 	broker, err := LoadBrokerConfig()
@@ -188,14 +183,6 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 		cfg.ResourceType, cfg.Broker.Type())
 
 	return cfg, nil
-}
-
-// applyEnvVarOverrides applies environment variable overrides
-func applyEnvVarOverrides(cfg *SentinelConfig) {
-	// Override HyperFleet API token from environment variable
-	if token := os.Getenv("HYPERFLEET_API_TOKEN"); token != "" {
-		cfg.HyperFleetAPI.Token = token
-	}
 }
 
 // LoadBrokerConfig loads broker configuration from environment variables

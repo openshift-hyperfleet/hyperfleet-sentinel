@@ -61,8 +61,17 @@ clean: ## Remove build artifacts
 ##@ Testing
 
 .PHONY: test
-test: ## Run unit tests
+test: ## Run all tests
 	$(GO) test -v -race -coverprofile=coverage.out ./...
+
+.PHONY: test-unit
+test-unit: ## Run unit tests only
+	$(GO) test -v -race -cover ./internal/config/
+	$(GO) test -v -race -cover ./internal/client/
+	$(GO) test -v -race -cover ./internal/engine/
+	$(GO) test -v -race -cover ./internal/publisher/
+	$(GO) test -v -race -cover ./internal/sentinel/
+	$(GO) test -v -race -cover ./pkg/...
 
 .PHONY: test-coverage
 test-coverage: test ## Run tests and show coverage
@@ -93,6 +102,9 @@ lint: ## Run golangci-lint (requires golangci-lint to be installed)
 
 .PHONY: verify
 verify: fmt-check vet ## Run all verification checks
+
+.PHONY: lint-check
+lint-check: fmt-check vet ## Run static code analysis (alias for verify, follows architecture naming)
 
 ##@ Dependencies
 

@@ -1,0 +1,19 @@
+resource_type: clusters
+poll_interval: 5s
+backoff_not_ready: 10s
+backoff_ready: 30m
+
+resource_selector:
+  - label: region
+    value: us-east
+  - label: environment
+    value: production
+
+hyperfleet_api:
+  endpoint: https://api.hyperfleet.example.com
+  timeout: 30s
+
+message_data:
+  resource_id: .id
+  resource_type: .kind
+  region: .metadata.labels.region
