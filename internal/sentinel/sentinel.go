@@ -1,0 +1,115 @@
+package sentinel
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/publisher"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
+)
+
+// Sentinel polls the HyperFleet API and triggers reconciliation events
+type Sentinel struct {
+	ctx            context.Context
+	config         *config.SentinelConfig
+	client         *client.HyperFleetClient
+	decisionEngine *engine.DecisionEngine
+	publisher      publisher.Publisher
+	logger         logger.HyperFleetLogger
+}
+
+// NewSentinel creates a new sentinel
+func NewSentinel(
+	ctx context.Context,
+	cfg *config.SentinelConfig,
+	client *client.HyperFleetClient,
+	decisionEngine *engine.DecisionEngine,
+	pub publisher.Publisher,
+	log logger.HyperFleetLogger,
+) *Sentinel {
+	return &Sentinel{
+		ctx:            ctx,
+		config:         cfg,
+		client:         client,
+		decisionEngine: decisionEngine,
+		publisher:      pub,
+		logger:         log,
+	}
+}
+
+// Start starts the polling loop
+func (s *Sentinel) Start(ctx context.Context) error {
+	s.logger.Infof("Starting sentinel resource_type=%s poll_interval=%s backoff_not_ready=%s backoff_ready=%s",
+		s.config.ResourceType, s.config.PollInterval, s.config.BackoffNotReady, s.config.BackoffReady)
+
+	ticker := time.NewTicker(s.config.PollInterval)
+	defer ticker.Stop()
+
+	// Run immediately on start
+	if err := s.trigger(ctx); err != nil {
+		s.logger.Infof("Initial trigger failed: %v", err)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info("Stopping sentinel due to context cancellation")
+			return ctx.Err()
+		case <-ticker.C:
+			if err := s.trigger(ctx); err != nil {
+				s.logger.Infof("Trigger failed: %v", err)
+			}
+		}
+	}
+}
+
+// trigger checks resources and publishes events to trigger reconciliation
+func (s *Sentinel) trigger(ctx context.Context) error {
+	s.logger.V(2).Info("Starting trigger cycle")
+
+	// Convert label selectors to map for filtering
+	labelSelector := s.config.ResourceSelector.ToMap()
+
+	// Fetch resources from HyperFleet API
+	resources, err := s.client.FetchResources(ctx, s.config.ResourceType, labelSelector)
+	if err != nil {
+		return fmt.Errorf("failed to fetch resources: %w", err)
+	}
+
+	s.logger.Infof("Fetched resources count=%d label_selectors=%d", len(resources), len(s.config.ResourceSelector))
+
+	now := time.Now()
+	published := 0
+	skipped := 0
+
+	// Evaluate each resource
+	for i := range resources {
+		resource := &resources[i]
+
+		decision := s.decisionEngine.Evaluate(resource, now)
+
+		if decision.ShouldPublish {
+			if err := s.publisher.Publish(ctx, resource, decision.Reason); err != nil {
+				s.logger.Infof("Failed to publish event resource_id=%s error=%v", resource.ID, err)
+				continue
+			}
+
+			s.logger.Infof("Published event resource_id=%s phase=%s reason=%s",
+				resource.ID, resource.Status.Phase, decision.Reason)
+			published++
+		} else {
+			s.logger.V(2).Infof("Skipped resource resource_id=%s phase=%s reason=%s",
+				resource.ID, resource.Status.Phase, decision.Reason)
+			skipped++
+		}
+	}
+
+	s.logger.Infof("Trigger cycle completed total=%d published=%d skipped=%d",
+		len(resources), published, skipped)
+
+	return nil
+}
