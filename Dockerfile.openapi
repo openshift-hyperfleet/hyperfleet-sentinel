@@ -13,8 +13,21 @@ ENV CGO_ENABLED=0
 
 WORKDIR /local
 
+# Ensure output directory exists before generation
+RUN mkdir -p /local/pkg/api
+
 # Generate OpenAPI client for HyperFleet API
-RUN bash /usr/local/bin/docker-entrypoint.sh generate -i /local/openapi/hyperfleet-api.yaml -g go -o /local/pkg/api/openapi --package-name openapi
-RUN rm /local/pkg/api/openapi/go.mod /local/pkg/api/openapi/go.sum
-RUN rm -r /local/pkg/api/openapi/test
+RUN bash /usr/local/bin/docker-entrypoint.sh generate \
+    -i /local/openapi/hyperfleet-api.yaml \
+    -g go \
+    -o /local/pkg/api/openapi \
+    --package-name openapi \
+    --global-property apiTests=false,modelTests=false
+
+# Remove files that conflict with our project structure
+RUN rm -f /local/pkg/api/openapi/go.mod /local/pkg/api/openapi/go.sum
+RUN rm -rf /local/pkg/api/openapi/test
+RUN rm -f /local/pkg/api/openapi/git_push.sh
+
+# Format generated code
 RUN gofmt -w /local/pkg/api/openapi
