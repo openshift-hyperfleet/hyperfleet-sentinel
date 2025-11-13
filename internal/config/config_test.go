@@ -160,8 +160,9 @@ invalid yaml here: [
 func TestNewSentinelConfig_Defaults(t *testing.T) {
 	cfg := NewSentinelConfig()
 
-	if cfg.ResourceType != "clusters" {
-		t.Errorf("Expected default resource_type 'clusters', got '%s'", cfg.ResourceType)
+	// ResourceType has no default - must be set in config file
+	if cfg.ResourceType != "" {
+		t.Errorf("Expected no default resource_type (empty string), got '%s'", cfg.ResourceType)
 	}
 	if cfg.PollInterval != 5*time.Second {
 		t.Errorf("Expected default poll_interval 5s, got %v", cfg.PollInterval)
@@ -174,6 +175,10 @@ func TestNewSentinelConfig_Defaults(t *testing.T) {
 	}
 	if cfg.HyperFleetAPI.Timeout != 10*time.Second {
 		t.Errorf("Expected default timeout 10s, got %v", cfg.HyperFleetAPI.Timeout)
+	}
+	// Endpoint has no default - must be set in config file
+	if cfg.HyperFleetAPI.Endpoint != "" {
+		t.Errorf("Expected no default endpoint (empty string), got '%s'", cfg.HyperFleetAPI.Endpoint)
 	}
 	if len(cfg.ResourceSelector) != 0 {
 		t.Errorf("Expected empty resource_selector, got %d items", len(cfg.ResourceSelector))
@@ -203,6 +208,7 @@ func TestValidate_MissingResourceType(t *testing.T) {
 
 func TestValidate_MissingEndpoint(t *testing.T) {
 	cfg := NewSentinelConfig()
+	cfg.ResourceType = "clusters" // Set valid resource_type to test endpoint validation
 	cfg.HyperFleetAPI.Endpoint = ""
 
 	err := cfg.Validate()

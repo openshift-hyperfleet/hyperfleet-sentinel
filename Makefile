@@ -61,7 +61,7 @@ clean: ## Remove build artifacts
 ##@ Testing
 
 .PHONY: test
-test: ## Run all tests
+test: ## Run unit tests (default)
 	$(GO) test -v -race -coverprofile=coverage.out ./...
 
 .PHONY: test-unit
@@ -72,6 +72,18 @@ test-unit: ## Run unit tests only
 	$(GO) test -v -race -cover ./internal/publisher/
 	$(GO) test -v -race -cover ./internal/sentinel/
 	$(GO) test -v -race -cover ./pkg/...
+
+.PHONY: test-integration
+test-integration: ## Run integration tests only
+	@echo "Running integration tests..."
+	$(GO) test -v -race -tags=integration ./test/integration/... -timeout 30m
+
+.PHONY: test-all
+test-all: ## Run both unit and integration tests
+	@echo "Running unit tests..."
+	$(MAKE) test
+	@echo "Running integration tests..."
+	$(MAKE) test-integration
 
 .PHONY: test-coverage
 test-coverage: test ## Run tests and show coverage
