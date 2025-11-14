@@ -75,7 +75,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	labelSelector := s.config.ResourceSelector.ToMap()
 
 	// Fetch resources from HyperFleet API
-	resources, err := s.client.FetchResources(ctx, s.config.ResourceType, labelSelector)
+	resources, err := s.client.FetchResources(ctx, client.ResourceType(s.config.ResourceType), labelSelector)
 	if err != nil {
 		return fmt.Errorf("failed to fetch resources: %w", err)
 	}

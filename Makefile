@@ -28,12 +28,12 @@ help: ## Display this help
 .PHONY: generate
 generate: ## Generate OpenAPI client from HyperFleet API spec
 	@echo "Generating OpenAPI client..."
-	rm -rf pkg/api/openapi
+	@rm -rf pkg/api/openapi
 	$(CONTAINER_TOOL) build -t hyperfleet-sentinel-openapi -f Dockerfile.openapi .
 	@OPENAPI_IMAGE_ID=$$($(CONTAINER_TOOL) create hyperfleet-sentinel-openapi) && \
 		$(CONTAINER_TOOL) cp $$OPENAPI_IMAGE_ID:/local/pkg/api/openapi ./pkg/api/openapi && \
 		$(CONTAINER_TOOL) rm $$OPENAPI_IMAGE_ID
-	@echo "OpenAPI client generated successfully"
+	@echo "✅ OpenAPI client generated successfully"
 
 ##@ Development
 

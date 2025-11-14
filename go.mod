@@ -3,6 +3,7 @@ module github.com/openshift-hyperfleet/hyperfleet-sentinel
 go 1.25.0
 
 require (
+	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/golang/glog v1.2.5
 	github.com/google/uuid v1.4.0
 	github.com/segmentio/ksuid v1.0.4

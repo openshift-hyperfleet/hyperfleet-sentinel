@@ -46,6 +46,10 @@ components:
           description: Self link to the resource
         kind:
           type: string
+        generation:
+          type: integer
+          format: int64
+          description: A sequence number representing a specific generation of the desired state
         labels:
           type: object
           additionalProperties:
