@@ -1,0 +1,61 @@
+# Sentinel Configuration Example - Development
+#
+# This example demonstrates a minimal development configuration
+# with shorter intervals for faster local testing.
+#
+# Required environment variables for RabbitMQ (easiest for local dev):
+#   BROKER_TYPE=rabbitmq
+#   BROKER_HOST=localhost
+#   BROKER_PORT=5672
+#   BROKER_EXCHANGE=hyperfleet-dev
+#
+# Quick start with Docker:
+#   docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+#   export BROKER_TYPE=rabbitmq
+#   export BROKER_HOST=localhost
+#   export BROKER_PORT=5672
+#   export BROKER_EXCHANGE=hyperfleet-dev
+#   ./bin/sentinel serve --config=configs/dev-example.yaml
+
+# Resource type to watch - must be one of: clusters, nodepools.
+resource_type: clusters
+
+# Faster polling for development - see changes quickly.
+poll_interval: 2s
+
+# Shorter backoff intervals for development.
+backoff_not_ready: 5s
+backoff_ready: 2m
+
+# No resource selector - watch all resources in development.
+# resource_selector: []
+
+# HyperFleet API configuration.
+hyperfleet_api:
+  # Local development API endpoint.
+  # Adjust this to match your local HyperFleet API instance.
+  endpoint: http://localhost:8000
+
+  # Shorter timeout for faster failure detection in dev.
+  timeout: 10s
+
+# Message data template configuration (optional).
+# Minimal set for development.
+# Uses Go template syntax - both .field and {{.field}} formats are supported.
+message_data:
+  resource_id: .id
+  resource_type: .kind
+  resource_name: .metadata.name
+
+# Broker configuration is loaded from environment variables.
+# For local RabbitMQ development, set:
+#   BROKER_TYPE=rabbitmq
+#   BROKER_HOST=localhost
+#   BROKER_PORT=5672
+#   BROKER_EXCHANGE=hyperfleet-dev
+#
+# Start RabbitMQ with Docker:
+#   docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+#
+# RabbitMQ Management UI will be available at: http://localhost:15672.
+# Default credentials: guest/guest.

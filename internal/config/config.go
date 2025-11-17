@@ -131,7 +131,7 @@ func NewSentinelConfig() *SentinelConfig {
 		ResourceSelector: []LabelSelector{}, // Empty means watch all resources
 		HyperFleetAPI: &HyperFleetAPIConfig{
 			// Endpoint is required and must be set in config file
-			Timeout: 10 * time.Second,
+			Timeout: 30 * time.Second,
 		},
 		MessageData: make(map[string]string),
 		Broker:      nil, // Loaded from environment variables
@@ -268,7 +268,7 @@ func (c *SentinelConfig) Validate() error {
 		return fmt.Errorf("resource_type is required")
 	}
 
-	validResourceTypes := []string{"clusters", "nodepools", "manifests", "workloads"}
+	validResourceTypes := []string{"clusters", "nodepools"}
 	if !contains(validResourceTypes, c.ResourceType) {
 		return fmt.Errorf("invalid resource_type: %s (must be one of: %s)",
 			c.ResourceType, strings.Join(validResourceTypes, ", "))

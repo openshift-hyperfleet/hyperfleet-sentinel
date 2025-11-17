@@ -173,8 +173,8 @@ func TestNewSentinelConfig_Defaults(t *testing.T) {
 	if cfg.BackoffReady != 30*time.Minute {
 		t.Errorf("Expected default backoff_ready 30m, got %v", cfg.BackoffReady)
 	}
-	if cfg.HyperFleetAPI.Timeout != 10*time.Second {
-		t.Errorf("Expected default timeout 10s, got %v", cfg.HyperFleetAPI.Timeout)
+	if cfg.HyperFleetAPI.Timeout != 30*time.Second {
+		t.Errorf("Expected default timeout 30s, got %v", cfg.HyperFleetAPI.Timeout)
 	}
 	// Endpoint has no default - must be set in config file
 	if cfg.HyperFleetAPI.Endpoint != "" {
@@ -243,8 +243,8 @@ func TestValidate_InvalidResourceTypes(t *testing.T) {
 	}{
 		{"valid clusters", "clusters", false},
 		{"valid nodepools", "nodepools", false},
-		{"valid manifests", "manifests", false},
-		{"valid workloads", "workloads", false},
+		{"invalid manifests", "manifests", true},
+		{"invalid workloads", "workloads", true},
 		{"invalid pods", "pods", true},
 		{"invalid deployments", "deployments", true},
 		{"empty", "", true},
