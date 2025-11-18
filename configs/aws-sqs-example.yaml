@@ -22,11 +22,11 @@ poll_interval: 5s
 
 # Backoff interval for resources that are not ready.
 # Resources in transitional states are re-checked more frequently.
-backoff_not_ready: 10s
+max_age_not_ready: 10s
 
 # Backoff interval for resources that are ready and stable.
 # Stable resources are checked less frequently to reduce API load.
-backoff_ready: 30m
+max_age_ready: 30m
 
 # Resource selector (optional) - filter resources by labels.
 # If empty or omitted, all resources of the specified type are watched.
@@ -41,7 +41,7 @@ resource_selector:
 # HyperFleet API configuration.
 hyperfleet_api:
   # API endpoint URL (required).
-  endpoint: https://api.hyperfleet.production.example.com
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
 
   # Request timeout for API calls.
   timeout: 30s

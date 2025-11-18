@@ -24,8 +24,8 @@ type LabelSelectorList []LabelSelector
 type SentinelConfig struct {
 	ResourceType     string               `mapstructure:"resource_type"`
 	PollInterval     time.Duration        `mapstructure:"poll_interval"`
-	BackoffNotReady  time.Duration        `mapstructure:"backoff_not_ready"`
-	BackoffReady     time.Duration        `mapstructure:"backoff_ready"`
+	MaxAgeNotReady   time.Duration        `mapstructure:"max_age_not_ready"`
+	MaxAgeReady      time.Duration        `mapstructure:"max_age_ready"`
 	ResourceSelector LabelSelectorList    `mapstructure:"resource_selector"`
 	HyperFleetAPI    *HyperFleetAPIConfig `mapstructure:"hyperfleet_api"`
 	MessageData      map[string]string    `mapstructure:"message_data"`
@@ -125,9 +125,9 @@ func (ls LabelSelectorList) ToMap() map[string]string {
 func NewSentinelConfig() *SentinelConfig {
 	return &SentinelConfig{
 		// ResourceType is required and must be set in config file
-		PollInterval:     5 * time.Second,
-		BackoffNotReady:  10 * time.Second,
-		BackoffReady:     30 * time.Minute,
+		PollInterval:    5 * time.Second,
+		MaxAgeNotReady:  10 * time.Second,
+		MaxAgeReady:     30 * time.Minute,
 		ResourceSelector: []LabelSelector{}, // Empty means watch all resources
 		HyperFleetAPI: &HyperFleetAPIConfig{
 			// Endpoint is required and must be set in config file
@@ -282,12 +282,12 @@ func (c *SentinelConfig) Validate() error {
 		return fmt.Errorf("poll_interval must be positive")
 	}
 
-	if c.BackoffNotReady <= 0 {
-		return fmt.Errorf("backoff_not_ready must be positive")
+	if c.MaxAgeNotReady <= 0 {
+		return fmt.Errorf("max_age_not_ready must be positive")
 	}
 
-	if c.BackoffReady <= 0 {
-		return fmt.Errorf("backoff_ready must be positive")
+	if c.MaxAgeReady <= 0 {
+		return fmt.Errorf("max_age_ready must be positive")
 	}
 
 	return nil

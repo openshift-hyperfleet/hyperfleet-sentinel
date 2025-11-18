@@ -24,8 +24,8 @@ resource_type: clusters
 poll_interval: 2s
 
 # Shorter backoff intervals for development.
-backoff_not_ready: 5s
-backoff_ready: 2m
+max_age_not_ready: 5s
+max_age_ready: 2m
 
 # No resource selector - watch all resources in development.
 # resource_selector: []

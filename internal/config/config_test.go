@@ -60,11 +60,11 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 	if cfg.PollInterval != 5*time.Second {
 		t.Errorf("Expected poll_interval 5s, got %v", cfg.PollInterval)
 	}
-	if cfg.BackoffNotReady != 10*time.Second {
-		t.Errorf("Expected backoff_not_ready 10s, got %v", cfg.BackoffNotReady)
+	if cfg.MaxAgeNotReady != 10*time.Second {
+		t.Errorf("Expected max_age_not_ready 10s, got %v", cfg.MaxAgeNotReady)
 	}
-	if cfg.BackoffReady != 30*time.Minute {
-		t.Errorf("Expected backoff_ready 30m, got %v", cfg.BackoffReady)
+	if cfg.MaxAgeReady != 30*time.Minute {
+		t.Errorf("Expected max_age_ready 30m, got %v", cfg.MaxAgeReady)
 	}
 
 	// Verify resource selector
@@ -114,11 +114,11 @@ func TestLoadConfig_Minimal(t *testing.T) {
 	if cfg.PollInterval != 5*time.Second {
 		t.Errorf("Expected default poll_interval 5s, got %v", cfg.PollInterval)
 	}
-	if cfg.BackoffNotReady != 10*time.Second {
-		t.Errorf("Expected default backoff_not_ready 10s, got %v", cfg.BackoffNotReady)
+	if cfg.MaxAgeNotReady != 10*time.Second {
+		t.Errorf("Expected default max_age_not_ready 10s, got %v", cfg.MaxAgeNotReady)
 	}
-	if cfg.BackoffReady != 30*time.Minute {
-		t.Errorf("Expected default backoff_ready 30m, got %v", cfg.BackoffReady)
+	if cfg.MaxAgeReady != 30*time.Minute {
+		t.Errorf("Expected default max_age_ready 30m, got %v", cfg.MaxAgeReady)
 	}
 }
 
@@ -167,11 +167,11 @@ func TestNewSentinelConfig_Defaults(t *testing.T) {
 	if cfg.PollInterval != 5*time.Second {
 		t.Errorf("Expected default poll_interval 5s, got %v", cfg.PollInterval)
 	}
-	if cfg.BackoffNotReady != 10*time.Second {
-		t.Errorf("Expected default backoff_not_ready 10s, got %v", cfg.BackoffNotReady)
+	if cfg.MaxAgeNotReady != 10*time.Second {
+		t.Errorf("Expected default max_age_not_ready 10s, got %v", cfg.MaxAgeNotReady)
 	}
-	if cfg.BackoffReady != 30*time.Minute {
-		t.Errorf("Expected default backoff_ready 30m, got %v", cfg.BackoffReady)
+	if cfg.MaxAgeReady != 30*time.Minute {
+		t.Errorf("Expected default max_age_ready 30m, got %v", cfg.MaxAgeReady)
 	}
 	if cfg.HyperFleetAPI.Timeout != 30*time.Second {
 		t.Errorf("Expected default timeout 30s, got %v", cfg.HyperFleetAPI.Timeout)
@@ -285,15 +285,15 @@ func TestValidate_NegativeDurations(t *testing.T) {
 			},
 		},
 		{
-			name: "negative backoff_not_ready",
+			name: "negative max_age_not_ready",
 			modifier: func(c *SentinelConfig) {
-				c.BackoffNotReady = -10 * time.Second
+				c.MaxAgeNotReady = -10 * time.Second
 			},
 		},
 		{
-			name: "zero backoff_ready",
+			name: "zero max_age_ready",
 			modifier: func(c *SentinelConfig) {
-				c.BackoffReady = 0
+				c.MaxAgeReady = 0
 			},
 		},
 	}

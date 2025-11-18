@@ -76,15 +76,15 @@ Create a configuration file based on the examples in the `configs/` directory:
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
 | `resource_type` | string | Resource to watch (clusters, nodepools) | `clusters` |
-| `hyperfleet_api.endpoint` | string | HyperFleet API endpoint URL | `https://api.hyperfleet.example.com` |
+| `hyperfleet_api.endpoint` | string | HyperFleet API endpoint URL (k8s service) | `http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080` |
 
 #### Optional Fields with Defaults
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `poll_interval` | duration | `5s` | How often to poll the API for resource updates |
-| `backoff_not_ready` | duration | `10s` | Backoff interval for resources not ready |
-| `backoff_ready` | duration | `30m` | Backoff interval for ready resources |
+| `max_age_not_ready` | duration | `10s` | Backoff interval for resources not ready |
+| `max_age_ready` | duration | `30m` | Backoff interval for ready resources |
 | `hyperfleet_api.timeout` | duration | `30s` | Request timeout for API calls |
 | `resource_selector` | array | `[]` | Label selectors for filtering resources (enables sharding) |
 | `message_data` | map | `{}` | Template fields for CloudEvents data payload |
@@ -234,15 +234,15 @@ This uses all defaults and requires broker environment variables to be set.
 ```yaml
 resource_type: clusters
 poll_interval: 5s
-backoff_not_ready: 10s
-backoff_ready: 30m
+max_age_not_ready: 10s
+max_age_ready: 30m
 
 resource_selector:
   - label: shard
     value: "1"
 
 hyperfleet_api:
-  endpoint: https://api.hyperfleet.production.example.com
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
   timeout: 30s
 
 message_data:
