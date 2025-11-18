@@ -24,8 +24,6 @@ serviceAccount:
   annotations: {}
     # For GCP Pub/Sub with Workload Identity:
     # iam.gke.io/gcp-service-account: sentinel@your-project.iam.gserviceaccount.com
-    # For AWS SQS with IRSA:
-    # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/sentinel-role
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
@@ -101,7 +99,7 @@ config:
 # WARNING: Never commit real credentials to git!
 # Use external secrets management (External Secrets Operator, Sealed Secrets, Vault)
 broker:
-  # Broker type: rabbitmq, pubsub, or awsSqs
+  # Broker type: rabbitmq or pubsub
   type: rabbitmq
 
   # RabbitMQ configuration
@@ -118,12 +116,6 @@ broker:
   # Uncomment and configure when using Pub/Sub
   # pubsub:
   #   projectId: your-gcp-project-id
-
-  # AWS SQS configuration (alternative to RabbitMQ)
-  # Uncomment and configure when using SQS
-  # sqs:
-  #   region: us-east-1
-  #   queueUrl: https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-events
 
 # Existing secret name (optional)
 # If provided, the chart will not create a Secret and will use this existing one

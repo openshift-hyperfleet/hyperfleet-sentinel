@@ -89,17 +89,6 @@ spec:
               secretKeyRef:
                 name: {{ include "sentinel.secretName" . }}
                 key: BROKER_PROJECT_ID
-          {{- else if eq .Values.broker.type "awsSqs" }}
-          - name: BROKER_REGION
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "sentinel.secretName" . }}
-                key: BROKER_REGION
-          - name: BROKER_QUEUE_URL
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "sentinel.secretName" . }}
-                key: BROKER_QUEUE_URL
           {{- end }}
         volumeMounts:
           - name: config

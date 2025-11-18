@@ -351,35 +351,6 @@ func TestLoadBrokerConfig_RabbitMQ(t *testing.T) {
 	}
 }
 
-func TestLoadBrokerConfig_SQS(t *testing.T) {
-	setEnvVars(t, map[string]string{
-		"BROKER_TYPE":      "awsSqs",
-		"BROKER_REGION":    "us-east-1",
-		"BROKER_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123456789012/my-queue",
-	})
-
-	broker, err := LoadBrokerConfig()
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if broker.Type() != "awsSqs" {
-		t.Errorf("Expected broker type 'awsSqs', got '%s'", broker.Type())
-	}
-
-	sqsCfg, ok := broker.(*SQSBrokerConfig)
-	if !ok {
-		t.Fatal("Expected SQSBrokerConfig type")
-	}
-
-	if sqsCfg.Region != "us-east-1" {
-		t.Errorf("Expected region 'us-east-1', got '%s'", sqsCfg.Region)
-	}
-	if sqsCfg.QueueURL != "https://sqs.us-east-1.amazonaws.com/123456789012/my-queue" {
-		t.Errorf("Expected queue_url, got '%s'", sqsCfg.QueueURL)
-	}
-}
-
 func TestLoadBrokerConfig_MissingType(t *testing.T) {
 	// Ensure no BROKER_TYPE is set
 	_ = os.Unsetenv("BROKER_TYPE") // Ignore error - we want it unset
@@ -442,37 +413,6 @@ func TestRabbitMQBrokerConfig_Validate_MissingFields(t *testing.T) {
 			name:   "missing exchange",
 			cfg:    &RabbitMQBrokerConfig{Host: "localhost", Port: "5672"},
 			errMsg: "BROKER_EXCHANGE is required for rabbitmq broker",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.cfg.Validate()
-			if err == nil {
-				t.Fatal("Expected validation error, got nil")
-			}
-			if err.Error() != tt.errMsg {
-				t.Errorf("Expected error '%s', got: %v", tt.errMsg, err)
-			}
-		})
-	}
-}
-
-func TestSQSBrokerConfig_Validate_MissingFields(t *testing.T) {
-	tests := []struct {
-		name   string
-		cfg    *SQSBrokerConfig
-		errMsg string
-	}{
-		{
-			name:   "missing region",
-			cfg:    &SQSBrokerConfig{QueueURL: "https://sqs.us-east-1.amazonaws.com/123/queue"},
-			errMsg: "BROKER_REGION is required for awsSqs broker",
-		},
-		{
-			name:   "missing queue_url",
-			cfg:    &SQSBrokerConfig{Region: "us-east-1"},
-			errMsg: "BROKER_QUEUE_URL is required for awsSqs broker",
 		},
 	}
 

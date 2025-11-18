@@ -66,7 +66,6 @@ Create a configuration file based on the examples in the `configs/` directory:
 
 - **`configs/gcp-pubsub-example.yaml`** - GCP Pub/Sub configuration
 - **`configs/rabbitmq-example.yaml`** - RabbitMQ configuration
-- **`configs/aws-sqs-example.yaml`** - AWS SQS configuration
 - **`configs/dev-example.yaml`** - Development configuration
 
 ### Configuration Schema
@@ -125,7 +124,7 @@ Broker configuration is loaded exclusively from environment variables for securi
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `BROKER_TYPE` | Broker type (pubsub, awsSqs, rabbitmq) | `rabbitmq` |
+| `BROKER_TYPE` | Broker type (pubsub or rabbitmq) | `rabbitmq` |
 
 #### Broker-Specific Variables
 
@@ -145,14 +144,6 @@ Broker configuration is loaded exclusively from environment variables for securi
 |----------|----------|-------------|
 | `BROKER_PROJECT_ID` | Yes | GCP project ID |
 | `GOOGLE_APPLICATION_CREDENTIALS` | No | Path to service account key (uses ADC if not set) |
-
-**AWS SQS:**
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `BROKER_REGION` | Yes | AWS region |
-| `BROKER_QUEUE_URL` | Yes | SQS queue URL |
-| `AWS_ACCESS_KEY_ID` | No | AWS access key (uses default credential chain if not set) |
-| `AWS_SECRET_ACCESS_KEY` | No | AWS secret key |
 
 ### Running Locally
 

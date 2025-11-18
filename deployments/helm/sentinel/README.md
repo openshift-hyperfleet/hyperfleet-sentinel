@@ -7,7 +7,7 @@ This Helm chart deploys the HyperFleet Sentinel service to Kubernetes.
 - Kubernetes 1.20+
 - Helm 3.0+
 - HyperFleet API deployed and accessible
-- Message broker (RabbitMQ, GCP Pub/Sub, or AWS SQS) configured
+- Message broker (RabbitMQ or GCP Pub/Sub) configured
 
 ## Installing the Chart
 
@@ -90,7 +90,7 @@ The following table lists the configurable parameters of the Sentinel chart and 
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `broker.type` | Broker type (rabbitmq, pubsub, awsSqs) | `rabbitmq` |
+| `broker.type` | Broker type (rabbitmq or pubsub) | `rabbitmq` |
 | `broker.rabbitmq.host` | RabbitMQ host | `rabbitmq.hyperfleet-system.svc.cluster.local` |
 | `broker.rabbitmq.port` | RabbitMQ port | `5672` |
 | `broker.rabbitmq.exchange` | RabbitMQ exchange | `hyperfleet-events` |
@@ -146,27 +146,6 @@ serviceAccount:
 helm install sentinel ./deployments/helm/sentinel \
   --namespace hyperfleet-system \
   --values values-pubsub.yaml
-```
-
-### Using AWS SQS
-
-```yaml
-# values-sqs.yaml
-broker:
-  type: awsSqs
-  sqs:
-    region: us-east-1
-    queueUrl: https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-events
-
-serviceAccount:
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/sentinel-role
-```
-
-```bash
-helm install sentinel ./deployments/helm/sentinel \
-  --namespace hyperfleet-system \
-  --values values-sqs.yaml
 ```
 
 ### Using Existing Secret

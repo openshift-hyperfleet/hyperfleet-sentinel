@@ -60,26 +60,6 @@ func (c *PubSubBrokerConfig) Validate() error {
 	return nil
 }
 
-// SQSBrokerConfig defines AWS SQS broker configuration
-type SQSBrokerConfig struct {
-	Region   string
-	QueueURL string
-}
-
-func (c *SQSBrokerConfig) Type() string {
-	return "awsSqs"
-}
-
-func (c *SQSBrokerConfig) Validate() error {
-	if c.Region == "" {
-		return fmt.Errorf("BROKER_REGION is required for awsSqs broker")
-	}
-	if c.QueueURL == "" {
-		return fmt.Errorf("BROKER_QUEUE_URL is required for awsSqs broker")
-	}
-	return nil
-}
-
 // RabbitMQBrokerConfig defines RabbitMQ broker configuration
 type RabbitMQBrokerConfig struct {
 	Host         string
@@ -205,16 +185,6 @@ func LoadBrokerConfig() (BrokerConfig, error) {
 		}
 		broker = cfg
 
-	case "awsSqs":
-		cfg := &SQSBrokerConfig{
-			Region:   os.Getenv("BROKER_REGION"),
-			QueueURL: os.Getenv("BROKER_QUEUE_URL"),
-		}
-		if err := cfg.Validate(); err != nil {
-			return nil, err
-		}
-		broker = cfg
-
 	case "rabbitmq":
 		cfg := &RabbitMQBrokerConfig{
 			Host:         os.Getenv("BROKER_HOST"),
@@ -229,7 +199,7 @@ func LoadBrokerConfig() (BrokerConfig, error) {
 		broker = cfg
 
 	default:
-		return nil, fmt.Errorf("unsupported BROKER_TYPE: %s (must be pubsub, awsSqs, or rabbitmq)", brokerType)
+		return nil, fmt.Errorf("unsupported BROKER_TYPE: %s (must be pubsub or rabbitmq)", brokerType)
 	}
 
 	return broker, nil
