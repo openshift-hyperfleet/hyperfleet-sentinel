@@ -1,0 +1,130 @@
+# Default values for sentinel.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Replica count for horizontal scaling
+replicaCount: 1
+
+# Container image configuration
+image:
+  repository: quay.io/hyperfleet/sentinel
+  pullPolicy: Always
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# ServiceAccount configuration
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+    # For GCP Pub/Sub with Workload Identity:
+    # iam.gke.io/gcp-service-account: sentinel@your-project.iam.gserviceaccount.com
+    # For AWS SQS with IRSA:
+    # eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/sentinel-role
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext: {}
+  # fsGroup: 2000
+
+# Container security context
+securityContext: {}
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+# Resource limits and requests
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Sentinel configuration
+config:
+  # Resource type to watch (clusters, nodepools)
+  resourceType: clusters
+
+  # How often to poll the API for resource updates
+  pollInterval: 5s
+
+  # Backoff interval for resources not ready
+  maxAgeNotReady: 10s
+
+  # Backoff interval for ready resources
+  maxAgeReady: 30m
+
+  # Resource selector for horizontal sharding
+  # Deploy multiple Sentinel instances with different shard values
+  resourceSelector:
+    - label: shard
+      value: "1"
+
+  # HyperFleet API configuration
+  hyperfleetApi:
+    # Use in-cluster service name for API endpoint
+    endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+    timeout: 5s
+
+  # CloudEvents data payload configuration
+  messageData:
+    resource_id: .id
+    resource_type: .kind
+    href: .href
+    generation: .generation
+
+# Broker configuration (from Secret)
+# WARNING: Never commit real credentials to git!
+# Use external secrets management (External Secrets Operator, Sealed Secrets, Vault)
+broker:
+  # Broker type: rabbitmq, pubsub, or awsSqs
+  type: rabbitmq
+
+  # RabbitMQ configuration
+  rabbitmq:
+    host: rabbitmq.hyperfleet-system.svc.cluster.local
+    port: "5672"
+    exchange: hyperfleet-events
+    vhost: /hyperfleet
+    exchangeType: fanout
+    username: sentinel-user
+    password: change-me-in-production
+
+  # GCP Pub/Sub configuration (alternative to RabbitMQ)
+  # Uncomment and configure when using Pub/Sub
+  # pubsub:
+  #   projectId: your-gcp-project-id
+
+  # AWS SQS configuration (alternative to RabbitMQ)
+  # Uncomment and configure when using SQS
+  # sqs:
+  #   region: us-east-1
+  #   queueUrl: https://sqs.us-east-1.amazonaws.com/123456789012/hyperfleet-events
+
+# Existing secret name (optional)
+# If provided, the chart will not create a Secret and will use this existing one
+# existingSecret: sentinel-broker-credentials

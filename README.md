@@ -190,9 +190,28 @@ make build
 
 ### Kubernetes Deployment
 
-See [deployments/kubernetes/README.md](deployments/kubernetes/README.md) for detailed Kubernetes deployment instructions.
+#### Using Helm (Recommended)
 
-**Quick start:**
+The recommended way to deploy Sentinel to Kubernetes is using the Helm chart:
+
+```bash
+# Install with default values (RabbitMQ)
+helm install sentinel ./deployments/helm/sentinel \
+  --namespace hyperfleet-system \
+  --create-namespace
+
+# Check status
+helm status sentinel -n hyperfleet-system
+
+# View logs
+kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel -f
+```
+
+See [deployments/helm/sentinel/README.md](deployments/helm/sentinel/README.md) for detailed Helm chart documentation, configuration options, and examples.
+
+#### Using Raw Manifests
+
+For development or testing, you can also use raw Kubernetes manifests:
 
 ```bash
 # Create namespace
@@ -204,6 +223,8 @@ kubectl apply -f deployments/kubernetes/deployment.yaml
 # Check logs
 kubectl logs -n hyperfleet-system -l app=sentinel -f
 ```
+
+See [deployments/kubernetes/README.md](deployments/kubernetes/README.md) for detailed manifest-based deployment instructions.
 
 ### Configuration Validation
 

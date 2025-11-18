@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sentinel.fullname" . }}-config
+  labels:
+    {{- include "sentinel.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    # Sentinel configuration
+    resource_type: {{ .Values.config.resourceType }}
+    poll_interval: {{ .Values.config.pollInterval }}
+    max_age_not_ready: {{ .Values.config.maxAgeNotReady }}
+    max_age_ready: {{ .Values.config.maxAgeReady }}
+
+    {{- if .Values.config.resourceSelector }}
+    # Resource selector for horizontal sharding
+    resource_selector:
+      {{- range .Values.config.resourceSelector }}
+      - label: {{ .label }}
+        value: {{ .value | quote }}
+      {{- end }}
+    {{- end }}
+
+    # HyperFleet API configuration
+    hyperfleet_api:
+      endpoint: {{ .Values.config.hyperfleetApi.endpoint }}
+      timeout: {{ .Values.config.hyperfleetApi.timeout }}
+
+    {{- if .Values.config.messageData }}
+    # CloudEvents data payload configuration
+    message_data:
+      {{- range $key, $value := .Values.config.messageData }}
+      {{ $key }}: {{ $value }}
+      {{- end }}
+    {{- end }}

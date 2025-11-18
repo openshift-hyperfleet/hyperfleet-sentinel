@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sentinel.fullname" . }}
+  labels:
+    {{- include "sentinel.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "sentinel.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "sentinel.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "sentinel.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+      - name: {{ .Chart.Name }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 12 }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        args:
+          - serve
+          - --config=/etc/sentinel/config.yaml
+        env:
+          # Broker credentials from Secret
+          - name: BROKER_TYPE
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sentinel.secretName" . }}
+                key: BROKER_TYPE
+          {{- if eq .Values.broker.type "rabbitmq" }}
+          - name: BROKER_HOST
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sentinel.secretName" . }}
+                key: BROKER_HOST
+          - name: BROKER_PORT
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sentinel.secretName" . }}
+                key: BROKER_PORT
+          - name: BROKER_EXCHANGE
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sentinel.secretName" . }}
+                key: BROKER_EXCHANGE
+          - name: BROKER_VHOST
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sentinel.secretName" . }}
+                key: BROKER_VHOST
+                optional: true
+          - name: BROKER_EXCHANGE_TYPE
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sentinel.secretName" . }}
+                key: BROKER_EXCHANGE_TYPE
+                optional: true
+          - name: RABBITMQ_USERNAME
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sentinel.secretName" . }}
+                key: RABBITMQ_USERNAME
+                optional: true
+          - name: RABBITMQ_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sentinel.secretName" . }}
+                key: RABBITMQ_PASSWORD
+                optional: true
+          {{- else if eq .Values.broker.type "pubsub" }}
+          - name: BROKER_PROJECT_ID
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sentinel.secretName" . }}
+                key: BROKER_PROJECT_ID
+          {{- else if eq .Values.broker.type "awsSqs" }}
+          - name: BROKER_REGION
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sentinel.secretName" . }}
+                key: BROKER_REGION
+          - name: BROKER_QUEUE_URL
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "sentinel.secretName" . }}
+                key: BROKER_QUEUE_URL
+          {{- end }}
+        volumeMounts:
+          - name: config
+            mountPath: /etc/sentinel
+            readOnly: true
+        resources:
+          {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "sentinel.fullname" . }}-config
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
