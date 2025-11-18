@@ -50,11 +50,8 @@ hyperfleet_api:
 message_data:
   resource_id: .id
   resource_type: .kind
-  resource_name: .metadata.name
-  cluster_region: .metadata.labels.region
-  owner_id: .ownerResource.id
+  href: .href
   generation: .generation
-  reconciliation_status: .status.conditions[0].status
 
 # Broker configuration is loaded from environment variables.
 # For GCP Pub/Sub, set:

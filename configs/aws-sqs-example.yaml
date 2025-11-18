@@ -53,9 +53,7 @@ hyperfleet_api:
 message_data:
   resource_id: .id
   resource_type: .kind
-  resource_name: .metadata.name
-  aws_region: .metadata.labels.region
-  owner_id: .ownerResource.id
+  href: .href
   generation: .generation
 
 # Broker configuration is loaded from environment variables.

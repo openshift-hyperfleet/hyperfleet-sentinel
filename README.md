@@ -111,13 +111,11 @@ Define custom fields to include in CloudEvents using Go template syntax. Both `.
 message_data:
   resource_id: .id
   resource_type: .kind
-  resource_name: .metadata.name
-  cluster_region: .metadata.labels.region
-  owner_id: .ownerResource.id
+  href: .href
   generation: .generation
 ```
 
-Templates can reference any field from the Resource object returned by the API.
+Templates can reference any field from the Resource object returned by the API. The example above follows the `ObjectReference` pattern (id, kind, href) with generation for reconciliation tracking.
 
 ### Environment Variables
 
@@ -248,7 +246,7 @@ hyperfleet_api:
 message_data:
   resource_id: .id
   resource_type: .kind
-  resource_name: .metadata.name
+  href: .href
   generation: .generation
 ```
 

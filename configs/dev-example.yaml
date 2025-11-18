@@ -45,7 +45,8 @@ hyperfleet_api:
 message_data:
   resource_id: .id
   resource_type: .kind
-  resource_name: .metadata.name
+  href: .href
+  generation: .generation
 
 # Broker configuration is loaded from environment variables.
 # For local RabbitMQ development, set:
