@@ -1,0 +1,74 @@
+# Sentinel Configuration Example - RabbitMQ
+#
+# This example demonstrates a production configuration using RabbitMQ
+# as the message broker.
+#
+# Required environment variables:
+#   BROKER_TYPE=rabbitmq
+#   BROKER_HOST=rabbitmq.example.com
+#   BROKER_PORT=5672
+#   BROKER_EXCHANGE=hyperfleet-events
+#
+# Optional environment variables:
+#   BROKER_VHOST=/hyperfleet (default: /)
+#   BROKER_EXCHANGE_TYPE=fanout (default: fanout)
+#   RABBITMQ_USERNAME=sentinel-user
+#   RABBITMQ_PASSWORD=secret-password
+
+# Resource type to watch - must be one of: clusters, nodepools.
+resource_type: clusters
+
+# How often to poll the HyperFleet API for resource updates.
+# Accepts Go duration format: ns, us/µs, ms, s, m, h.
+poll_interval: 5s
+
+# Backoff interval for resources that are not ready.
+# Resources in transitional states are re-checked more frequently.
+max_age_not_ready: 10s
+
+# Backoff interval for resources that are ready and stable.
+# Stable resources are checked less frequently to reduce API load.
+max_age_ready: 30m
+
+# Resource selector (optional) - filter resources by labels.
+# If empty or omitted, all resources of the specified type are watched.
+# This enables horizontal scaling by having multiple Sentinels watch different resource subsets.
+# Multiple selectors use AND logic (all labels must match).
+resource_selector:
+  - label: shard
+    value: "1"
+  - label: datacenter
+    value: dc-east
+
+# HyperFleet API configuration.
+hyperfleet_api:
+  # API base URL (required).
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+
+  # Request timeout for API calls.
+  timeout: 5s
+
+# Message data template configuration (optional).
+# Define custom fields to include in CloudEvents data payload.
+# Uses Go template syntax - both .field and {{.field}} formats are supported.
+# Templates can reference any field from the Resource object returned by the API.
+message_data:
+  resource_id: .id
+  resource_type: .kind
+  href: .href
+  generation: .generation
+
+# Broker configuration is loaded from environment variables.
+# For RabbitMQ, set:
+#   BROKER_TYPE=rabbitmq
+#   BROKER_HOST=rabbitmq.example.com (or rabbitmq.hyperfleet-system.svc.cluster.local in K8s)
+#   BROKER_PORT=5672
+#   BROKER_EXCHANGE=hyperfleet-events
+#   BROKER_VHOST=/hyperfleet (optional, defaults to /)
+#   BROKER_EXCHANGE_TYPE=fanout (optional, defaults to fanout)
+#
+# Authentication credentials (optional):
+#   RABBITMQ_USERNAME=sentinel-user
+#   RABBITMQ_PASSWORD=secret-password
+#
+# In Kubernetes, these should be provided via Secrets.

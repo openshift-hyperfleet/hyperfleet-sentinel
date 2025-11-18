@@ -24,8 +24,8 @@ type LabelSelectorList []LabelSelector
 type SentinelConfig struct {
 	ResourceType     string               `mapstructure:"resource_type"`
 	PollInterval     time.Duration        `mapstructure:"poll_interval"`
-	BackoffNotReady  time.Duration        `mapstructure:"backoff_not_ready"`
-	BackoffReady     time.Duration        `mapstructure:"backoff_ready"`
+	MaxAgeNotReady   time.Duration        `mapstructure:"max_age_not_ready"`
+	MaxAgeReady      time.Duration        `mapstructure:"max_age_ready"`
 	ResourceSelector LabelSelectorList    `mapstructure:"resource_selector"`
 	HyperFleetAPI    *HyperFleetAPIConfig `mapstructure:"hyperfleet_api"`
 	MessageData      map[string]string    `mapstructure:"message_data"`
@@ -56,26 +56,6 @@ func (c *PubSubBrokerConfig) Type() string {
 func (c *PubSubBrokerConfig) Validate() error {
 	if c.ProjectID == "" {
 		return fmt.Errorf("BROKER_PROJECT_ID is required for pubsub broker")
-	}
-	return nil
-}
-
-// SQSBrokerConfig defines AWS SQS broker configuration
-type SQSBrokerConfig struct {
-	Region   string
-	QueueURL string
-}
-
-func (c *SQSBrokerConfig) Type() string {
-	return "awsSqs"
-}
-
-func (c *SQSBrokerConfig) Validate() error {
-	if c.Region == "" {
-		return fmt.Errorf("BROKER_REGION is required for awsSqs broker")
-	}
-	if c.QueueURL == "" {
-		return fmt.Errorf("BROKER_QUEUE_URL is required for awsSqs broker")
 	}
 	return nil
 }
@@ -125,13 +105,13 @@ func (ls LabelSelectorList) ToMap() map[string]string {
 func NewSentinelConfig() *SentinelConfig {
 	return &SentinelConfig{
 		// ResourceType is required and must be set in config file
-		PollInterval:     5 * time.Second,
-		BackoffNotReady:  10 * time.Second,
-		BackoffReady:     30 * time.Minute,
+		PollInterval:    5 * time.Second,
+		MaxAgeNotReady:  10 * time.Second,
+		MaxAgeReady:     30 * time.Minute,
 		ResourceSelector: []LabelSelector{}, // Empty means watch all resources
 		HyperFleetAPI: &HyperFleetAPIConfig{
 			// Endpoint is required and must be set in config file
-			Timeout: 10 * time.Second,
+			Timeout: 5 * time.Second,
 		},
 		MessageData: make(map[string]string),
 		Broker:      nil, // Loaded from environment variables
@@ -205,16 +185,6 @@ func LoadBrokerConfig() (BrokerConfig, error) {
 		}
 		broker = cfg
 
-	case "awsSqs":
-		cfg := &SQSBrokerConfig{
-			Region:   os.Getenv("BROKER_REGION"),
-			QueueURL: os.Getenv("BROKER_QUEUE_URL"),
-		}
-		if err := cfg.Validate(); err != nil {
-			return nil, err
-		}
-		broker = cfg
-
 	case "rabbitmq":
 		cfg := &RabbitMQBrokerConfig{
 			Host:         os.Getenv("BROKER_HOST"),
@@ -229,7 +199,7 @@ func LoadBrokerConfig() (BrokerConfig, error) {
 		broker = cfg
 
 	default:
-		return nil, fmt.Errorf("unsupported BROKER_TYPE: %s (must be pubsub, awsSqs, or rabbitmq)", brokerType)
+		return nil, fmt.Errorf("unsupported BROKER_TYPE: %s (must be pubsub or rabbitmq)", brokerType)
 	}
 
 	return broker, nil
@@ -268,7 +238,7 @@ func (c *SentinelConfig) Validate() error {
 		return fmt.Errorf("resource_type is required")
 	}
 
-	validResourceTypes := []string{"clusters", "nodepools", "manifests", "workloads"}
+	validResourceTypes := []string{"clusters", "nodepools"}
 	if !contains(validResourceTypes, c.ResourceType) {
 		return fmt.Errorf("invalid resource_type: %s (must be one of: %s)",
 			c.ResourceType, strings.Join(validResourceTypes, ", "))
@@ -282,12 +252,12 @@ func (c *SentinelConfig) Validate() error {
 		return fmt.Errorf("poll_interval must be positive")
 	}
 
-	if c.BackoffNotReady <= 0 {
-		return fmt.Errorf("backoff_not_ready must be positive")
+	if c.MaxAgeNotReady <= 0 {
+		return fmt.Errorf("max_age_not_ready must be positive")
 	}
 
-	if c.BackoffReady <= 0 {
-		return fmt.Errorf("backoff_ready must be positive")
+	if c.MaxAgeReady <= 0 {
+		return fmt.Errorf("max_age_ready must be positive")
 	}
 
 	return nil

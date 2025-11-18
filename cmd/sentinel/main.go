@@ -72,7 +72,7 @@ func runServe(cfg *config.SentinelConfig) error {
 
 	// Initialize components
 	hyperfleetClient := client.NewHyperFleetClient(cfg.HyperFleetAPI.Endpoint, cfg.HyperFleetAPI.Timeout)
-	decisionEngine := engine.NewDecisionEngine(cfg.BackoffNotReady, cfg.BackoffReady)
+	decisionEngine := engine.NewDecisionEngine(cfg.MaxAgeNotReady, cfg.MaxAgeReady)
 
 	// Initialize publisher (using mock for now)
 	var pub publisher.Publisher

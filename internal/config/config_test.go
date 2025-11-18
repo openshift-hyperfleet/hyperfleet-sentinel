@@ -60,11 +60,11 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 	if cfg.PollInterval != 5*time.Second {
 		t.Errorf("Expected poll_interval 5s, got %v", cfg.PollInterval)
 	}
-	if cfg.BackoffNotReady != 10*time.Second {
-		t.Errorf("Expected backoff_not_ready 10s, got %v", cfg.BackoffNotReady)
+	if cfg.MaxAgeNotReady != 10*time.Second {
+		t.Errorf("Expected max_age_not_ready 10s, got %v", cfg.MaxAgeNotReady)
 	}
-	if cfg.BackoffReady != 30*time.Minute {
-		t.Errorf("Expected backoff_ready 30m, got %v", cfg.BackoffReady)
+	if cfg.MaxAgeReady != 30*time.Minute {
+		t.Errorf("Expected max_age_ready 30m, got %v", cfg.MaxAgeReady)
 	}
 
 	// Verify resource selector
@@ -76,8 +76,8 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 	if cfg.HyperFleetAPI.Endpoint != "https://api.hyperfleet.example.com" {
 		t.Errorf("Expected endpoint 'https://api.hyperfleet.example.com', got '%s'", cfg.HyperFleetAPI.Endpoint)
 	}
-	if cfg.HyperFleetAPI.Timeout != 30*time.Second {
-		t.Errorf("Expected timeout 30s, got %v", cfg.HyperFleetAPI.Timeout)
+	if cfg.HyperFleetAPI.Timeout != 5*time.Second {
+		t.Errorf("Expected timeout 5s, got %v", cfg.HyperFleetAPI.Timeout)
 	}
 
 	// Verify message data
@@ -114,11 +114,11 @@ func TestLoadConfig_Minimal(t *testing.T) {
 	if cfg.PollInterval != 5*time.Second {
 		t.Errorf("Expected default poll_interval 5s, got %v", cfg.PollInterval)
 	}
-	if cfg.BackoffNotReady != 10*time.Second {
-		t.Errorf("Expected default backoff_not_ready 10s, got %v", cfg.BackoffNotReady)
+	if cfg.MaxAgeNotReady != 10*time.Second {
+		t.Errorf("Expected default max_age_not_ready 10s, got %v", cfg.MaxAgeNotReady)
 	}
-	if cfg.BackoffReady != 30*time.Minute {
-		t.Errorf("Expected default backoff_ready 30m, got %v", cfg.BackoffReady)
+	if cfg.MaxAgeReady != 30*time.Minute {
+		t.Errorf("Expected default max_age_ready 30m, got %v", cfg.MaxAgeReady)
 	}
 }
 
@@ -167,14 +167,14 @@ func TestNewSentinelConfig_Defaults(t *testing.T) {
 	if cfg.PollInterval != 5*time.Second {
 		t.Errorf("Expected default poll_interval 5s, got %v", cfg.PollInterval)
 	}
-	if cfg.BackoffNotReady != 10*time.Second {
-		t.Errorf("Expected default backoff_not_ready 10s, got %v", cfg.BackoffNotReady)
+	if cfg.MaxAgeNotReady != 10*time.Second {
+		t.Errorf("Expected default max_age_not_ready 10s, got %v", cfg.MaxAgeNotReady)
 	}
-	if cfg.BackoffReady != 30*time.Minute {
-		t.Errorf("Expected default backoff_ready 30m, got %v", cfg.BackoffReady)
+	if cfg.MaxAgeReady != 30*time.Minute {
+		t.Errorf("Expected default max_age_ready 30m, got %v", cfg.MaxAgeReady)
 	}
-	if cfg.HyperFleetAPI.Timeout != 10*time.Second {
-		t.Errorf("Expected default timeout 10s, got %v", cfg.HyperFleetAPI.Timeout)
+	if cfg.HyperFleetAPI.Timeout != 5*time.Second {
+		t.Errorf("Expected default timeout 30s, got %v", cfg.HyperFleetAPI.Timeout)
 	}
 	// Endpoint has no default - must be set in config file
 	if cfg.HyperFleetAPI.Endpoint != "" {
@@ -243,8 +243,8 @@ func TestValidate_InvalidResourceTypes(t *testing.T) {
 	}{
 		{"valid clusters", "clusters", false},
 		{"valid nodepools", "nodepools", false},
-		{"valid manifests", "manifests", false},
-		{"valid workloads", "workloads", false},
+		{"invalid manifests", "manifests", true},
+		{"invalid workloads", "workloads", true},
 		{"invalid pods", "pods", true},
 		{"invalid deployments", "deployments", true},
 		{"empty", "", true},
@@ -285,15 +285,15 @@ func TestValidate_NegativeDurations(t *testing.T) {
 			},
 		},
 		{
-			name: "negative backoff_not_ready",
+			name: "negative max_age_not_ready",
 			modifier: func(c *SentinelConfig) {
-				c.BackoffNotReady = -10 * time.Second
+				c.MaxAgeNotReady = -10 * time.Second
 			},
 		},
 		{
-			name: "zero backoff_ready",
+			name: "zero max_age_ready",
 			modifier: func(c *SentinelConfig) {
-				c.BackoffReady = 0
+				c.MaxAgeReady = 0
 			},
 		},
 	}
@@ -348,35 +348,6 @@ func TestLoadBrokerConfig_RabbitMQ(t *testing.T) {
 	}
 	if rmqCfg.Exchange != "hyperfleet-events" {
 		t.Errorf("Expected exchange 'hyperfleet-events', got '%s'", rmqCfg.Exchange)
-	}
-}
-
-func TestLoadBrokerConfig_SQS(t *testing.T) {
-	setEnvVars(t, map[string]string{
-		"BROKER_TYPE":      "awsSqs",
-		"BROKER_REGION":    "us-east-1",
-		"BROKER_QUEUE_URL": "https://sqs.us-east-1.amazonaws.com/123456789012/my-queue",
-	})
-
-	broker, err := LoadBrokerConfig()
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if broker.Type() != "awsSqs" {
-		t.Errorf("Expected broker type 'awsSqs', got '%s'", broker.Type())
-	}
-
-	sqsCfg, ok := broker.(*SQSBrokerConfig)
-	if !ok {
-		t.Fatal("Expected SQSBrokerConfig type")
-	}
-
-	if sqsCfg.Region != "us-east-1" {
-		t.Errorf("Expected region 'us-east-1', got '%s'", sqsCfg.Region)
-	}
-	if sqsCfg.QueueURL != "https://sqs.us-east-1.amazonaws.com/123456789012/my-queue" {
-		t.Errorf("Expected queue_url, got '%s'", sqsCfg.QueueURL)
 	}
 }
 
@@ -442,37 +413,6 @@ func TestRabbitMQBrokerConfig_Validate_MissingFields(t *testing.T) {
 			name:   "missing exchange",
 			cfg:    &RabbitMQBrokerConfig{Host: "localhost", Port: "5672"},
 			errMsg: "BROKER_EXCHANGE is required for rabbitmq broker",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.cfg.Validate()
-			if err == nil {
-				t.Fatal("Expected validation error, got nil")
-			}
-			if err.Error() != tt.errMsg {
-				t.Errorf("Expected error '%s', got: %v", tt.errMsg, err)
-			}
-		})
-	}
-}
-
-func TestSQSBrokerConfig_Validate_MissingFields(t *testing.T) {
-	tests := []struct {
-		name   string
-		cfg    *SQSBrokerConfig
-		errMsg string
-	}{
-		{
-			name:   "missing region",
-			cfg:    &SQSBrokerConfig{QueueURL: "https://sqs.us-east-1.amazonaws.com/123/queue"},
-			errMsg: "BROKER_REGION is required for awsSqs broker",
-		},
-		{
-			name:   "missing queue_url",
-			cfg:    &SQSBrokerConfig{Region: "us-east-1"},
-			errMsg: "BROKER_QUEUE_URL is required for awsSqs broker",
 		},
 	}
 

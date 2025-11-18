@@ -44,7 +44,7 @@ func NewSentinel(
 // Start starts the polling loop
 func (s *Sentinel) Start(ctx context.Context) error {
 	s.logger.Infof("Starting sentinel resource_type=%s poll_interval=%s backoff_not_ready=%s backoff_ready=%s",
-		s.config.ResourceType, s.config.PollInterval, s.config.BackoffNotReady, s.config.BackoffReady)
+		s.config.ResourceType, s.config.PollInterval, s.config.MaxAgeNotReady, s.config.MaxAgeReady)
 
 	ticker := time.NewTicker(s.config.PollInterval)
 	defer ticker.Stop()
