@@ -11,7 +11,7 @@ resource_selector:
 
 hyperfleet_api:
   endpoint: https://api.hyperfleet.example.com
-  timeout: 30s
+  timeout: 5s
 
 message_data:
   resource_id: .id

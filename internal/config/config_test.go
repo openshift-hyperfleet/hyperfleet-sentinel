@@ -76,8 +76,8 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 	if cfg.HyperFleetAPI.Endpoint != "https://api.hyperfleet.example.com" {
 		t.Errorf("Expected endpoint 'https://api.hyperfleet.example.com', got '%s'", cfg.HyperFleetAPI.Endpoint)
 	}
-	if cfg.HyperFleetAPI.Timeout != 30*time.Second {
-		t.Errorf("Expected timeout 30s, got %v", cfg.HyperFleetAPI.Timeout)
+	if cfg.HyperFleetAPI.Timeout != 5*time.Second {
+		t.Errorf("Expected timeout 5s, got %v", cfg.HyperFleetAPI.Timeout)
 	}
 
 	// Verify message data
@@ -173,7 +173,7 @@ func TestNewSentinelConfig_Defaults(t *testing.T) {
 	if cfg.MaxAgeReady != 30*time.Minute {
 		t.Errorf("Expected default max_age_ready 30m, got %v", cfg.MaxAgeReady)
 	}
-	if cfg.HyperFleetAPI.Timeout != 30*time.Second {
+	if cfg.HyperFleetAPI.Timeout != 5*time.Second {
 		t.Errorf("Expected default timeout 30s, got %v", cfg.HyperFleetAPI.Timeout)
 	}
 	// Endpoint has no default - must be set in config file

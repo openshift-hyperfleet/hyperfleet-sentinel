@@ -24,7 +24,7 @@ data:
     hyperfleet_api:
       # Use in-cluster service name for API endpoint
       endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
-      timeout: 30s
+      timeout: 5s
 
     # CloudEvents data payload configuration
     message_data:

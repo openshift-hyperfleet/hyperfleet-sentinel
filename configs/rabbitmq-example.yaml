@@ -46,7 +46,7 @@ hyperfleet_api:
   endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
 
   # Request timeout for API calls.
-  timeout: 30s
+  timeout: 5s
 
 # Message data template configuration (optional).
 # Define custom fields to include in CloudEvents data payload.

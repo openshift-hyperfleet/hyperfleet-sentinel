@@ -76,7 +76,7 @@ Create a configuration file based on the examples in the `configs/` directory:
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
 | `resource_type` | string | Resource to watch (clusters, nodepools) | `clusters` |
-| `hyperfleet_api.endpoint` | string | HyperFleet API endpoint URL (k8s service) | `http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080` |
+| `hyperfleet_api.endpoint` | string | HyperFleet API base URL (k8s service) | `http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080` |
 
 #### Optional Fields with Defaults
 
@@ -85,7 +85,7 @@ Create a configuration file based on the examples in the `configs/` directory:
 | `poll_interval` | duration | `5s` | How often to poll the API for resource updates |
 | `max_age_not_ready` | duration | `10s` | Backoff interval for resources not ready |
 | `max_age_ready` | duration | `30m` | Backoff interval for ready resources |
-| `hyperfleet_api.timeout` | duration | `30s` | Request timeout for API calls |
+| `hyperfleet_api.timeout` | duration | `5s` | Request timeout for API calls |
 | `resource_selector` | array | `[]` | Label selectors for filtering resources (enables sharding) |
 | `message_data` | map | `{}` | Template fields for CloudEvents data payload |
 

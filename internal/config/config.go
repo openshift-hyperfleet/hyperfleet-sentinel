@@ -131,7 +131,7 @@ func NewSentinelConfig() *SentinelConfig {
 		ResourceSelector: []LabelSelector{}, // Empty means watch all resources
 		HyperFleetAPI: &HyperFleetAPIConfig{
 			// Endpoint is required and must be set in config file
-			Timeout: 30 * time.Second,
+			Timeout: 5 * time.Second,
 		},
 		MessageData: make(map[string]string),
 		Broker:      nil, // Loaded from environment variables
