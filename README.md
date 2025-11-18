@@ -207,6 +207,8 @@ helm status sentinel -n hyperfleet-system
 kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel -f
 ```
 
+> **Note**: The `--create-namespace` flag creates the namespace if it doesn't exist. If the namespace already exists, Helm will use it and this flag has no effect.
+
 See [deployments/helm/sentinel/README.md](deployments/helm/sentinel/README.md) for detailed Helm chart documentation, configuration options, and examples.
 
 #### Using Raw Manifests

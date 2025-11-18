@@ -24,6 +24,8 @@ helm install sentinel ./deployments/helm/sentinel \
   --values my-values.yaml
 ```
 
+> **Note**: The `--create-namespace` flag creates the namespace if it doesn't exist. If the namespace already exists, Helm will use it and this flag has no effect. You can omit this flag if you've already created the namespace.
+
 ## Upgrading the Chart
 
 ```bash
