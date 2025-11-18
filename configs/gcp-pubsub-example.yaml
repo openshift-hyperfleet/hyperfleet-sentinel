@@ -37,7 +37,7 @@ resource_selector:
 
 # HyperFleet API configuration.
 hyperfleet_api:
-  # API endpoint URL (required).
+  # API base URL (required).
   endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
 
   # Request timeout for API calls.
