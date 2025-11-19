@@ -8,31 +8,70 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 )
 
-func TestNewDecisionEngine(t *testing.T) {
-	backoffNotReady := 10 * time.Second
-	backoffReady := 30 * time.Minute
+// Test helpers and factories
 
-	engine := NewDecisionEngine(backoffNotReady, backoffReady)
+// newTestResource creates a test resource with the given parameters
+// This follows TRex pattern of using test factories for consistent test data
+func newTestResource(id, kind, phase string, lastUpdated time.Time) *client.Resource {
+	return &client.Resource{
+		ID:   id,
+		Kind: kind,
+		Status: client.ResourceStatus{
+			Phase:       phase,
+			LastUpdated: lastUpdated,
+		},
+	}
+}
+
+// newTestEngine creates a decision engine with standard test values
+func newTestEngine() *DecisionEngine {
+	return NewDecisionEngine(testBackoffNotReady, testBackoffReady)
+}
+
+// assertDecision verifies a decision matches expected values
+func assertDecision(t *testing.T, got Decision, wantPublish bool, wantReasonContains string) {
+	t.Helper()
+
+	if got.ShouldPublish != wantPublish {
+		t.Errorf("ShouldPublish = %v, want %v", got.ShouldPublish, wantPublish)
+	}
+
+	if wantReasonContains != "" && !strings.Contains(got.Reason, wantReasonContains) {
+		t.Errorf("Reason = %q, want it to contain %q", got.Reason, wantReasonContains)
+	}
+
+	if got.Reason == "" {
+		t.Error("Reason should never be empty")
+	}
+}
+
+// Test constants
+const (
+	testBackoffNotReady = 10 * time.Second
+	testBackoffReady    = 30 * time.Minute
+	testResourceID      = "test-cluster-1"
+	testResourceKind    = "Cluster"
+)
+
+func TestNewDecisionEngine(t *testing.T) {
+	engine := newTestEngine()
 
 	if engine == nil {
 		t.Fatal("NewDecisionEngine returned nil")
 	}
 
-	if engine.backoffNotReady != backoffNotReady {
-		t.Errorf("backoffNotReady = %v, want %v", engine.backoffNotReady, backoffNotReady)
+	if engine.backoffNotReady != testBackoffNotReady {
+		t.Errorf("backoffNotReady = %v, want %v", engine.backoffNotReady, testBackoffNotReady)
 	}
 
-	if engine.backoffReady != backoffReady {
-		t.Errorf("backoffReady = %v, want %v", engine.backoffReady, backoffReady)
+	if engine.backoffReady != testBackoffReady {
+		t.Errorf("backoffReady = %v, want %v", engine.backoffReady, testBackoffReady)
 	}
 }
 
 func TestDecisionEngine_Evaluate(t *testing.T) {
-	backoffNotReady := 10 * time.Second
-	backoffReady := 30 * time.Minute
 	now := time.Now()
-
-	engine := NewDecisionEngine(backoffNotReady, backoffReady)
+	engine := newTestEngine()
 
 	tests := []struct {
 		name                string
@@ -182,33 +221,14 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resource := &client.Resource{
-				ID:   "test-resource-" + tt.name,
-				Kind: "Cluster",
-				Status: client.ResourceStatus{
-					Phase:       tt.resourcePhase,
-					LastUpdated: tt.lastUpdated,
-				},
-			}
-
+			resource := newTestResource(testResourceID, testResourceKind, tt.resourcePhase, tt.lastUpdated)
 			decision := engine.Evaluate(resource, tt.now)
 
-			if decision.ShouldPublish != tt.wantShouldPublish {
-				t.Errorf("ShouldPublish = %v, want %v\nDescription: %s",
-					decision.ShouldPublish, tt.wantShouldPublish, tt.description)
-			}
+			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
 
-			// Check that reason contains expected substring
-			if tt.wantReasonContains != "" {
-				if !strings.Contains(decision.Reason, tt.wantReasonContains) {
-					t.Errorf("Reason = %q, want it to contain %q\nDescription: %s",
-						decision.Reason, tt.wantReasonContains, tt.description)
-				}
-			}
-
-			// Additional validation: Reason should never be empty
-			if decision.Reason == "" {
-				t.Error("Reason should never be empty")
+			// Additional context on failure
+			if t.Failed() {
+				t.Logf("Test description: %s", tt.description)
 			}
 		})
 	}
@@ -263,21 +283,10 @@ func TestDecisionEngine_Evaluate_ZeroBackoff(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := NewDecisionEngine(tt.backoffNotReady, tt.backoffReady)
-
-			resource := &client.Resource{
-				ID:   "test-resource",
-				Kind: "Cluster",
-				Status: client.ResourceStatus{
-					Phase:       tt.resourcePhase,
-					LastUpdated: tt.lastUpdated,
-				},
-			}
-
+			resource := newTestResource(testResourceID, testResourceKind, tt.resourcePhase, tt.lastUpdated)
 			decision := engine.Evaluate(resource, now)
 
-			if decision.ShouldPublish != tt.wantShouldPublish {
-				t.Errorf("ShouldPublish = %v, want %v", decision.ShouldPublish, tt.wantShouldPublish)
-			}
+			assertDecision(t, decision, tt.wantShouldPublish, "")
 		})
 	}
 }
@@ -313,38 +322,19 @@ func TestDecisionEngine_Evaluate_NegativeBackoff(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := NewDecisionEngine(tt.backoffNotReady, tt.backoffReady)
-
-			resource := &client.Resource{
-				ID:   "test-resource",
-				Kind: "Cluster",
-				Status: client.ResourceStatus{
-					Phase:       tt.resourcePhase,
-					LastUpdated: lastUpdated,
-				},
-			}
-
+			resource := newTestResource(testResourceID, testResourceKind, tt.resourcePhase, lastUpdated)
 			decision := engine.Evaluate(resource, now)
 
-			if decision.ShouldPublish != tt.wantShouldPublish {
-				t.Errorf("ShouldPublish = %v, want %v", decision.ShouldPublish, tt.wantShouldPublish)
-			}
+			assertDecision(t, decision, tt.wantShouldPublish, "")
 		})
 	}
 }
 
 // TestDecisionEngine_Evaluate_ConsistentBehavior tests that multiple calls with same inputs produce same results
 func TestDecisionEngine_Evaluate_ConsistentBehavior(t *testing.T) {
-	engine := NewDecisionEngine(10*time.Second, 30*time.Minute)
+	engine := newTestEngine()
 	now := time.Now()
-
-	resource := &client.Resource{
-		ID:   "test-resource",
-		Kind: "Cluster",
-		Status: client.ResourceStatus{
-			Phase:       "Ready",
-			LastUpdated: now.Add(-31 * time.Minute),
-		},
-	}
+	resource := newTestResource(testResourceID, testResourceKind, "Ready", now.Add(-31*time.Minute))
 
 	// Call multiple times - should get same result
 	decision1 := engine.Evaluate(resource, now)
@@ -362,7 +352,7 @@ func TestDecisionEngine_Evaluate_ConsistentBehavior(t *testing.T) {
 
 // TestDecisionEngine_Evaluate_InvalidInputs tests handling of invalid inputs
 func TestDecisionEngine_Evaluate_InvalidInputs(t *testing.T) {
-	engine := NewDecisionEngine(10*time.Second, 30*time.Minute)
+	engine := newTestEngine()
 	now := time.Now()
 
 	tests := []struct {
@@ -380,15 +370,8 @@ func TestDecisionEngine_Evaluate_InvalidInputs(t *testing.T) {
 			wantReason:        ReasonNilResource,
 		},
 		{
-			name: "zero now time",
-			resource: &client.Resource{
-				ID:   "test-resource",
-				Kind: "Cluster",
-				Status: client.ResourceStatus{
-					Phase:       "Ready",
-					LastUpdated: now,
-				},
-			},
+			name:              "zero now time",
+			resource:          newTestResource(testResourceID, testResourceKind, "Ready", now),
 			now:               time.Time{}, // Zero time
 			wantShouldPublish: false,
 			wantReason:        ReasonZeroNow,
@@ -412,7 +395,7 @@ func TestDecisionEngine_Evaluate_InvalidInputs(t *testing.T) {
 
 // TestDecisionEngine_Evaluate_CaseInsensitivePhase tests case-insensitive phase comparison
 func TestDecisionEngine_Evaluate_CaseInsensitivePhase(t *testing.T) {
-	engine := NewDecisionEngine(10*time.Second, 30*time.Minute)
+	engine := newTestEngine()
 	now := time.Now()
 
 	tests := []struct {
@@ -456,14 +439,7 @@ func TestDecisionEngine_Evaluate_CaseInsensitivePhase(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set LastUpdated to now + 1ms to ensure backoff hasn't expired yet
-			resource := &client.Resource{
-				ID:   "test-resource",
-				Kind: "Cluster",
-				Status: client.ResourceStatus{
-					Phase:       tt.phase,
-					LastUpdated: now.Add(1 * time.Millisecond),
-				},
-			}
+			resource := newTestResource(testResourceID, testResourceKind, tt.phase, now.Add(1*time.Millisecond))
 
 			decision := engine.Evaluate(resource, now)
 
