@@ -1,7 +1,7 @@
 resource_type: nodepools
 poll_interval: 3s
-backoff_not_ready: 5s
-backoff_ready: 15m
+max_age_not_ready: 5s
+max_age_ready: 15m
 
 resource_selector:
   - label: cluster-id

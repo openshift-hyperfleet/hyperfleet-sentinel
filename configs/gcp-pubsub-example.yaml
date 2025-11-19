@@ -17,11 +17,11 @@ resource_type: clusters
 # Accepts Go duration format: ns, us/µs, ms, s, m, h.
 poll_interval: 5s
 
-# Backoff interval for resources that are not ready.
+# Max age interval for resources that are not ready.
 # Resources in transitional states are re-checked more frequently.
 max_age_not_ready: 10s
 
-# Backoff interval for resources that are ready and stable.
+# Max age interval for resources that are ready and stable.
 # Stable resources are checked less frequently to reduce API load.
 max_age_ready: 30m
 
