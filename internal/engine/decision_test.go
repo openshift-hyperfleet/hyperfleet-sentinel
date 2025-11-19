@@ -25,7 +25,7 @@ func newTestResource(id, kind, phase string, lastUpdated time.Time) *client.Reso
 
 // newTestEngine creates a decision engine with standard test values
 func newTestEngine() *DecisionEngine {
-	return NewDecisionEngine(testBackoffNotReady, testBackoffReady)
+	return NewDecisionEngine(testMaxAgeNotReady, testMaxAgeReady)
 }
 
 // assertDecision verifies a decision matches expected values
@@ -47,10 +47,10 @@ func assertDecision(t *testing.T, got Decision, wantPublish bool, wantReasonCont
 
 // Test constants
 const (
-	testBackoffNotReady = 10 * time.Second
-	testBackoffReady    = 30 * time.Minute
-	testResourceID      = "test-cluster-1"
-	testResourceKind    = "Cluster"
+	testMaxAgeNotReady = 10 * time.Second
+	testMaxAgeReady    = 30 * time.Minute
+	testResourceID     = "test-cluster-1"
+	testResourceKind   = "Cluster"
 )
 
 func TestNewDecisionEngine(t *testing.T) {
@@ -60,12 +60,12 @@ func TestNewDecisionEngine(t *testing.T) {
 		t.Fatal("NewDecisionEngine returned nil")
 	}
 
-	if engine.backoffNotReady != testBackoffNotReady {
-		t.Errorf("backoffNotReady = %v, want %v", engine.backoffNotReady, testBackoffNotReady)
+	if engine.maxAgeNotReady != testMaxAgeNotReady {
+		t.Errorf("maxAgeNotReady = %v, want %v", engine.maxAgeNotReady, testMaxAgeNotReady)
 	}
 
-	if engine.backoffReady != testBackoffReady {
-		t.Errorf("backoffReady = %v, want %v", engine.backoffReady, testBackoffReady)
+	if engine.maxAgeReady != testMaxAgeReady {
+		t.Errorf("maxAgeReady = %v, want %v", engine.maxAgeReady, testMaxAgeReady)
 	}
 }
 
@@ -102,62 +102,62 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 			description:        "Resources with zero LastUpdated should always publish regardless of phase",
 		},
 
-		// Not-Ready resources (10s backoff)
+		// Not-Ready resources (10s max age)
 		{
-			name:               "not-Ready - backoff expired",
+			name:               "not-Ready - max age exceeded",
 			resourcePhase:      "Pending",
-			lastUpdated:        now.Add(-11 * time.Second), // 11s ago (> 10s backoff)
+			lastUpdated:        now.Add(-11 * time.Second), // 11s ago (> 10s max age)
 			now:                now,
 			wantShouldPublish:  true,
-			wantReasonContains: "backoff expired",
-			description:        "Not-Ready resources with expired backoff should publish",
+			wantReasonContains: "max age exceeded",
+			description:        "Not-Ready resources with exceeded max age should publish",
 		},
 		{
-			name:               "not-Ready - backoff not expired",
+			name:               "not-Ready - max age not exceeded",
 			resourcePhase:      "Provisioning",
-			lastUpdated:        now.Add(-5 * time.Second), // 5s ago (< 10s backoff)
+			lastUpdated:        now.Add(-5 * time.Second), // 5s ago (< 10s max age)
 			now:                now,
 			wantShouldPublish:  false,
-			wantReasonContains: "backoff not expired",
-			description:        "Not-Ready resources with active backoff should not publish",
+			wantReasonContains: "max age not exceeded",
+			description:        "Not-Ready resources within max age should not publish",
 		},
 		{
-			name:               "not-Ready - backoff exactly expired",
+			name:               "not-Ready - max age exactly exceeded",
 			resourcePhase:      "Failed",
 			lastUpdated:        now.Add(-10 * time.Second), // Exactly 10s ago
 			now:                now,
 			wantShouldPublish:  true,
-			wantReasonContains: "backoff expired",
-			description:        "Not-Ready resources with exactly expired backoff should publish",
+			wantReasonContains: "max age exceeded",
+			description:        "Not-Ready resources with exactly exceeded max age should publish",
 		},
 
-		// Ready resources (30m backoff)
+		// Ready resources (30m max age)
 		{
-			name:               "Ready - backoff expired",
+			name:               "Ready - max age exceeded",
 			resourcePhase:      "Ready",
-			lastUpdated:        now.Add(-31 * time.Minute), // 31m ago (> 30m backoff)
+			lastUpdated:        now.Add(-31 * time.Minute), // 31m ago (> 30m max age)
 			now:                now,
 			wantShouldPublish:  true,
-			wantReasonContains: "backoff expired",
-			description:        "Ready resources with expired backoff should publish",
+			wantReasonContains: "max age exceeded",
+			description:        "Ready resources with exceeded max age should publish",
 		},
 		{
-			name:               "Ready - backoff not expired",
+			name:               "Ready - max age not exceeded",
 			resourcePhase:      "Ready",
-			lastUpdated:        now.Add(-15 * time.Minute), // 15m ago (< 30m backoff)
+			lastUpdated:        now.Add(-15 * time.Minute), // 15m ago (< 30m max age)
 			now:                now,
 			wantShouldPublish:  false,
-			wantReasonContains: "backoff not expired",
-			description:        "Ready resources with active backoff should not publish",
+			wantReasonContains: "max age not exceeded",
+			description:        "Ready resources within max age should not publish",
 		},
 		{
-			name:               "Ready - backoff exactly expired",
+			name:               "Ready - max age exactly exceeded",
 			resourcePhase:      "Ready",
 			lastUpdated:        now.Add(-30 * time.Minute), // Exactly 30m ago
 			now:                now,
 			wantShouldPublish:  true,
-			wantReasonContains: "backoff expired",
-			description:        "Ready resources with exactly expired backoff should publish",
+			wantReasonContains: "max age exceeded",
+			description:        "Ready resources with exactly exceeded max age should publish",
 		},
 
 		// Edge cases
@@ -167,7 +167,7 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 			lastUpdated:        now.Add(1 * time.Hour), // 1 hour in the future
 			now:                now,
 			wantShouldPublish:  false,
-			wantReasonContains: "backoff not expired",
+			wantReasonContains: "max age not exceeded",
 			description:        "Resources with LastUpdated in future should not publish (clock skew protection)",
 		},
 		{
@@ -176,7 +176,7 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 			lastUpdated:        now.Add(1 * time.Minute), // 1 minute in the future
 			now:                now,
 			wantShouldPublish:  false,
-			wantReasonContains: "backoff not expired",
+			wantReasonContains: "max age not exceeded",
 			description:        "Not-Ready resources with LastUpdated in future should not publish",
 		},
 		{
@@ -185,8 +185,8 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 			lastUpdated:        now.Add(-24 * time.Hour), // 24 hours ago
 			now:                now,
 			wantShouldPublish:  true,
-			wantReasonContains: "backoff expired",
-			description:        "Very old resources should publish (backoff long expired)",
+			wantReasonContains: "max age exceeded",
+			description:        "Very old resources should publish (max age long exceeded)",
 		},
 		{
 			name:               "LastUpdated very recent - not Ready",
@@ -194,7 +194,7 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 			lastUpdated:        now.Add(-1 * time.Millisecond), // Just 1ms ago
 			now:                now,
 			wantShouldPublish:  false,
-			wantReasonContains: "backoff not expired",
+			wantReasonContains: "max age not exceeded",
 			description:        "Very recent updates should not publish immediately",
 		},
 
@@ -205,8 +205,8 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 			lastUpdated:        now.Add(-11 * time.Second),
 			now:                now,
 			wantShouldPublish:  true,
-			wantReasonContains: "backoff expired",
-			description:        "Empty phase should use not-Ready backoff (10s)",
+			wantReasonContains: "max age exceeded",
+			description:        "Empty phase should use not-Ready max age (10s)",
 		},
 		{
 			name:               "Unknown phase - treated as not Ready",
@@ -214,8 +214,8 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 			lastUpdated:        now.Add(-11 * time.Second),
 			now:                now,
 			wantShouldPublish:  true,
-			wantReasonContains: "backoff expired",
-			description:        "Unknown phase should use not-Ready backoff (10s)",
+			wantReasonContains: "max age exceeded",
+			description:        "Unknown phase should use not-Ready max age (10s)",
 		},
 	}
 
@@ -234,46 +234,46 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 	}
 }
 
-// TestDecisionEngine_Evaluate_ZeroBackoff tests edge case with zero backoff intervals
-func TestDecisionEngine_Evaluate_ZeroBackoff(t *testing.T) {
+// TestDecisionEngine_Evaluate_ZeroMaxAge tests edge case with zero max age intervals
+func TestDecisionEngine_Evaluate_ZeroMaxAge(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
 		name              string
-		backoffNotReady   time.Duration
-		backoffReady      time.Duration
+		maxAgeNotReady    time.Duration
+		maxAgeReady       time.Duration
 		resourcePhase     string
 		lastUpdated       time.Time
 		wantShouldPublish bool
 	}{
 		{
-			name:              "zero backoffNotReady - not Ready",
-			backoffNotReady:   0,
-			backoffReady:      30 * time.Minute,
+			name:              "zero maxAgeNotReady - not Ready",
+			maxAgeNotReady:    0,
+			maxAgeReady:       30 * time.Minute,
 			resourcePhase:     "Pending",
-			lastUpdated:       now, // Even with now, should publish due to zero backoff
+			lastUpdated:       now, // Even with now, should publish due to zero max age
 			wantShouldPublish: true,
 		},
 		{
-			name:              "zero backoffReady - Ready",
-			backoffNotReady:   10 * time.Second,
-			backoffReady:      0,
+			name:              "zero maxAgeReady - Ready",
+			maxAgeNotReady:    10 * time.Second,
+			maxAgeReady:       0,
 			resourcePhase:     "Ready",
-			lastUpdated:       now, // Even with now, should publish due to zero backoff
+			lastUpdated:       now, // Even with now, should publish due to zero max age
 			wantShouldPublish: true,
 		},
 		{
-			name:              "both zero backoffs - Ready",
-			backoffNotReady:   0,
-			backoffReady:      0,
+			name:              "both zero max ages - Ready",
+			maxAgeNotReady:    0,
+			maxAgeReady:       0,
 			resourcePhase:     "Ready",
 			lastUpdated:       now,
 			wantShouldPublish: true,
 		},
 		{
-			name:              "both zero backoffs - not Ready",
-			backoffNotReady:   0,
-			backoffReady:      0,
+			name:              "both zero max ages - not Ready",
+			maxAgeNotReady:    0,
+			maxAgeReady:       0,
 			resourcePhase:     "Pending",
 			lastUpdated:       now,
 			wantShouldPublish: true,
@@ -282,7 +282,7 @@ func TestDecisionEngine_Evaluate_ZeroBackoff(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			engine := NewDecisionEngine(tt.backoffNotReady, tt.backoffReady)
+			engine := NewDecisionEngine(tt.maxAgeNotReady, tt.maxAgeReady)
 			resource := newTestResource(testResourceID, testResourceKind, tt.resourcePhase, tt.lastUpdated)
 			decision := engine.Evaluate(resource, now)
 
@@ -291,29 +291,29 @@ func TestDecisionEngine_Evaluate_ZeroBackoff(t *testing.T) {
 	}
 }
 
-// TestDecisionEngine_Evaluate_NegativeBackoff tests edge case with negative backoff intervals
-func TestDecisionEngine_Evaluate_NegativeBackoff(t *testing.T) {
+// TestDecisionEngine_Evaluate_NegativeMaxAge tests edge case with negative max age intervals
+func TestDecisionEngine_Evaluate_NegativeMaxAge(t *testing.T) {
 	now := time.Now()
 	lastUpdated := now.Add(-5 * time.Second)
 
 	tests := []struct {
 		name              string
-		backoffNotReady   time.Duration
-		backoffReady      time.Duration
+		maxAgeNotReady    time.Duration
+		maxAgeReady       time.Duration
 		resourcePhase     string
 		wantShouldPublish bool
 	}{
 		{
-			name:              "negative backoffNotReady",
-			backoffNotReady:   -10 * time.Second,
-			backoffReady:      30 * time.Minute,
+			name:              "negative maxAgeNotReady",
+			maxAgeNotReady:    -10 * time.Second,
+			maxAgeReady:       30 * time.Minute,
 			resourcePhase:     "Pending",
-			wantShouldPublish: true, // Negative backoff means nextEventTime is in the past
+			wantShouldPublish: true, // Negative max age means nextEventTime is in the past
 		},
 		{
-			name:              "negative backoffReady",
-			backoffNotReady:   10 * time.Second,
-			backoffReady:      -10 * time.Minute,
+			name:              "negative maxAgeReady",
+			maxAgeNotReady:    10 * time.Second,
+			maxAgeReady:       -10 * time.Minute,
 			resourcePhase:     "Ready",
 			wantShouldPublish: true,
 		},
@@ -321,7 +321,7 @@ func TestDecisionEngine_Evaluate_NegativeBackoff(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			engine := NewDecisionEngine(tt.backoffNotReady, tt.backoffReady)
+			engine := NewDecisionEngine(tt.maxAgeNotReady, tt.maxAgeReady)
 			resource := newTestResource(testResourceID, testResourceKind, tt.resourcePhase, lastUpdated)
 			decision := engine.Evaluate(resource, now)
 
@@ -401,71 +401,71 @@ func TestDecisionEngine_Evaluate_CaseInsensitivePhase(t *testing.T) {
 	tests := []struct {
 		name          string
 		phase         string
-		wantBackoff   time.Duration
+		wantMaxAge    time.Duration
 		description   string
 	}{
 		{
 			name:        "Ready - exact case",
 			phase:       "Ready",
-			wantBackoff: 30 * time.Minute,
-			description: "Exact 'Ready' should use 30m backoff",
+			wantMaxAge:  30 * time.Minute,
+			description: "Exact 'Ready' should use 30m max age",
 		},
 		{
 			name:        "ready - lowercase",
 			phase:       "ready",
-			wantBackoff: 30 * time.Minute,
-			description: "Lowercase 'ready' should use 30m backoff (case-insensitive)",
+			wantMaxAge:  30 * time.Minute,
+			description: "Lowercase 'ready' should use 30m max age (case-insensitive)",
 		},
 		{
 			name:        "READY - uppercase",
 			phase:       "READY",
-			wantBackoff: 30 * time.Minute,
-			description: "Uppercase 'READY' should use 30m backoff (case-insensitive)",
+			wantMaxAge:  30 * time.Minute,
+			description: "Uppercase 'READY' should use 30m max age (case-insensitive)",
 		},
 		{
 			name:        "rEaDy - mixed case",
 			phase:       "rEaDy",
-			wantBackoff: 30 * time.Minute,
-			description: "Mixed case 'rEaDy' should use 30m backoff (case-insensitive)",
+			wantMaxAge:  30 * time.Minute,
+			description: "Mixed case 'rEaDy' should use 30m max age (case-insensitive)",
 		},
 		{
 			name:        "Pending - not Ready",
 			phase:       "Pending",
-			wantBackoff: 10 * time.Second,
-			description: "Non-Ready phases should use 10s backoff",
+			wantMaxAge:  10 * time.Second,
+			description: "Non-Ready phases should use 10s max age",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Set LastUpdated to now + 1ms to ensure backoff hasn't expired yet
+			// Set LastUpdated to now + 1ms to ensure max age hasn't been exceeded yet
 			resource := newTestResource(testResourceID, testResourceKind, tt.phase, now.Add(1*time.Millisecond))
 
 			decision := engine.Evaluate(resource, now)
 
-			// Should not publish because backoff hasn't expired
+			// Should not publish because max age hasn't been exceeded
 			if decision.ShouldPublish {
-				t.Errorf("ShouldPublish = true, want false (backoff should not be expired yet)")
+				t.Errorf("ShouldPublish = true, want false (max age should not be exceeded yet)")
 			}
 
-			// Verify backoff by checking the waiting time in the reason message
+			// Verify max age by checking the waiting time in the reason message
 			// For Ready (30m): should see "30m" in the message
 			// For not-Ready (10s): should see "10s" in the message
-			if strings.Contains(decision.Reason, "backoff not expired") {
-				if strings.Contains(decision.Reason, "30m") && tt.wantBackoff != 30*time.Minute {
-					t.Errorf("Expected ~10s backoff but got 30m backoff. Description: %s", tt.description)
+			if strings.Contains(decision.Reason, "max age not exceeded") {
+				if strings.Contains(decision.Reason, "30m") && tt.wantMaxAge != 30*time.Minute {
+					t.Errorf("Expected ~10s max age but got 30m max age. Description: %s", tt.description)
 				}
-				if strings.Contains(decision.Reason, "10s") && tt.wantBackoff != 10*time.Second {
-					t.Errorf("Expected ~30m backoff but got 10s backoff. Description: %s", tt.description)
+				if strings.Contains(decision.Reason, "10s") && tt.wantMaxAge != 10*time.Second {
+					t.Errorf("Expected ~30m max age but got 10s max age. Description: %s", tt.description)
 				}
 			}
 
-			// Test that it DOES publish after backoff expires
-			futureNow := now.Add(tt.wantBackoff + 2*time.Millisecond)
+			// Test that it DOES publish after max age is exceeded
+			futureNow := now.Add(tt.wantMaxAge + 2*time.Millisecond)
 			futureDecision := engine.Evaluate(resource, futureNow)
 
 			if !futureDecision.ShouldPublish {
-				t.Errorf("ShouldPublish = false after backoff expired, want true. Description: %s", tt.description)
+				t.Errorf("ShouldPublish = false after max age exceeded, want true. Description: %s", tt.description)
 			}
 		})
 	}
