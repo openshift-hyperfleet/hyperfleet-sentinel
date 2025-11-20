@@ -155,7 +155,7 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 }
 
 // fetchResourcesOnce performs a single fetch operation without retry logic
-func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, resourceType ResourceType, labelSelector map[string]string) ([]Resource, error) {
+func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, _ ResourceType, labelSelector map[string]string) ([]Resource, error) {
 	// TODO: Update this when real spec supports different resource types
 	// For now, only clusters endpoint is defined in the placeholder spec
 

@@ -10,8 +10,6 @@ run:
   timeout: 5m
   tests: true
   go: '1.25'
-  skip-dirs:
-    - pkg/api/openapi  # Generated code
 
 linters-settings:
   errcheck:
@@ -50,6 +48,9 @@ linters:
     - gosec          # Security issues
 
 issues:
+  exclude-dirs:
+    - pkg/api/openapi  # Generated code
+
   exclude-rules:
     # Exclude some linters from running on tests files
     - path: _test\.go
@@ -73,6 +74,8 @@ issues:
   new: false
 
 output:
-  format: colored-line-number
+  formats:
+    colored-line-number:
+      path: stdout
   print-issued-lines: true
   print-linter-name: true
