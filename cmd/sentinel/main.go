@@ -75,8 +75,7 @@ func runServe(cfg *config.SentinelConfig) error {
 	decisionEngine := engine.NewDecisionEngine(cfg.MaxAgeNotReady, cfg.MaxAgeReady)
 
 	// Initialize publisher (using mock for now)
-	var pub publisher.Publisher
-	pub = publisher.NewMockPublisher()
+	pub := publisher.NewMockPublisher()
 	log.Info("Using mock publisher for development")
 
 	// Setup graceful shutdown

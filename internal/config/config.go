@@ -105,9 +105,9 @@ func (ls LabelSelectorList) ToMap() map[string]string {
 func NewSentinelConfig() *SentinelConfig {
 	return &SentinelConfig{
 		// ResourceType is required and must be set in config file
-		PollInterval:    5 * time.Second,
-		MaxAgeNotReady:  10 * time.Second,
-		MaxAgeReady:     30 * time.Minute,
+		PollInterval:     5 * time.Second,
+		MaxAgeNotReady:   10 * time.Second,
+		MaxAgeReady:      30 * time.Minute,
 		ResourceSelector: []LabelSelector{}, // Empty means watch all resources
 		HyperFleetAPI: &HyperFleetAPIConfig{
 			// Endpoint is required and must be set in config file
