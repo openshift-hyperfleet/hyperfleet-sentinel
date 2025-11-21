@@ -14,8 +14,22 @@ import (
 // This follows TRex pattern of using test factories for consistent test data
 func newTestResource(id, kind, phase string, lastUpdated time.Time) *client.Resource {
 	return &client.Resource{
-		ID:   id,
-		Kind: kind,
+		ID:          id,
+		Kind:        kind,
+		CreatedTime: time.Now().Add(-1 * time.Hour), // Default: created 1 hour ago
+		Status: client.ResourceStatus{
+			Phase:       phase,
+			LastUpdated: lastUpdated,
+		},
+	}
+}
+
+// newTestResourceWithCreatedTime creates a test resource with explicit created_time
+func newTestResourceWithCreatedTime(id, kind, phase string, createdTime, lastUpdated time.Time) *client.Resource {
+	return &client.Resource{
+		ID:          id,
+		Kind:        kind,
+		CreatedTime: createdTime,
 		Status: client.ResourceStatus{
 			Phase:       phase,
 			LastUpdated: lastUpdated,
@@ -82,24 +96,25 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 		wantReasonContains  string
 		description         string
 	}{
-		// First reconciliation (zero LastUpdated) tests
+		// Zero LastUpdated tests - should fall back to created_time
+		// These tests use the test factory default (created 1 hour ago)
 		{
-			name:               "first reconciliation - zero LastUpdated Ready",
+			name:               "zero LastUpdated - Ready phase",
 			resourcePhase:      "Ready",
-			lastUpdated:        time.Time{}, // Zero time
+			lastUpdated:        time.Time{}, // Zero time - will use created_time
 			now:                now,
 			wantShouldPublish:  true,
-			wantReasonContains: "first reconciliation",
-			description:        "Resources with zero LastUpdated should always publish (first time)",
+			wantReasonContains: "max age exceeded",
+			description:        "Resources with zero LastUpdated should use created_time and publish (created > 30m ago)",
 		},
 		{
-			name:               "first reconciliation - zero LastUpdated not Ready",
+			name:               "zero LastUpdated - not Ready phase",
 			resourcePhase:      "Pending",
-			lastUpdated:        time.Time{}, // Zero time
+			lastUpdated:        time.Time{}, // Zero time - will use created_time
 			now:                now,
 			wantShouldPublish:  true,
-			wantReasonContains: "first reconciliation",
-			description:        "Resources with zero LastUpdated should always publish regardless of phase",
+			wantReasonContains: "max age exceeded",
+			description:        "Resources with zero LastUpdated should use created_time and publish (created > 10s ago)",
 		},
 
 		// Not-Ready resources (10s max age)
@@ -466,6 +481,84 @@ func TestDecisionEngine_Evaluate_CaseInsensitivePhase(t *testing.T) {
 
 			if !futureDecision.ShouldPublish {
 				t.Errorf("ShouldPublish = false after max age exceeded, want true. Description: %s", tt.description)
+			}
+		})
+	}
+}
+
+// TestDecisionEngine_Evaluate_CreatedTimeFallback tests that created_time is used when lastUpdated is zero
+func TestDecisionEngine_Evaluate_CreatedTimeFallback(t *testing.T) {
+	engine := newTestEngine()
+	now := time.Now()
+
+	tests := []struct {
+		name               string
+		createdTime        time.Time
+		lastUpdated        time.Time
+		phase              string
+		wantShouldPublish  bool
+		wantReasonContains string
+		description        string
+	}{
+		{
+			name:               "zero lastUpdated - created 11s ago - not Ready",
+			createdTime:        now.Add(-11 * time.Second),
+			lastUpdated:        time.Time{}, // Zero - should use created_time
+			phase:              "Pending",
+			wantShouldPublish:  true,
+			wantReasonContains: "max age exceeded",
+			description:        "Should use created_time and publish (11s > 10s max age)",
+		},
+		{
+			name:               "zero lastUpdated - created 5s ago - not Ready",
+			createdTime:        now.Add(-5 * time.Second),
+			lastUpdated:        time.Time{}, // Zero - should use created_time
+			phase:              "Pending",
+			wantShouldPublish:  false,
+			wantReasonContains: "max age not exceeded",
+			description:        "Should use created_time and not publish (5s < 10s max age)",
+		},
+		{
+			name:               "zero lastUpdated - created 31m ago - Ready",
+			createdTime:        now.Add(-31 * time.Minute),
+			lastUpdated:        time.Time{}, // Zero - should use created_time
+			phase:              "Ready",
+			wantShouldPublish:  true,
+			wantReasonContains: "max age exceeded",
+			description:        "Should use created_time and publish (31m > 30m max age)",
+		},
+		{
+			name:               "zero lastUpdated - created 15m ago - Ready",
+			createdTime:        now.Add(-15 * time.Minute),
+			lastUpdated:        time.Time{}, // Zero - should use created_time
+			phase:              "Ready",
+			wantShouldPublish:  false,
+			wantReasonContains: "max age not exceeded",
+			description:        "Should use created_time and not publish (15m < 30m max age)",
+		},
+		{
+			name:               "non-zero lastUpdated - should ignore created_time",
+			createdTime:        now.Add(-1 * time.Hour), // Created long ago
+			lastUpdated:        now.Add(-5 * time.Second), // Updated recently
+			phase:              "Pending",
+			wantShouldPublish:  false,
+			wantReasonContains: "max age not exceeded",
+			description:        "Should use lastUpdated, not created_time (5s < 10s max age)",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resource := newTestResourceWithCreatedTime(testResourceID, testResourceKind, tt.phase, tt.createdTime, tt.lastUpdated)
+			decision := engine.Evaluate(resource, now)
+
+			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
+
+			// Additional context on failure
+			if t.Failed() {
+				t.Logf("Test description: %s", tt.description)
+				t.Logf("Created time: %v", tt.createdTime)
+				t.Logf("LastUpdated: %v", tt.lastUpdated)
 			}
 		})
 	}

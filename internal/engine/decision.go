@@ -10,10 +10,9 @@ import (
 
 // Decision reasons
 const (
-	ReasonFirstReconciliation = "first reconciliation (LastUpdated is zero)"
-	ReasonMaxAgeExceeded      = "max age exceeded"
-	ReasonNilResource         = "resource is nil"
-	ReasonZeroNow             = "now time is zero"
+	ReasonMaxAgeExceeded = "max age exceeded"
+	ReasonNilResource    = "resource is nil"
+	ReasonZeroNow        = "now time is zero"
 )
 
 // Phase values
@@ -46,8 +45,9 @@ type Decision struct {
 // Evaluate determines if an event should be published for the resource.
 //
 // Decision Logic:
-//   - First reconciliation (zero LastUpdated): Always publish to trigger initial adapter evaluation
-//   - Subsequent reconciliations: Publish if max age has been exceeded since LastUpdated
+//   - Uses status.LastUpdated as the reference timestamp for max age calculation
+//   - If LastUpdated is zero (resource never processed by adapter), falls back to created_time
+//   - Publishes if max age has been exceeded since the reference timestamp
 //
 // Max Age Intervals:
 //   - Resources with Phase="Ready": maxAgeReady (default 30m)
@@ -75,13 +75,12 @@ func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Deci
 		}
 	}
 
-	// Handle first reconciliation - resources with zero LastUpdated have never been processed
-	// Always publish to trigger initial adapter evaluation
-	if resource.Status.LastUpdated.IsZero() {
-		return Decision{
-			ShouldPublish: true,
-			Reason:        ReasonFirstReconciliation,
-		}
+	// Determine the reference timestamp for max age calculation
+	// Use LastUpdated if available (adapter has processed the resource)
+	// Otherwise fall back to created_time (resource is newly created)
+	referenceTime := resource.Status.LastUpdated
+	if referenceTime.IsZero() {
+		referenceTime = resource.CreatedTime
 	}
 
 	// Determine the appropriate max age based on resource status
@@ -93,10 +92,10 @@ func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Deci
 		maxAge = e.maxAgeNotReady
 	}
 
-	// Calculate the next event time based on last update from adapter
+	// Calculate the next event time based on reference timestamp
 	// Adapters update LastUpdated on every check, enabling proper max age
 	// calculation even when resources stay in the same phase
-	nextEventTime := resource.Status.LastUpdated.Add(maxAge)
+	nextEventTime := referenceTime.Add(maxAge)
 
 	// Check if enough time has passed
 	if now.Before(nextEventTime) {
