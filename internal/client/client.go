@@ -77,8 +77,9 @@ type Resource struct {
 // ResourceStatus represents the status of a resource
 type ResourceStatus struct {
 	Phase              string      `json:"phase"`
-	LastTransitionTime time.Time   `json:"lastTransitionTime"` // Updates only when status.phase changes
-	LastUpdated        time.Time   `json:"lastUpdated"`        // Updates every time an adapter checks the resource
+	LastTransitionTime time.Time   `json:"lastTransitionTime"`   // Updates only when status.phase changes
+	LastUpdated        time.Time   `json:"lastUpdated"`          // Updates every time an adapter checks the resource
+	ObservedGeneration int64       `json:"observedGeneration"`   // The generation last processed by the adapter
 	Conditions         []Condition `json:"conditions,omitempty"`
 }
 
@@ -223,6 +224,7 @@ func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, _ ResourceTyp
 				Phase:              item.Status.GetPhase(),
 				LastTransitionTime: item.Status.GetLastTransitionTime(),
 				LastUpdated:        item.Status.GetLastUpdated(),
+				ObservedGeneration: item.Status.GetObservedGeneration(),
 			},
 			Metadata: item.GetMetadata(),
 		}
