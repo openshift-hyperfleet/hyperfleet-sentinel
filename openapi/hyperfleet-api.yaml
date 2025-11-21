@@ -72,6 +72,10 @@ components:
           type: string
           format: date-time
           description: Updates every time an adapter checks the resource
+        observedGeneration:
+          type: integer
+          format: int64
+          description: The generation of the resource that was last processed by the adapter
         conditions:
           type: array
           items:

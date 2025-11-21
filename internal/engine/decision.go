@@ -10,9 +10,10 @@ import (
 
 // Decision reasons
 const (
-	ReasonMaxAgeExceeded = "max age exceeded"
-	ReasonNilResource    = "resource is nil"
-	ReasonZeroNow        = "now time is zero"
+	ReasonMaxAgeExceeded    = "max age exceeded"
+	ReasonGenerationChanged = "generation changed"
+	ReasonNilResource       = "resource is nil"
+	ReasonZeroNow           = "now time is zero"
 )
 
 // Phase values
@@ -44,10 +45,12 @@ type Decision struct {
 
 // Evaluate determines if an event should be published for the resource.
 //
-// Decision Logic:
-//   - Uses status.LastUpdated as the reference timestamp for max age calculation
-//   - If LastUpdated is zero (resource never processed by adapter), falls back to created_time
-//   - Publishes if max age has been exceeded since the reference timestamp
+// Decision Logic (in priority order):
+//  1. Generation-based reconciliation: If resource.Generation > status.ObservedGeneration,
+//     publish immediately (spec has changed, adapter needs to reconcile)
+//  2. Time-based reconciliation: If max age exceeded since last update, publish
+//     - Uses status.LastUpdated as reference timestamp
+//     - If LastUpdated is zero (never processed), falls back to created_time
 //
 // Max Age Intervals:
 //   - Resources with Phase="Ready": maxAgeReady (default 30m)
@@ -55,6 +58,7 @@ type Decision struct {
 //
 // Adapter Contract:
 //   - Adapters MUST update status.LastUpdated on EVERY evaluation
+//   - Adapters MUST update status.ObservedGeneration to resource.Generation when processing
 //   - This prevents infinite event loops when adapters skip work due to unmet preconditions
 //
 // Returns a Decision indicating whether to publish and why. Returns ShouldPublish=false
@@ -72,6 +76,15 @@ func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Deci
 		return Decision{
 			ShouldPublish: false,
 			Reason:        ReasonZeroNow,
+		}
+	}
+
+	// Check for generation mismatch
+	// This triggers immediate reconciliation regardless of max age
+	if resource.Generation > resource.Status.ObservedGeneration {
+		return Decision{
+			ShouldPublish: true,
+			Reason:        ReasonGenerationChanged,
 		}
 	}
 
