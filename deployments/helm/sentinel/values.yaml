@@ -70,10 +70,10 @@ config:
   # How often to poll the API for resource updates
   pollInterval: 5s
 
-  # Backoff interval for resources not ready
+  # Max age interval for resources not ready
   maxAgeNotReady: 10s
 
-  # Backoff interval for ready resources
+  # Max age interval for ready resources
   maxAgeReady: 30m
 
   # Resource selector for horizontal sharding

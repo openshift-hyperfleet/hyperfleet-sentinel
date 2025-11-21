@@ -1,6 +1,6 @@
 # hyperfleet-sentinel
 
-HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, makes orchestration decisions, and publishes events. Features configurable backoff strategies, horizontal sharding via SentinelConfig CRD, and broker abstraction (GCP Pub/Sub, RabbitMQ, Stub). Centralized reconciliation logic.
+HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, makes orchestration decisions, and publishes events. Features configurable max age intervals, horizontal sharding via SentinelConfig CRD, and broker abstraction (GCP Pub/Sub, RabbitMQ, Stub). Centralized reconciliation logic.
 
 ## Development Setup
 
@@ -82,8 +82,8 @@ Create a configuration file based on the examples in the `configs/` directory:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `poll_interval` | duration | `5s` | How often to poll the API for resource updates |
-| `max_age_not_ready` | duration | `10s` | Backoff interval for resources not ready |
-| `max_age_ready` | duration | `30m` | Backoff interval for ready resources |
+| `max_age_not_ready` | duration | `10s` | Max age interval for resources not ready |
+| `max_age_ready` | duration | `30m` | Max age interval for ready resources |
 | `hyperfleet_api.timeout` | duration | `5s` | Request timeout for API calls |
 | `resource_selector` | array | `[]` | Label selectors for filtering resources (enables sharding) |
 | `message_data` | map | `{}` | Template fields for CloudEvents data payload |

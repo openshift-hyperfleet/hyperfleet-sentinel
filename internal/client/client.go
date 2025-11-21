@@ -63,13 +63,15 @@ func NewHyperFleetClient(endpoint string, timeout time.Duration) *HyperFleetClie
 
 // Resource represents a HyperFleet resource (cluster, nodepool, etc.)
 type Resource struct {
-	ID         string                 `json:"id"`
-	Href       string                 `json:"href"`
-	Kind       string                 `json:"kind"`
-	Generation int64                  `json:"generation"`
-	Labels     map[string]string      `json:"labels"`
-	Status     ResourceStatus         `json:"status"`
-	Metadata   map[string]interface{} `json:"metadata,omitempty"`
+	ID          string                 `json:"id"`
+	Href        string                 `json:"href"`
+	Kind        string                 `json:"kind"`
+	CreatedTime time.Time              `json:"created_time"`
+	UpdatedTime time.Time              `json:"updated_time"`
+	Generation  int64                  `json:"generation"`
+	Labels      map[string]string      `json:"labels"`
+	Status      ResourceStatus         `json:"status"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // ResourceStatus represents the status of a resource

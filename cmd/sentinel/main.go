@@ -28,7 +28,7 @@ func main() {
 		Use:   "sentinel",
 		Short: "HyperFleet Sentinel - Resource polling and event publishing service",
 		Long: `HyperFleet Sentinel watches HyperFleet API resources and publishes
-reconciliation events to a message broker based on configurable backoff intervals.`,
+reconciliation events to a message broker based on configurable max age intervals.`,
 		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 	}
 
