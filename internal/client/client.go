@@ -224,7 +224,7 @@ func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, _ ResourceTyp
 				Phase:              item.Status.GetPhase(),
 				LastTransitionTime: item.Status.GetLastTransitionTime(),
 				LastUpdated:        item.Status.GetLastUpdated(),
-				ObservedGeneration: item.Status.GetObservedGeneration(),
+				ObservedGeneration: int64(item.Status.GetObservedGeneration()),
 			},
 			Metadata: item.GetMetadata(),
 		}
