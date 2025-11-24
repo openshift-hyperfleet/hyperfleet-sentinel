@@ -3,7 +3,6 @@
 # This example demonstrates a production configuration using RabbitMQ
 # as the message broker.
 #
-# Broker configuration is now managed by the hyperfleet-broker library.
 # Configure the broker using either:
 #   1. broker.yaml file (see broker.yaml in project root)
 #   2. BROKER_CONFIG_FILE environment variable pointing to your broker config
@@ -55,7 +54,6 @@ message_data:
   href: .href
   generation: .generation
 
-# Broker configuration is managed by the hyperfleet-broker library.
 # See broker.yaml for configuration options.
 #
 # Example RabbitMQ configuration in broker.yaml:
