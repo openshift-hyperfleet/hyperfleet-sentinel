@@ -9,10 +9,10 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/publisher"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/sentinel"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
@@ -76,12 +76,12 @@ func runServe(cfg *config.SentinelConfig) error {
 
 	// Initialize publisher using hyperfleet-broker library
 	// Configuration is loaded from broker.yaml or BROKER_CONFIG_FILE env var
-	pub, err := publisher.NewBrokerPublisher()
+	pub, err := broker.NewPublisher()
 	if err != nil {
 		return fmt.Errorf("failed to initialize broker publisher: %w", err)
 	}
 	defer pub.Close()
-	log.Info("Initialized broker publisher using hyperfleet-broker library")
+	log.Info("Initialized broker publisher")
 
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)
