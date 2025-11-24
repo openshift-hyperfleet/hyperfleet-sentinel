@@ -155,15 +155,14 @@ helm install sentinel ./deployments/helm/sentinel \
 # values-existing-secret.yaml
 existingSecret: my-broker-credentials
 
-# Create secret separately with new format:
+# Create secret separately (only for RabbitMQ):
 kubectl create secret generic my-broker-credentials \
   --namespace hyperfleet-system \
   --from-literal=BROKER_RABBITMQ_URL=amqp://user:pass@rabbitmq.local:5672/
 
-# Or for Google Pub/Sub:
-kubectl create secret generic my-broker-credentials \
-  --namespace hyperfleet-system \
-  --from-literal=BROKER_GOOGLEPUBSUB_PROJECT_ID=my-gcp-project
+# Note: Google Pub/Sub doesn't require Secret
+# projectId is configured in values.yaml (not sensitive)
+# Authentication uses Workload Identity in GKE
 ```
 
 ### Horizontal Scaling with Sharding
