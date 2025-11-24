@@ -3,17 +3,14 @@
 # This example demonstrates a production configuration using RabbitMQ
 # as the message broker.
 #
-# Required environment variables:
-#   BROKER_TYPE=rabbitmq
-#   BROKER_HOST=rabbitmq.example.com
-#   BROKER_PORT=5672
-#   BROKER_EXCHANGE=hyperfleet-events
+# Broker configuration is now managed by the hyperfleet-broker library.
+# Configure the broker using either:
+#   1. broker.yaml file (see broker.yaml in project root)
+#   2. BROKER_CONFIG_FILE environment variable pointing to your broker config
+#   3. Direct environment variables:
+#      BROKER_RABBITMQ_URL=amqp://user:pass@rabbitmq.example.com:5672/vhost
 #
-# Optional environment variables:
-#   BROKER_VHOST=/hyperfleet (default: /)
-#   BROKER_EXCHANGE_TYPE=fanout (default: fanout)
-#   RABBITMQ_USERNAME=sentinel-user
-#   RABBITMQ_PASSWORD=secret-password
+# For more details, see: https://github.com/openshift-hyperfleet/hyperfleet-broker
 
 # Resource type to watch - must be one of: clusters, nodepools.
 resource_type: clusters
@@ -58,17 +55,17 @@ message_data:
   href: .href
   generation: .generation
 
-# Broker configuration is loaded from environment variables.
-# For RabbitMQ, set:
-#   BROKER_TYPE=rabbitmq
-#   BROKER_HOST=rabbitmq.example.com (or rabbitmq.hyperfleet-system.svc.cluster.local in K8s)
-#   BROKER_PORT=5672
-#   BROKER_EXCHANGE=hyperfleet-events
-#   BROKER_VHOST=/hyperfleet (optional, defaults to /)
-#   BROKER_EXCHANGE_TYPE=fanout (optional, defaults to fanout)
+# Broker configuration is managed by the hyperfleet-broker library.
+# See broker.yaml for configuration options.
 #
-# Authentication credentials (optional):
-#   RABBITMQ_USERNAME=sentinel-user
-#   RABBITMQ_PASSWORD=secret-password
+# Example RabbitMQ configuration in broker.yaml:
+#   broker:
+#     type: rabbitmq
+#     rabbitmq:
+#       url: amqp://user:password@rabbitmq.hyperfleet-system.svc.cluster.local:5672/
+#       exchange_type: topic
 #
-# In Kubernetes, these should be provided via Secrets.
+# Or use environment variables:
+#   BROKER_RABBITMQ_URL=amqp://user:password@rabbitmq.hyperfleet-system.svc.cluster.local:5672/
+#
+# In Kubernetes, credentials should be provided via Secrets.

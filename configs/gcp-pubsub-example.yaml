@@ -3,12 +3,14 @@
 # This example demonstrates a production configuration using Google Cloud Pub/Sub
 # as the message broker.
 #
-# Required environment variables:
-#   BROKER_TYPE=pubsub
-#   BROKER_PROJECT_ID=your-gcp-project-id
+# Broker configuration is now managed by the hyperfleet-broker library.
+# Configure the broker using either:
+#   1. broker.yaml file (see broker.yaml in project root)
+#   2. BROKER_CONFIG_FILE environment variable pointing to your broker config
+#   3. Direct environment variables:
+#      BROKER_GOOGLEPUBSUB_PROJECT_ID=your-gcp-project-id
 #
-# Optional environment variables:
-#   GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account-key.json
+# For more details, see: https://github.com/openshift-hyperfleet/hyperfleet-broker
 
 # Resource type to watch - must be one of: clusters, nodepools.
 resource_type: clusters
@@ -53,10 +55,19 @@ message_data:
   href: .href
   generation: .generation
 
-# Broker configuration is loaded from environment variables.
-# For GCP Pub/Sub, set:
-#   BROKER_TYPE=pubsub
-#   BROKER_PROJECT_ID=your-gcp-project-id
+# Broker configuration is managed by the hyperfleet-broker library.
+# See broker.yaml for configuration options.
+#
+# Example Google Pub/Sub configuration in broker.yaml:
+#   broker:
+#     type: googlepubsub
+#     googlepubsub:
+#       project_id: your-gcp-project-id
+#       max_outstanding_messages: 1000
+#       num_goroutines: 10
+#
+# Or use environment variables:
+#   BROKER_GOOGLEPUBSUB_PROJECT_ID=your-gcp-project-id
 #
 # Authentication uses Google Application Default Credentials (ADC):
 # - In GKE: Uses Workload Identity.

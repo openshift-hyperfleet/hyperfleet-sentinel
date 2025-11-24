@@ -37,62 +37,29 @@ spec:
           - serve
           - --config=/etc/sentinel/config.yaml
         env:
-          # Broker credentials from Secret
-          - name: BROKER_TYPE
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "sentinel.secretName" . }}
-                key: BROKER_TYPE
+          # Broker configuration using hyperfleet-broker library
+          # Configuration loaded from broker.yaml file (mounted as configmap)
+          # Credentials can be overridden via environment variables from Secret
           {{- if eq .Values.broker.type "rabbitmq" }}
-          - name: BROKER_HOST
+          - name: BROKER_RABBITMQ_URL
             valueFrom:
               secretKeyRef:
                 name: {{ include "sentinel.secretName" . }}
-                key: BROKER_HOST
-          - name: BROKER_PORT
+                key: BROKER_RABBITMQ_URL
+          {{- else if eq .Values.broker.type "googlepubsub" }}
+          - name: BROKER_GOOGLEPUBSUB_PROJECT_ID
             valueFrom:
               secretKeyRef:
                 name: {{ include "sentinel.secretName" . }}
-                key: BROKER_PORT
-          - name: BROKER_EXCHANGE
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "sentinel.secretName" . }}
-                key: BROKER_EXCHANGE
-          - name: BROKER_VHOST
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "sentinel.secretName" . }}
-                key: BROKER_VHOST
-                optional: true
-          - name: BROKER_EXCHANGE_TYPE
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "sentinel.secretName" . }}
-                key: BROKER_EXCHANGE_TYPE
-                optional: true
-          - name: RABBITMQ_USERNAME
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "sentinel.secretName" . }}
-                key: RABBITMQ_USERNAME
-                optional: true
-          - name: RABBITMQ_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "sentinel.secretName" . }}
-                key: RABBITMQ_PASSWORD
-                optional: true
-          {{- else if eq .Values.broker.type "pubsub" }}
-          - name: BROKER_PROJECT_ID
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "sentinel.secretName" . }}
-                key: BROKER_PROJECT_ID
+                key: BROKER_GOOGLEPUBSUB_PROJECT_ID
           {{- end }}
         volumeMounts:
           - name: config
             mountPath: /etc/sentinel
+            readOnly: true
+          - name: broker-config
+            mountPath: /app/broker.yaml
+            subPath: broker.yaml
             readOnly: true
         resources:
           {{- toYaml .Values.resources | nindent 12 }}
@@ -100,6 +67,9 @@ spec:
         - name: config
           configMap:
             name: {{ include "sentinel.fullname" . }}-config
+        - name: broker-config
+          configMap:
+            name: {{ include "sentinel.fullname" . }}-broker-config
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

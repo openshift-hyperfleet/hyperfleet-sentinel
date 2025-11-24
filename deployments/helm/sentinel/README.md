@@ -88,16 +88,17 @@ The following table lists the configurable parameters of the Sentinel chart and 
 
 ### Broker Configuration
 
+> **Note**: Broker configuration uses the [hyperfleet-broker library](https://github.com/openshift-hyperfleet/hyperfleet-broker).
+
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `broker.type` | Broker type (rabbitmq or pubsub) | `rabbitmq` |
-| `broker.rabbitmq.host` | RabbitMQ host | `rabbitmq.hyperfleet-system.svc.cluster.local` |
-| `broker.rabbitmq.port` | RabbitMQ port | `5672` |
-| `broker.rabbitmq.exchange` | RabbitMQ exchange | `hyperfleet-events` |
-| `broker.rabbitmq.vhost` | RabbitMQ virtual host | `/hyperfleet` |
-| `broker.rabbitmq.exchangeType` | RabbitMQ exchange type | `fanout` |
-| `broker.rabbitmq.username` | RabbitMQ username | `sentinel-user` |
-| `broker.rabbitmq.password` | RabbitMQ password | `change-me-in-production` |
+| `broker.type` | Broker type (`rabbitmq` or `googlepubsub`) | `rabbitmq` |
+| `broker.rabbitmq.url` | RabbitMQ connection URL (format: `amqp://user:pass@host:port/vhost`) | `amqp://sentinel-user:change-me-in-production@rabbitmq.hyperfleet-system.svc.cluster.local:5672/hyperfleet` |
+| `broker.rabbitmq.exchangeType` | RabbitMQ exchange type | `topic` |
+| `broker.googlepubsub.projectId` | GCP project ID (for Pub/Sub) | `""` |
+| `broker.googlepubsub.maxOutstandingMessages` | Max outstanding messages (for Pub/Sub) | `1000` |
+| `broker.googlepubsub.numGoroutines` | Number of goroutines (for Pub/Sub) | `10` |
+| `subscriber.parallelism` | Number of parallel workers for message processing | `1` |
 | `existingSecret` | Use existing secret for broker credentials | `""` |
 
 ## Examples
@@ -109,12 +110,9 @@ The following table lists the configurable parameters of the Sentinel chart and 
 broker:
   type: rabbitmq
   rabbitmq:
-    host: rabbitmq.messaging.svc.cluster.local
-    port: "5672"
-    exchange: hyperfleet-production
-    vhost: /prod
-    username: sentinel-prod
-    password: super-secret-password
+    # Connection URL with credentials, host, port, and vhost
+    url: amqp://sentinel-prod:super-secret-password@rabbitmq.messaging.svc.cluster.local:5672/prod
+    exchangeType: topic
 
 config:
   resourceSelector:
@@ -128,24 +126,27 @@ helm install sentinel ./deployments/helm/sentinel \
   --values values-rabbitmq.yaml
 ```
 
-### Using GCP Pub/Sub
+### Using Google Cloud Pub/Sub
 
 ```yaml
-# values-pubsub.yaml
+# values-googlepubsub.yaml
 broker:
-  type: pubsub
-  pubsub:
+  type: googlepubsub
+  googlepubsub:
     projectId: my-gcp-project
+    maxOutstandingMessages: 1000
+    numGoroutines: 10
 
 serviceAccount:
   annotations:
+    # For Workload Identity
     iam.gke.io/gcp-service-account: sentinel@my-gcp-project.iam.gserviceaccount.com
 ```
 
 ```bash
 helm install sentinel ./deployments/helm/sentinel \
   --namespace hyperfleet-system \
-  --values values-pubsub.yaml
+  --values values-googlepubsub.yaml
 ```
 
 ### Using Existing Secret
@@ -154,15 +155,15 @@ helm install sentinel ./deployments/helm/sentinel \
 # values-existing-secret.yaml
 existingSecret: my-broker-credentials
 
-# Create secret separately:
+# Create secret separately with new format:
 kubectl create secret generic my-broker-credentials \
   --namespace hyperfleet-system \
-  --from-literal=BROKER_TYPE=rabbitmq \
-  --from-literal=BROKER_HOST=rabbitmq.local \
-  --from-literal=BROKER_PORT=5672 \
-  --from-literal=BROKER_EXCHANGE=events \
-  --from-literal=RABBITMQ_USERNAME=user \
-  --from-literal=RABBITMQ_PASSWORD=pass
+  --from-literal=BROKER_RABBITMQ_URL=amqp://user:pass@rabbitmq.local:5672/
+
+# Or for Google Pub/Sub:
+kubectl create secret generic my-broker-credentials \
+  --namespace hyperfleet-system \
+  --from-literal=BROKER_GOOGLEPUBSUB_PROJECT_ID=my-gcp-project
 ```
 
 ### Horizontal Scaling with Sharding
