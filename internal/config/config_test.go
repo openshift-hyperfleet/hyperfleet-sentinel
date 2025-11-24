@@ -67,9 +67,6 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 	if cfg.MessageData["resource_id"] != ".id" {
 		t.Errorf("Expected message_data.resource_id '.id', got '%s'", cfg.MessageData["resource_id"])
 	}
-
-	// Broker config is now managed by hyperfleet-broker library
-	// No need to validate broker config here
 }
 
 func TestLoadConfig_Minimal(t *testing.T) {
@@ -409,5 +406,4 @@ func TestLoadConfig_FullWorkflow(t *testing.T) {
 	if len(cfg.MessageData) != 4 {
 		t.Errorf("Expected 4 message_data fields, got %d", len(cfg.MessageData))
 	}
-	// Broker config is now managed by hyperfleet-broker library
 }

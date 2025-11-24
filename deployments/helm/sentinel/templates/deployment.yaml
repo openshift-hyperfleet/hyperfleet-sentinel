@@ -37,9 +37,10 @@ spec:
           - serve
           - --config=/etc/sentinel/config.yaml
         env:
-          # Broker configuration using hyperfleet-broker library
-          # Configuration loaded from broker.yaml file (mounted as configmap)
-          # Credentials can be overridden via environment variables from Secret
+          # Broker configuration file location
+          - name: BROKER_CONFIG_FILE
+            value: /etc/sentinel/broker.yaml
+          # Broker credentials can be overridden via environment variables from Secret
           {{- if eq .Values.broker.type "rabbitmq" }}
           - name: BROKER_RABBITMQ_URL
             valueFrom:
@@ -55,10 +56,11 @@ spec:
           {{- end }}
         volumeMounts:
           - name: config
-            mountPath: /etc/sentinel
+            mountPath: /etc/sentinel/config.yaml
+            subPath: config.yaml
             readOnly: true
           - name: broker-config
-            mountPath: /app/broker.yaml
+            mountPath: /etc/sentinel/broker.yaml
             subPath: broker.yaml
             readOnly: true
         resources:

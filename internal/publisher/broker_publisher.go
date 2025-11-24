@@ -9,7 +9,17 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 )
 
-// BrokerPublisher implements Publisher using the hyperfleet-broker library
+// BrokerPublisher implements the Publisher interface using the hyperfleet-broker library.
+//
+// This wrapper serves several purposes:
+//  1. Adapts hyperfleet-broker's generic publisher to Sentinel's Publisher interface
+//  2. Converts Sentinel's CloudEvent format to the cloudevents.Event format expected by the broker
+//  3. Provides input validation (nil resources, empty resource kinds)
+//  4. Adds error context (topic, event ID, resource ID) for better debugging
+//  5. Maps resource.Kind to broker topic name (e.g., "clusters" -> clusters topic)
+//
+// The wrapper allows Sentinel to use the shared hyperfleet-broker library while maintaining
+// its own Publisher abstraction, making it easier to test and potentially swap implementations.
 type BrokerPublisher struct {
 	publisher broker.Publisher
 }
