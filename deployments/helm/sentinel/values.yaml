@@ -112,7 +112,7 @@ broker:
     exchangeType: topic
 
   # Google Pub/Sub configuration (alternative to RabbitMQ)
-  # Uses BROKER_GOOGLEPUBSUB_PROJECT_ID environment variable
+  # projectId is written to broker.yaml ConfigMap (not Secret - it's not sensitive)
   # Uncomment and configure when using Pub/Sub
   # googlepubsub:
   #   projectId: your-gcp-project-id

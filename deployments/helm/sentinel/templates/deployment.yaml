@@ -47,12 +47,6 @@ spec:
               secretKeyRef:
                 name: {{ include "sentinel.secretName" . }}
                 key: BROKER_RABBITMQ_URL
-          {{- else if eq .Values.broker.type "googlepubsub" }}
-          - name: BROKER_GOOGLEPUBSUB_PROJECT_ID
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "sentinel.secretName" . }}
-                key: BROKER_GOOGLEPUBSUB_PROJECT_ID
           {{- end }}
         volumeMounts:
           - name: config

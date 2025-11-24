@@ -58,7 +58,7 @@ data:
         {{- end }}
       {{- else if eq .Values.broker.type "googlepubsub" }}
       googlepubsub:
-        # Project ID will be provided via BROKER_GOOGLEPUBSUB_PROJECT_ID env var from Secret
+        project_id: {{ .Values.broker.googlepubsub.projectId | quote }}
         {{- if .Values.broker.googlepubsub.maxOutstandingMessages }}
         max_outstanding_messages: {{ .Values.broker.googlepubsub.maxOutstandingMessages }}
         {{- end }}
