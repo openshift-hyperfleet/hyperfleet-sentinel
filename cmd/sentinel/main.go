@@ -80,7 +80,9 @@ func runServe(cfg *config.SentinelConfig) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize broker publisher: %w", err)
 	}
-	defer pub.Close()
+	if pub != nil {
+		defer pub.Close()
+	}
 	log.Info("Initialized broker publisher")
 
 	// Setup graceful shutdown
