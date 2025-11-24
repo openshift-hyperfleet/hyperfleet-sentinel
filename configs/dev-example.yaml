@@ -3,7 +3,6 @@
 # This example demonstrates a minimal development configuration
 # with shorter intervals for faster local testing.
 #
-# Broker configuration is now managed by the hyperfleet-broker library.
 # For local development with RabbitMQ (easiest option):
 #
 # Quick start with Docker:
@@ -44,7 +43,6 @@ message_data:
   href: .href
   generation: .generation
 
-# Broker configuration is managed by the hyperfleet-broker library.
 # For local development, use environment variable:
 #   export BROKER_RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 #

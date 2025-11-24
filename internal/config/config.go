@@ -69,7 +69,6 @@ func NewSentinelConfig() *SentinelConfig {
 
 // LoadConfig loads configuration from YAML file and environment variables
 // Precedence: Environment variables > YAML file > Defaults
-// Broker configuration is managed by hyperfleet-broker library via BROKER_CONFIG_FILE env var
 func LoadConfig(configFile string) (*SentinelConfig, error) {
 	cfg := NewSentinelConfig()
 
