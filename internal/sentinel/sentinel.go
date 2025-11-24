@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"time"
 
+	cloudevents "github.com/cloudevents/sdk-go/v2"
+	"github.com/google/uuid"
+	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/publisher"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
@@ -18,7 +20,7 @@ type Sentinel struct {
 	config         *config.SentinelConfig
 	client         *client.HyperFleetClient
 	decisionEngine *engine.DecisionEngine
-	publisher      publisher.Publisher
+	publisher      broker.Publisher
 	logger         logger.HyperFleetLogger
 }
 
@@ -28,7 +30,7 @@ func NewSentinel(
 	cfg *config.SentinelConfig,
 	client *client.HyperFleetClient,
 	decisionEngine *engine.DecisionEngine,
-	pub publisher.Publisher,
+	pub broker.Publisher,
 	log logger.HyperFleetLogger,
 ) *Sentinel {
 	return &Sentinel{
@@ -93,7 +95,24 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 		decision := s.decisionEngine.Evaluate(resource, now)
 
 		if decision.ShouldPublish {
-			if err := s.publisher.Publish(ctx, resource, decision.Reason); err != nil {
+			// Create CloudEvent
+			event := cloudevents.NewEvent()
+			event.SetSpecVersion(cloudevents.VersionV1)
+			event.SetType(fmt.Sprintf("com.redhat.hyperfleet.%s.reconcile", resource.Kind))
+			event.SetSource("hyperfleet-sentinel")
+			event.SetID(uuid.New().String())
+			if err := event.SetData(cloudevents.ApplicationJSON, map[string]interface{}{
+				"resourceType": resource.Kind,
+				"resourceId":   resource.ID,
+				"reason":       decision.Reason,
+			}); err != nil {
+				s.logger.Infof("Failed to set event data resource_id=%s error=%v", resource.ID, err)
+				continue
+			}
+
+			// Publish to broker (topic = resource kind)
+			topic := resource.Kind
+			if err := s.publisher.Publish(topic, &event); err != nil {
 				s.logger.Infof("Failed to publish event resource_id=%s error=%v", resource.ID, err)
 				continue
 			}
