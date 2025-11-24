@@ -95,27 +95,34 @@ config:
     href: .href
     generation: .generation
 
-# Broker configuration (from Secret)
+# Broker configuration using hyperfleet-broker library
 # WARNING: Never commit real credentials to git!
 # Use external secrets management (External Secrets Operator, Sealed Secrets, Vault)
+#
+# For more details, see: https://github.com/openshift-hyperfleet/hyperfleet-broker
 broker:
-  # Broker type: rabbitmq or pubsub
+  # Broker type: rabbitmq or googlepubsub
   type: rabbitmq
 
   # RabbitMQ configuration
+  # Uses BROKER_RABBITMQ_URL environment variable (single connection string)
   rabbitmq:
-    host: rabbitmq.hyperfleet-system.svc.cluster.local
-    port: "5672"
-    exchange: hyperfleet-events
-    vhost: /hyperfleet
-    exchangeType: fanout
-    username: sentinel-user
-    password: change-me-in-production
+    # Connection URL format: amqp://user:password@host:port/vhost
+    url: amqp://sentinel-user:change-me-in-production@rabbitmq.hyperfleet-system.svc.cluster.local:5672/hyperfleet
+    exchangeType: topic
 
-  # GCP Pub/Sub configuration (alternative to RabbitMQ)
+  # Google Pub/Sub configuration (alternative to RabbitMQ)
+  # Uses BROKER_GOOGLEPUBSUB_PROJECT_ID environment variable
   # Uncomment and configure when using Pub/Sub
-  # pubsub:
+  # googlepubsub:
   #   projectId: your-gcp-project-id
+  #   maxOutstandingMessages: 1000
+  #   numGoroutines: 10
+
+# Subscriber configuration (optional)
+subscriber:
+  # Number of parallel workers for message processing
+  parallelism: 1
 
 # Existing secret name (optional)
 # If provided, the chart will not create a Secret and will use this existing one

@@ -19,32 +19,12 @@ func createTempConfigFile(t *testing.T, content string) string {
 	return configPath
 }
 
-// Helper function to set environment variables for testing
-func setEnvVars(t *testing.T, vars map[string]string) {
-	t.Helper()
-	for key, value := range vars {
-		if err := os.Setenv(key, value); err != nil {
-			t.Fatalf("Failed to set env var %s: %v", key, err)
-		}
-	}
-	t.Cleanup(func() {
-		for key := range vars {
-			_ = os.Unsetenv(key) // Ignore error in cleanup
-		}
-	})
-}
-
 // ============================================================================
 // Loading & Parsing Tests
 // ============================================================================
 
 func TestLoadConfig_ValidComplete(t *testing.T) {
 	configPath := filepath.Join("testdata", "valid-complete.yaml")
-
-	setEnvVars(t, map[string]string{
-		"BROKER_TYPE":       "pubsub",
-		"BROKER_PROJECT_ID": "test-project",
-	})
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
@@ -88,22 +68,12 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 		t.Errorf("Expected message_data.resource_id '.id', got '%s'", cfg.MessageData["resource_id"])
 	}
 
-	// Verify broker
-	if cfg.Broker == nil {
-		t.Fatal("Expected broker config, got nil")
-	}
-	if cfg.Broker.Type() != "pubsub" {
-		t.Errorf("Expected broker type 'pubsub', got '%s'", cfg.Broker.Type())
-	}
+	// Broker config is now managed by hyperfleet-broker library
+	// No need to validate broker config here
 }
 
 func TestLoadConfig_Minimal(t *testing.T) {
 	configPath := filepath.Join("testdata", "minimal.yaml")
-
-	setEnvVars(t, map[string]string{
-		"BROKER_TYPE":       "pubsub",
-		"BROKER_PROJECT_ID": "test-project",
-	})
 
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
@@ -313,123 +283,6 @@ func TestValidate_NegativeDurations(t *testing.T) {
 }
 
 // ============================================================================
-// Broker Configuration Tests
-// ============================================================================
-
-func TestLoadBrokerConfig_RabbitMQ(t *testing.T) {
-	setEnvVars(t, map[string]string{
-		"BROKER_TYPE":          "rabbitmq",
-		"BROKER_HOST":          "rabbitmq.example.com",
-		"BROKER_PORT":          "5672",
-		"BROKER_VHOST":         "/prod",
-		"BROKER_EXCHANGE":      "hyperfleet-events",
-		"BROKER_EXCHANGE_TYPE": "fanout",
-	})
-
-	broker, err := LoadBrokerConfig()
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if broker.Type() != "rabbitmq" {
-		t.Errorf("Expected broker type 'rabbitmq', got '%s'", broker.Type())
-	}
-
-	rmqCfg, ok := broker.(*RabbitMQBrokerConfig)
-	if !ok {
-		t.Fatal("Expected RabbitMQBrokerConfig type")
-	}
-
-	if rmqCfg.Host != "rabbitmq.example.com" {
-		t.Errorf("Expected host 'rabbitmq.example.com', got '%s'", rmqCfg.Host)
-	}
-	if rmqCfg.Port != "5672" {
-		t.Errorf("Expected port '5672', got '%s'", rmqCfg.Port)
-	}
-	if rmqCfg.Exchange != "hyperfleet-events" {
-		t.Errorf("Expected exchange 'hyperfleet-events', got '%s'", rmqCfg.Exchange)
-	}
-}
-
-func TestLoadBrokerConfig_MissingType(t *testing.T) {
-	// Ensure no BROKER_TYPE is set
-	_ = os.Unsetenv("BROKER_TYPE") // Ignore error - we want it unset
-
-	_, err := LoadBrokerConfig()
-	if err == nil {
-		t.Fatal("Expected error for missing BROKER_TYPE, got nil")
-	}
-	if err.Error() != "BROKER_TYPE environment variable is required" {
-		t.Errorf("Expected 'BROKER_TYPE environment variable is required' error, got: %v", err)
-	}
-}
-
-func TestLoadBrokerConfig_InvalidType(t *testing.T) {
-	setEnvVars(t, map[string]string{
-		"BROKER_TYPE": "invalid-broker",
-	})
-
-	_, err := LoadBrokerConfig()
-	if err == nil {
-		t.Fatal("Expected error for invalid BROKER_TYPE, got nil")
-	}
-}
-
-// ============================================================================
-// Broker Validation Tests
-// ============================================================================
-
-func TestPubSubBrokerConfig_Validate_MissingProjectID(t *testing.T) {
-	cfg := &PubSubBrokerConfig{
-		ProjectID: "",
-	}
-
-	err := cfg.Validate()
-	if err == nil {
-		t.Fatal("Expected error for missing project_id, got nil")
-	}
-	if err.Error() != "BROKER_PROJECT_ID is required for pubsub broker" {
-		t.Errorf("Expected 'BROKER_PROJECT_ID is required' error, got: %v", err)
-	}
-}
-
-func TestRabbitMQBrokerConfig_Validate_MissingFields(t *testing.T) {
-	tests := []struct {
-		name   string
-		cfg    *RabbitMQBrokerConfig
-		errMsg string
-	}{
-		{
-			name:   "missing host",
-			cfg:    &RabbitMQBrokerConfig{Port: "5672", Exchange: "test"},
-			errMsg: "BROKER_HOST is required for rabbitmq broker",
-		},
-		{
-			name:   "missing port",
-			cfg:    &RabbitMQBrokerConfig{Host: "localhost", Exchange: "test"},
-			errMsg: "BROKER_PORT is required for rabbitmq broker",
-		},
-		{
-			name:   "missing exchange",
-			cfg:    &RabbitMQBrokerConfig{Host: "localhost", Port: "5672"},
-			errMsg: "BROKER_EXCHANGE is required for rabbitmq broker",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.cfg.Validate()
-			if err == nil {
-				t.Fatal("Expected validation error, got nil")
-			}
-			if err.Error() != tt.errMsg {
-				t.Errorf("Expected error '%s', got: %v", tt.errMsg, err)
-			}
-		})
-	}
-}
-
-// ============================================================================
 // Label Selector Tests
 // ============================================================================
 
@@ -538,13 +391,6 @@ func TestValidateTemplates_Empty(t *testing.T) {
 func TestLoadConfig_FullWorkflow(t *testing.T) {
 	configPath := filepath.Join("testdata", "full-workflow.yaml")
 
-	setEnvVars(t, map[string]string{
-		"BROKER_TYPE":     "rabbitmq",
-		"BROKER_HOST":     "rabbitmq.local",
-		"BROKER_PORT":     "5672",
-		"BROKER_EXCHANGE": "events",
-	})
-
 	cfg, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
@@ -563,7 +409,5 @@ func TestLoadConfig_FullWorkflow(t *testing.T) {
 	if len(cfg.MessageData) != 4 {
 		t.Errorf("Expected 4 message_data fields, got %d", len(cfg.MessageData))
 	}
-	if cfg.Broker.Type() != "rabbitmq" {
-		t.Errorf("Expected broker type 'rabbitmq', got '%s'", cfg.Broker.Type())
-	}
+	// Broker config is now managed by hyperfleet-broker library
 }

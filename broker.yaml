@@ -1,0 +1,52 @@
+# HyperFleet Sentinel Broker Configuration
+# This file configures the message broker for publishing reconciliation events
+# For more details, see: https://github.com/openshift-hyperfleet/hyperfleet-broker
+
+broker:
+  # Broker type: rabbitmq or googlepubsub
+  type: rabbitmq
+
+  # RabbitMQ Configuration
+  rabbitmq:
+    # Connection URL format: amqp://user:password@host:port/vhost
+    # Can be overridden with BROKER_RABBITMQ_URL environment variable
+    url: amqp://guest:guest@localhost:5672/
+
+    # Exchange type: topic, direct, fanout, or headers
+    exchange_type: topic
+
+    # Optional: Prefetch count (max unacknowledged messages per consumer)
+    # Higher values increase throughput but also memory usage
+    # prefetch_count: 20
+
+    # Optional: Prefetch size (byte limit for unacknowledged messages)
+    # prefetch_size: 0
+
+  # Google Pub/Sub Configuration (alternative to RabbitMQ)
+  # Uncomment to use Google Pub/Sub instead
+  # googlepubsub:
+  #   # GCP Project ID
+  #   # Can be overridden with BROKER_GOOGLEPUBSUB_PROJECT_ID
+  #   project_id: my-gcp-project
+  #
+  #   # Optional: Max outstanding messages (backpressure control)
+  #   # max_outstanding_messages: 1000
+  #
+  #   # Optional: Number of goroutines for message pulling
+  #   # num_goroutines: 10
+
+# Publisher configuration
+publisher:
+  # No additional publisher settings needed for now
+  # The broker library handles publishing automatically
+
+# Subscriber configuration (if this service subscribes to messages)
+subscriber:
+  # Number of parallel workers for message processing
+  # Default: 1
+  parallelism: 1
+
+# Logging configuration
+# Set to true to log the complete broker configuration at startup
+# Useful for debugging and troubleshooting
+log_config: false

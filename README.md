@@ -116,34 +116,28 @@ message_data:
 
 Templates can reference any field from the Resource object returned by the API. The example above follows the `ObjectReference` pattern (id, kind, href) with generation for reconciliation tracking.
 
-### Environment Variables
+### Broker Configuration
 
-Broker configuration is loaded exclusively from environment variables for security:
+Broker configuration is managed by the [hyperfleet-broker library](https://github.com/openshift-hyperfleet/hyperfleet-broker). You can configure the broker using either:
 
-#### Required Environment Variables
+1. **broker.yaml file** (see `broker.yaml` in project root for example)
+2. **BROKER_CONFIG_FILE environment variable** (path to your broker config file)
+3. **Direct environment variables** (listed below)
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `BROKER_TYPE` | Broker type (pubsub or rabbitmq) | `rabbitmq` |
-
-#### Broker-Specific Variables
+#### Environment Variables (Override broker.yaml)
 
 **RabbitMQ:**
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `BROKER_HOST` | Yes | RabbitMQ host |
-| `BROKER_PORT` | Yes | RabbitMQ port |
-| `BROKER_EXCHANGE` | Yes | Exchange name |
-| `BROKER_VHOST` | No | Virtual host (default: `/`) |
-| `BROKER_EXCHANGE_TYPE` | No | Exchange type (default: `fanout`) |
-| `RABBITMQ_USERNAME` | No | Authentication username |
-| `RABBITMQ_PASSWORD` | No | Authentication password |
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `BROKER_RABBITMQ_URL` | Complete connection URL | `amqp://user:pass@localhost:5672/vhost` |
 
-**GCP Pub/Sub:**
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `BROKER_PROJECT_ID` | Yes | GCP project ID |
-| `GOOGLE_APPLICATION_CREDENTIALS` | No | Path to service account key (uses ADC if not set) |
+**Google Pub/Sub:**
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `BROKER_GOOGLEPUBSUB_PROJECT_ID` | GCP project ID | `my-gcp-project` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Service account key path (optional, uses ADC if not set) | `/path/to/key.json` |
+
+For detailed broker configuration options, see the [hyperfleet-broker documentation](https://github.com/openshift-hyperfleet/hyperfleet-broker).
 
 ### Running Locally
 
@@ -159,10 +153,10 @@ RabbitMQ Management UI: http://localhost:15672 (guest/guest)
 #### 2. Set Environment Variables
 
 ```bash
-export BROKER_TYPE=rabbitmq
-export BROKER_HOST=localhost
-export BROKER_PORT=5672
-export BROKER_EXCHANGE=hyperfleet-dev
+# For RabbitMQ (using hyperfleet-broker library)
+export BROKER_RABBITMQ_URL=amqp://guest:guest@localhost:5672/
+
+# Or configure via broker.yaml file (see broker.yaml in project root)
 ```
 
 #### 3. Run Sentinel
@@ -208,7 +202,7 @@ The service validates configuration at startup and will fail fast on errors:
 - **Valid enums**: `resource_type` must be clusters/nodepools
 - **Valid durations**: All interval fields must be positive
 - **Valid templates**: All `message_data` templates must be valid Go templates
-- **Broker configuration**: All required broker environment variables must be present
+- **Broker configuration**: Managed by hyperfleet-broker library (see broker.yaml)
 
 ### Configuration Examples
 
@@ -220,7 +214,7 @@ hyperfleet_api:
   endpoint: http://localhost:8000
 ```
 
-This uses all defaults and requires broker environment variables to be set.
+This uses all defaults. Broker configuration is managed via `broker.yaml` or environment variables (see Broker Configuration section).
 
 #### Production Configuration with Sharding
 

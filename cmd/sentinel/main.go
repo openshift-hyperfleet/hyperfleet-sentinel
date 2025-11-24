@@ -74,9 +74,14 @@ func runServe(cfg *config.SentinelConfig) error {
 	hyperfleetClient := client.NewHyperFleetClient(cfg.HyperFleetAPI.Endpoint, cfg.HyperFleetAPI.Timeout)
 	decisionEngine := engine.NewDecisionEngine(cfg.MaxAgeNotReady, cfg.MaxAgeReady)
 
-	// Initialize publisher (using mock for now)
-	pub := publisher.NewMockPublisher()
-	log.Info("Using mock publisher for development")
+	// Initialize publisher using hyperfleet-broker library
+	// Configuration is loaded from broker.yaml or BROKER_CONFIG_FILE env var
+	pub, err := publisher.NewBrokerPublisher()
+	if err != nil {
+		return fmt.Errorf("failed to initialize broker publisher: %w", err)
+	}
+	defer pub.Close()
+	log.Info("Initialized broker publisher using hyperfleet-broker library")
 
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)

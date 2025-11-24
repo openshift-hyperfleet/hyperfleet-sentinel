@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strings"
 	"text/template"
 	"time"
@@ -29,61 +28,12 @@ type SentinelConfig struct {
 	ResourceSelector LabelSelectorList    `mapstructure:"resource_selector"`
 	HyperFleetAPI    *HyperFleetAPIConfig `mapstructure:"hyperfleet_api"`
 	MessageData      map[string]string    `mapstructure:"message_data"`
-	Broker           BrokerConfig         `mapstructure:"-"` // Loaded from env vars
 }
 
 // HyperFleetAPIConfig defines the HyperFleet API client configuration
 type HyperFleetAPIConfig struct {
 	Endpoint string        `mapstructure:"endpoint"`
 	Timeout  time.Duration `mapstructure:"timeout"`
-}
-
-// BrokerConfig is the interface for broker configurations
-type BrokerConfig interface {
-	Type() string
-	Validate() error
-}
-
-// PubSubBrokerConfig defines Google Cloud Pub/Sub broker configuration
-type PubSubBrokerConfig struct {
-	ProjectID string
-}
-
-func (c *PubSubBrokerConfig) Type() string {
-	return "pubsub"
-}
-
-func (c *PubSubBrokerConfig) Validate() error {
-	if c.ProjectID == "" {
-		return fmt.Errorf("BROKER_PROJECT_ID is required for pubsub broker")
-	}
-	return nil
-}
-
-// RabbitMQBrokerConfig defines RabbitMQ broker configuration
-type RabbitMQBrokerConfig struct {
-	Host         string
-	Port         string
-	VHost        string
-	Exchange     string
-	ExchangeType string
-}
-
-func (c *RabbitMQBrokerConfig) Type() string {
-	return "rabbitmq"
-}
-
-func (c *RabbitMQBrokerConfig) Validate() error {
-	if c.Host == "" {
-		return fmt.Errorf("BROKER_HOST is required for rabbitmq broker")
-	}
-	if c.Port == "" {
-		return fmt.Errorf("BROKER_PORT is required for rabbitmq broker")
-	}
-	if c.Exchange == "" {
-		return fmt.Errorf("BROKER_EXCHANGE is required for rabbitmq broker")
-	}
-	return nil
 }
 
 // ToMap converts label selectors to a map for filtering
@@ -114,13 +64,12 @@ func NewSentinelConfig() *SentinelConfig {
 			Timeout: 5 * time.Second,
 		},
 		MessageData: make(map[string]string),
-		Broker:      nil, // Loaded from environment variables
 	}
 }
 
 // LoadConfig loads configuration from YAML file and environment variables
 // Precedence: Environment variables > YAML file > Defaults
-// Broker credentials are loaded exclusively from environment variables
+// Broker configuration is managed by hyperfleet-broker library via BROKER_CONFIG_FILE env var
 func LoadConfig(configFile string) (*SentinelConfig, error) {
 	cfg := NewSentinelConfig()
 
@@ -142,13 +91,6 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Load broker configuration from environment variables
-	broker, err := LoadBrokerConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load broker config: %w", err)
-	}
-	cfg.Broker = broker
-
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
@@ -159,50 +101,9 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 		return nil, fmt.Errorf("invalid message_data templates: %w", err)
 	}
 
-	glog.Infof("Configuration loaded successfully: resource_type=%s broker_type=%s",
-		cfg.ResourceType, cfg.Broker.Type())
+	glog.Infof("Configuration loaded successfully: resource_type=%s", cfg.ResourceType)
 
 	return cfg, nil
-}
-
-// LoadBrokerConfig loads broker configuration from environment variables
-// Returns the appropriate BrokerConfig implementation based on BROKER_TYPE
-func LoadBrokerConfig() (BrokerConfig, error) {
-	brokerType := os.Getenv("BROKER_TYPE")
-	if brokerType == "" {
-		return nil, fmt.Errorf("BROKER_TYPE environment variable is required")
-	}
-
-	var broker BrokerConfig
-
-	switch brokerType {
-	case "pubsub":
-		cfg := &PubSubBrokerConfig{
-			ProjectID: os.Getenv("BROKER_PROJECT_ID"),
-		}
-		if err := cfg.Validate(); err != nil {
-			return nil, err
-		}
-		broker = cfg
-
-	case "rabbitmq":
-		cfg := &RabbitMQBrokerConfig{
-			Host:         os.Getenv("BROKER_HOST"),
-			Port:         os.Getenv("BROKER_PORT"),
-			VHost:        os.Getenv("BROKER_VHOST"),
-			Exchange:     os.Getenv("BROKER_EXCHANGE"),
-			ExchangeType: os.Getenv("BROKER_EXCHANGE_TYPE"),
-		}
-		if err := cfg.Validate(); err != nil {
-			return nil, err
-		}
-		broker = cfg
-
-	default:
-		return nil, fmt.Errorf("unsupported BROKER_TYPE: %s (must be pubsub or rabbitmq)", brokerType)
-	}
-
-	return broker, nil
 }
 
 // ValidateTemplates validates Go template syntax in message_data fields
