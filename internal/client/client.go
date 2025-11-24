@@ -224,7 +224,9 @@ func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, _ ResourceTyp
 				Phase:              item.Status.GetPhase(),
 				LastTransitionTime: item.Status.GetLastTransitionTime(),
 				LastUpdated:        item.Status.GetLastUpdated(),
-				ObservedGeneration: int64(item.Status.GetObservedGeneration()),
+				// TODO(HYPERFLEET-117): Remove this cast once client is updated to use int32
+			// The upstream API returns int32 but we maintain int64 internally for safety
+			ObservedGeneration: int64(item.Status.GetObservedGeneration()),
 			},
 			Metadata: item.GetMetadata(),
 		}
