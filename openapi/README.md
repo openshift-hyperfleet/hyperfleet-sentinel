@@ -4,7 +4,7 @@ This directory contains the OpenAPI specification for the HyperFleet API.
 
 ## Current Status
 
-The file `hyperfleet-api.yaml` is currently a **placeholder** with a minimal schema. It will be replaced with the actual HyperFleet API specification when available.
+The file `openapi.yaml` is currently a **placeholder** with a minimal schema. It will be replaced with the actual HyperFleet API specification when available.
 
 The codebase currently uses the OpenAPI-generated client through a wrapper in `internal/client/client.go`.
 
@@ -12,7 +12,7 @@ The codebase currently uses the OpenAPI-generated client through a wrapper in `i
 
 When you update the OpenAPI spec:
 
-1. Edit `hyperfleet-api.yaml` with new/updated spec
+1. Edit `openapi.yaml` with new/updated spec
 2. Run the generator:
    ```bash
    make generate

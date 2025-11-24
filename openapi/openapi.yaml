@@ -74,7 +74,7 @@ components:
           description: Updates every time an adapter checks the resource
         observedGeneration:
           type: integer
-          format: int64
+          format: int32
           description: The generation of the resource that was last processed by the adapter
         conditions:
           type: array

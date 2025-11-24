@@ -606,7 +606,7 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 			phase:              "Ready",
 			lastUpdated:        now, // Even with recent update, should publish due to generation
 			wantShouldPublish:  true,
-			wantReasonContains: "generation changed",
+			wantReasonContains: ReasonGenerationChanged,
 			description:        "Spec change should trigger immediate reconciliation (Ready)",
 		},
 		{
@@ -616,7 +616,7 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 			phase:              "Pending",
 			lastUpdated:        now, // Even with recent update, should publish due to generation
 			wantShouldPublish:  true,
-			wantReasonContains: "generation changed",
+			wantReasonContains: ReasonGenerationChanged,
 			description:        "Spec change should trigger immediate reconciliation (not Ready)",
 		},
 		{
@@ -626,7 +626,7 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 			phase:              "Ready",
 			lastUpdated:        now,
 			wantShouldPublish:  true,
-			wantReasonContains: "generation changed",
+			wantReasonContains: ReasonGenerationChanged,
 			description:        "Multiple spec changes should trigger immediate reconciliation",
 		},
 		{
@@ -636,7 +636,7 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 			phase:              "Ready",
 			lastUpdated:        now,
 			wantShouldPublish:  true,
-			wantReasonContains: "generation changed",
+			wantReasonContains: ReasonGenerationChanged,
 			description:        "First reconciliation should be triggered by generation (never processed)",
 		},
 
@@ -668,7 +668,7 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 			phase:              "Ready",
 			lastUpdated:        now.Add(-31 * time.Minute), // 31m ago (> 30m max age)
 			wantShouldPublish:  true,
-			wantReasonContains: "max age exceeded",
+			wantReasonContains: ReasonMaxAgeExceeded,
 			description:        "When generations match and max age exceeded, publish (Ready)",
 		},
 		{
@@ -678,7 +678,7 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 			phase:              "Provisioning",
 			lastUpdated:        now.Add(-11 * time.Second), // 11s ago (> 10s max age)
 			wantShouldPublish:  true,
-			wantReasonContains: "max age exceeded",
+			wantReasonContains: ReasonMaxAgeExceeded,
 			description:        "When generations match and max age exceeded, publish (not Ready)",
 		},
 
@@ -734,32 +734,63 @@ func TestDecisionEngine_Evaluate_GenerationPriority(t *testing.T) {
 	engine := newTestEngine()
 	now := time.Now()
 
-	// Create a resource where:
-	// - Generation has changed (generation > observedGeneration)
-	// - But max age has NOT been exceeded (lastUpdated very recent)
-	// Expected: Should publish due to generation change (priority)
-	resource := newTestResourceWithGeneration(
-		testResourceID,
-		testResourceKind,
-		"Ready",
-		now, // Just updated (0s ago - well within 30m max age)
-		5,   // generation
-		4,   // observedGeneration
-	)
-
-	decision := engine.Evaluate(resource, now)
-
-	// Should publish immediately due to generation change, ignoring max age
-	if !decision.ShouldPublish {
-		t.Errorf("ShouldPublish = false, want true (generation check should take priority over max age)")
+	tests := []struct {
+		name               string
+		generation         int64
+		observedGeneration int64
+		phase              string
+		lastUpdated        time.Time
+		wantShouldPublish  bool
+		wantReasonContains string
+		description        string
+	}{
+		{
+			name:               "generation changed - max age not exceeded - Ready",
+			generation:         5,
+			observedGeneration: 4,
+			phase:              "Ready",
+			lastUpdated:        now, // Just updated (0s ago - well within 30m max age)
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonGenerationChanged,
+			description:        "Generation check should take priority over max age (Ready)",
+		},
+		{
+			name:               "generation changed - max age not exceeded - not Ready",
+			generation:         3,
+			observedGeneration: 2,
+			phase:              "Pending",
+			lastUpdated:        now.Add(-2 * time.Second), // 2s ago (well within 10s max age)
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonGenerationChanged,
+			description:        "Generation check should take priority over max age (not Ready)",
+		},
 	}
 
-	if !strings.Contains(decision.Reason, "generation changed") {
-		t.Errorf("Reason = %q, want it to contain 'generation changed'", decision.Reason)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resource := newTestResourceWithGeneration(
+				testResourceID,
+				testResourceKind,
+				tt.phase,
+				tt.lastUpdated,
+				tt.generation,
+				tt.observedGeneration,
+			)
+			decision := engine.Evaluate(resource, now)
 
-	// Verify we're not waiting for max age
-	if strings.Contains(decision.Reason, "max age") {
-		t.Errorf("Reason = %q, should not mention max age when generation has changed", decision.Reason)
+			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
+
+			// Verify we're not waiting for max age when generation has changed
+			if strings.Contains(decision.Reason, "max age") {
+				t.Errorf("Reason = %q, should not mention max age when generation has changed", decision.Reason)
+			}
+
+			// Additional context on failure
+			if t.Failed() {
+				t.Logf("Test description: %s", tt.description)
+				t.Logf("Generation: %d, ObservedGeneration: %d", tt.generation, tt.observedGeneration)
+				t.Logf("Phase: %s, LastUpdated: %v", tt.phase, tt.lastUpdated)
+			}
+		})
 	}
 }

@@ -18,7 +18,7 @@ RUN mkdir -p /local/pkg/api
 
 # Generate OpenAPI client for HyperFleet API
 RUN bash /usr/local/bin/docker-entrypoint.sh generate \
-    -i /local/openapi/hyperfleet-api.yaml \
+    -i /local/openapi/openapi.yaml \
     -g go \
     -o /local/pkg/api/openapi \
     --package-name openapi \
