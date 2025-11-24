@@ -16,10 +16,12 @@ func newTestResource(id, kind, phase string, lastUpdated time.Time) *client.Reso
 	return &client.Resource{
 		ID:          id,
 		Kind:        kind,
+		Generation:  1, // Default generation
 		CreatedTime: time.Now().Add(-1 * time.Hour), // Default: created 1 hour ago
 		Status: client.ResourceStatus{
-			Phase:       phase,
-			LastUpdated: lastUpdated,
+			Phase:              phase,
+			LastUpdated:        lastUpdated,
+			ObservedGeneration: 1, // Default: in sync with generation
 		},
 	}
 }
@@ -29,10 +31,27 @@ func newTestResourceWithCreatedTime(id, kind, phase string, createdTime, lastUpd
 	return &client.Resource{
 		ID:          id,
 		Kind:        kind,
+		Generation:  1, // Default generation
 		CreatedTime: createdTime,
 		Status: client.ResourceStatus{
-			Phase:       phase,
-			LastUpdated: lastUpdated,
+			Phase:              phase,
+			LastUpdated:        lastUpdated,
+			ObservedGeneration: 1, // Default: in sync with generation
+		},
+	}
+}
+
+// newTestResourceWithGeneration creates a test resource with explicit generation values
+func newTestResourceWithGeneration(id, kind, phase string, lastUpdated time.Time, generation, observedGeneration int64) *client.Resource {
+	return &client.Resource{
+		ID:          id,
+		Kind:        kind,
+		Generation:  generation,
+		CreatedTime: time.Now().Add(-1 * time.Hour), // Default: created 1 hour ago
+		Status: client.ResourceStatus{
+			Phase:              phase,
+			LastUpdated:        lastUpdated,
+			ObservedGeneration: observedGeneration,
 		},
 	}
 }
@@ -563,3 +582,150 @@ func TestDecisionEngine_Evaluate_CreatedTimeFallback(t *testing.T) {
 		})
 	}
 }
+
+// TestDecisionEngine_Evaluate_GenerationBasedReconciliation tests generation-based reconciliation
+func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
+	engine := newTestEngine()
+	now := time.Now()
+
+	tests := []struct {
+		name                string
+		generation          int64
+		observedGeneration  int64
+		phase               string
+		lastUpdated         time.Time
+		wantShouldPublish   bool
+		wantReasonContains  string
+		description         string
+	}{
+		// Generation mismatch tests - should publish immediately
+		{
+			name:               "generation ahead by 1 - Ready phase",
+			generation:         2,
+			observedGeneration: 1,
+			phase:              "Ready",
+			lastUpdated:        now, // Even with recent update, should publish due to generation
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonGenerationChanged,
+			description:        "Spec change should trigger immediate reconciliation (Ready)",
+		},
+		{
+			name:               "generation ahead by 1 - not Ready phase",
+			generation:         3,
+			observedGeneration: 2,
+			phase:              "Pending",
+			lastUpdated:        now, // Even with recent update, should publish due to generation
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonGenerationChanged,
+			description:        "Spec change should trigger immediate reconciliation (not Ready)",
+		},
+		{
+			name:               "generation ahead by many - Ready phase",
+			generation:         10,
+			observedGeneration: 5,
+			phase:              "Ready",
+			lastUpdated:        now,
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonGenerationChanged,
+			description:        "Multiple spec changes should trigger immediate reconciliation",
+		},
+		{
+			name:               "generation ahead - zero observedGeneration",
+			generation:         1,
+			observedGeneration: 0,
+			phase:              "Ready",
+			lastUpdated:        now,
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonGenerationChanged,
+			description:        "First reconciliation should be triggered by generation (never processed)",
+		},
+
+		// Generation in sync tests - should follow normal max age logic
+		{
+			name:               "generation in sync - recent update - Ready",
+			generation:         5,
+			observedGeneration: 5,
+			phase:              "Ready",
+			lastUpdated:        now.Add(-15 * time.Minute), // 15m ago (< 30m max age)
+			wantShouldPublish:  false,
+			wantReasonContains: "max age not exceeded",
+			description:        "When generations match, follow normal max age logic (Ready)",
+		},
+		{
+			name:               "generation in sync - recent update - not Ready",
+			generation:         2,
+			observedGeneration: 2,
+			phase:              "Pending",
+			lastUpdated:        now.Add(-5 * time.Second), // 5s ago (< 10s max age)
+			wantShouldPublish:  false,
+			wantReasonContains: "max age not exceeded",
+			description:        "When generations match, follow normal max age logic (not Ready)",
+		},
+		{
+			name:               "generation in sync - max age exceeded - Ready",
+			generation:         3,
+			observedGeneration: 3,
+			phase:              "Ready",
+			lastUpdated:        now.Add(-31 * time.Minute), // 31m ago (> 30m max age)
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonMaxAgeExceeded,
+			description:        "When generations match and max age exceeded, publish (Ready)",
+		},
+		{
+			name:               "generation in sync - max age exceeded - not Ready",
+			generation:         1,
+			observedGeneration: 1,
+			phase:              "Provisioning",
+			lastUpdated:        now.Add(-11 * time.Second), // 11s ago (> 10s max age)
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonMaxAgeExceeded,
+			description:        "When generations match and max age exceeded, publish (not Ready)",
+		},
+
+		// Edge cases
+		{
+			name:               "both generation and observedGeneration are zero",
+			generation:         0,
+			observedGeneration: 0,
+			phase:              "Ready",
+			lastUpdated:        now.Add(-5 * time.Minute),
+			wantShouldPublish:  false,
+			wantReasonContains: "max age not exceeded",
+			description:        "Zero generations should be treated as in sync (defensive)",
+		},
+		{
+			name:               "observedGeneration ahead of generation (defensive)",
+			generation:         5,
+			observedGeneration: 10,
+			phase:              "Ready",
+			lastUpdated:        now.Add(-5 * time.Minute),
+			wantShouldPublish:  false,
+			wantReasonContains: "max age not exceeded",
+			description:        "ObservedGeneration > Generation shouldn't happen, but handle defensively",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resource := newTestResourceWithGeneration(
+				testResourceID,
+				testResourceKind,
+				tt.phase,
+				tt.lastUpdated,
+				tt.generation,
+				tt.observedGeneration,
+			)
+			decision := engine.Evaluate(resource, now)
+
+			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
+
+			// Additional context on failure
+			if t.Failed() {
+				t.Logf("Test description: %s", tt.description)
+				t.Logf("Generation: %d, ObservedGeneration: %d", tt.generation, tt.observedGeneration)
+				t.Logf("Phase: %s, LastUpdated: %v", tt.phase, tt.lastUpdated)
+			}
+		})
+	}
+}
+

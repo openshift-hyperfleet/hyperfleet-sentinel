@@ -23,7 +23,7 @@ HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, make
    make generate
    ```
 
-   The OpenAPI client code is generated from `openapi/hyperfleet-api.yaml` and placed in `pkg/api/openapi/`. These generated files are **not committed** to git and must be regenerated locally.
+   The OpenAPI client code is generated from `openapi/openapi.yaml` and placed in `pkg/api/openapi/`. These generated files are **not committed** to git and must be regenerated locally.
 
 3. **Download dependencies**:
    ```bash
