@@ -42,7 +42,7 @@ func newTestResourceWithCreatedTime(id, kind, phase string, createdTime, lastUpd
 }
 
 // newTestResourceWithGeneration creates a test resource with explicit generation values
-func newTestResourceWithGeneration(id, kind, phase string, lastUpdated time.Time, generation, observedGeneration int64) *client.Resource {
+func newTestResourceWithGeneration(id, kind, phase string, lastUpdated time.Time, generation, observedGeneration int32) *client.Resource {
 	return &client.Resource{
 		ID:          id,
 		Kind:        kind,
@@ -590,8 +590,8 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 
 	tests := []struct {
 		name               string
-		generation         int64
-		observedGeneration int64
+		generation         int32
+		observedGeneration int32
 		phase              string
 		lastUpdated        time.Time
 		wantShouldPublish  bool

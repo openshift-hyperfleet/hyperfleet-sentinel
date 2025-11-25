@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
@@ -68,7 +70,7 @@ type Resource struct {
 	Kind        string                 `json:"kind"`
 	CreatedTime time.Time              `json:"created_time"`
 	UpdatedTime time.Time              `json:"updated_time"`
-	Generation  int64                  `json:"generation"`
+	Generation  int32                  `json:"generation"`
 	Labels      map[string]string      `json:"labels"`
 	Status      ResourceStatus         `json:"status"`
 	Metadata    map[string]interface{} `json:"metadata,omitempty"`
@@ -79,7 +81,7 @@ type ResourceStatus struct {
 	Phase              string      `json:"phase"`
 	LastTransitionTime time.Time   `json:"lastTransitionTime"` // Updates only when status.phase changes
 	LastUpdated        time.Time   `json:"lastUpdated"`        // Updates every time an adapter checks the resource
-	ObservedGeneration int64       `json:"observedGeneration"` // The generation last processed by the adapter
+	ObservedGeneration int32       `json:"observedGeneration"` // The generation last processed by the adapter
 	Conditions         []Condition `json:"conditions,omitempty"`
 }
 
@@ -157,15 +159,43 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 	return resources, nil
 }
 
-// fetchResourcesOnce performs a single fetch operation without retry logic
-func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, _ ResourceType, labelSelector map[string]string) ([]Resource, error) {
-	// TODO: Update this when real spec supports different resource types
-	// For now, only clusters endpoint is defined in the spec
+// labelSelectorToSearchString converts a label selector map to search parameter string
+// Format: "key1=value1,key2=value2"
+func labelSelectorToSearchString(labelSelector map[string]string) string {
+	if len(labelSelector) == 0 {
+		return ""
+	}
 
+	var parts []string
+	for k, v := range labelSelector {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	// Sort for deterministic output in tests
+	sort.Strings(parts)
+	return strings.Join(parts, ",")
+}
+
+// fetchResourcesOnce performs a single fetch operation without retry logic
+func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, resourceType ResourceType, labelSelector map[string]string) ([]Resource, error) {
+	// Build search parameter from label selector
+	searchParam := labelSelectorToSearchString(labelSelector)
+
+	// Call appropriate endpoint based on resource type
+	switch resourceType {
+	case ResourceTypeClusters:
+		return c.fetchClusters(ctx, searchParam)
+	case ResourceTypeNodePools:
+		return c.fetchNodePools(ctx, searchParam)
+	default:
+		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)
+	}
+}
+
+// fetchClusters fetches cluster resources from the API
+func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string) ([]Resource, error) {
 	req := c.apiClient.DefaultAPI.GetClusters(ctx)
-	if len(labelSelector) > 0 {
-		// TODO: Add label selector support once API spec supports search parameter properly
-		// req = req.Search(labelSelector)
+	if searchParam != "" {
+		req = req.Search(searchParam)
 	}
 
 	resourceList, resp, err := req.Execute()
@@ -217,20 +247,17 @@ func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, _ ResourceTyp
 		}
 
 		resource := Resource{
-			ID:   id,
-			Href: href,
-			Kind: item.Kind,
-			// TODO: Consider changing internal types to int32 to match API spec
-			// Currently we use int64 internally for safety, but API returns int32
-			Generation:  int64(item.Generation),
+			ID:          id,
+			Href:        href,
+			Kind:        item.Kind,
+			Generation:  item.Generation,
 			CreatedTime: item.CreatedTime,
 			UpdatedTime: item.UpdatedTime,
 			Status: ResourceStatus{
 				Phase:              item.Status.Phase,
 				LastTransitionTime: item.Status.LastTransitionTime,
 				LastUpdated:        item.Status.LastUpdatedTime,
-				// TODO: Consider changing internal types to int32 to match API spec
-				ObservedGeneration: int64(item.Status.ObservedGeneration),
+				ObservedGeneration: item.Status.ObservedGeneration,
 			},
 		}
 
@@ -249,6 +276,104 @@ func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, _ ResourceTyp
 					LastTransitionTime: cond.LastTransitionTime,
 				}
 				// Handle optional reason and message
+				if cond.Reason != nil {
+					condition.Reason = *cond.Reason
+				}
+				if cond.Message != nil {
+					condition.Message = *cond.Message
+				}
+				resource.Status.Conditions = append(resource.Status.Conditions, condition)
+			}
+		}
+
+		resources = append(resources, resource)
+	}
+
+	return resources, nil
+}
+
+// fetchNodePools fetches nodepool resources from the API
+func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam string) ([]Resource, error) {
+	req := c.apiClient.DefaultAPI.GetNodePools(ctx)
+	if searchParam != "" {
+		req = req.Search(searchParam)
+	}
+
+	resourceList, resp, err := req.Execute()
+	if err != nil {
+		if resp != nil {
+			return nil, &APIError{
+				StatusCode: resp.StatusCode,
+				Message:    fmt.Sprintf("API request failed: %v", err),
+				Retriable:  isHTTPStatusRetriable(resp.StatusCode),
+			}
+		}
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) && urlErr.Timeout() {
+			return nil, &APIError{
+				StatusCode: 0,
+				Message:    "request timeout",
+				Retriable:  true,
+			}
+		}
+		return nil, &APIError{
+			StatusCode: 0,
+			Message:    fmt.Sprintf("network error: %v", err),
+			Retriable:  true,
+		}
+	}
+
+	if resourceList == nil {
+		return nil, &APIError{
+			StatusCode: 0,
+			Message:    "received nil response from API",
+			Retriable:  false,
+		}
+	}
+
+	// Convert NodePool items to Resource
+	resources := make([]Resource, 0, len(resourceList.Items))
+	for _, item := range resourceList.Items {
+		id := ""
+		if item.Id != nil {
+			id = *item.Id
+		}
+		href := ""
+		if item.Href != nil {
+			href = *item.Href
+		}
+		kind := "NodePool"
+		if item.Kind != nil {
+			kind = *item.Kind
+		}
+
+		resource := Resource{
+			ID:          id,
+			Href:        href,
+			Kind:        kind,
+			Generation:  0, // NodePools don't have Generation field
+			CreatedTime: item.CreatedTime,
+			UpdatedTime: item.UpdatedTime,
+			Status: ResourceStatus{
+				Phase:              item.Status.Phase,
+				LastTransitionTime: item.Status.LastTransitionTime,
+				LastUpdated:        item.Status.LastUpdatedTime,
+				ObservedGeneration: item.Status.ObservedGeneration,
+			},
+		}
+
+		if item.Labels != nil {
+			resource.Labels = *item.Labels
+		}
+
+		if len(item.Status.Conditions) > 0 {
+			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
+			for _, cond := range item.Status.Conditions {
+				condition := Condition{
+					Type:               cond.Type,
+					Status:             cond.Status,
+					LastTransitionTime: cond.LastTransitionTime,
+				}
 				if cond.Reason != nil {
 					condition.Reason = *cond.Reason
 				}
