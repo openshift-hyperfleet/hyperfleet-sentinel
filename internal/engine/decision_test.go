@@ -16,7 +16,7 @@ func newTestResource(id, kind, phase string, lastUpdated time.Time) *client.Reso
 	return &client.Resource{
 		ID:          id,
 		Kind:        kind,
-		Generation:  1, // Default generation
+		Generation:  1,                              // Default generation
 		CreatedTime: time.Now().Add(-1 * time.Hour), // Default: created 1 hour ago
 		Status: client.ResourceStatus{
 			Phase:              phase,
@@ -107,13 +107,13 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 	engine := newTestEngine()
 
 	tests := []struct {
-		name                string
-		resourcePhase       string
-		lastUpdated         time.Time
-		now                 time.Time
-		wantShouldPublish   bool
-		wantReasonContains  string
-		description         string
+		name               string
+		resourcePhase      string
+		lastUpdated        time.Time
+		now                time.Time
+		wantShouldPublish  bool
+		wantReasonContains string
+		description        string
 	}{
 		// Zero LastUpdated tests - should fall back to created_time
 		// These tests use the test factory default (created 1 hour ago)
@@ -433,10 +433,10 @@ func TestDecisionEngine_Evaluate_CaseInsensitivePhase(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name          string
-		phase         string
-		wantMaxAge    time.Duration
-		description   string
+		name        string
+		phase       string
+		wantMaxAge  time.Duration
+		description string
 	}{
 		{
 			name:        "Ready - exact case",
@@ -557,7 +557,7 @@ func TestDecisionEngine_Evaluate_CreatedTimeFallback(t *testing.T) {
 		},
 		{
 			name:               "non-zero lastUpdated - should ignore created_time",
-			createdTime:        now.Add(-1 * time.Hour), // Created long ago
+			createdTime:        now.Add(-1 * time.Hour),   // Created long ago
 			lastUpdated:        now.Add(-5 * time.Second), // Updated recently
 			phase:              "Pending",
 			wantShouldPublish:  false,
@@ -589,14 +589,14 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name                string
-		generation          int64
-		observedGeneration  int64
-		phase               string
-		lastUpdated         time.Time
-		wantShouldPublish   bool
-		wantReasonContains  string
-		description         string
+		name               string
+		generation         int64
+		observedGeneration int64
+		phase              string
+		lastUpdated        time.Time
+		wantShouldPublish  bool
+		wantReasonContains string
+		description        string
 	}{
 		// Generation mismatch tests - should publish immediately
 		{
@@ -728,4 +728,3 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 		})
 	}
 }
-

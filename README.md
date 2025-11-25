@@ -23,7 +23,11 @@ HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, make
    make generate
    ```
 
-   The OpenAPI client code is generated from `openapi/openapi.yaml` and placed in `pkg/api/openapi/`. These generated files are **not committed** to git and must be regenerated locally.
+   This will:
+   - Download the official OpenAPI spec from [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) (v1.0.0)
+   - Generate Go client code in `pkg/api/openapi/`
+
+   Both the downloaded spec and generated client code are **not committed** to git and must be regenerated locally.
 
 3. **Download dependencies**:
    ```bash
@@ -52,7 +56,14 @@ HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, make
 
 ### OpenAPI Client Generation
 
-This project follows the [rh-trex](https://github.com/openshift-online/rh-trex) pattern for OpenAPI client generation. The client is generated using Docker/Podman to ensure consistency across development environments.
+This project follows the [rh-trex](https://github.com/openshift-online/rh-trex) pattern for OpenAPI client generation. The OpenAPI specification is automatically downloaded from the official [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) repository during `make generate`.
+
+The client is generated using Docker/Podman to ensure consistency across development environments.
+
+To use a different spec version:
+```bash
+make generate OPENAPI_SPEC_VERSION=v1.1.0
+```
 
 For detailed information about OpenAPI client generation, see [openapi/README.md](openapi/README.md).
 

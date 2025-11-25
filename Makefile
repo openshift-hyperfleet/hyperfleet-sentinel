@@ -25,15 +25,24 @@ help: ## Display this help
 
 ##@ Code Generation
 
+# OpenAPI spec version to fetch from hyperfleet-api-spec repository
+OPENAPI_SPEC_VERSION ?= v1.0.0
+OPENAPI_SPEC_URL = https://github.com/openshift-hyperfleet/hyperfleet-api-spec/releases/download/$(OPENAPI_SPEC_VERSION)/core-openapi.yaml
+
 .PHONY: generate
 generate: ## Generate OpenAPI client from HyperFleet API spec
+	@echo "Fetching OpenAPI spec from hyperfleet-api-spec $(OPENAPI_SPEC_VERSION)..."
+	@mkdir -p openapi
+	@curl -sSL -o openapi/openapi.yaml "$(OPENAPI_SPEC_URL)" || \
+		(echo "Failed to download OpenAPI spec from $(OPENAPI_SPEC_URL)" && exit 1)
+	@echo "OpenAPI spec downloaded successfully"
 	@echo "Generating OpenAPI client..."
 	@rm -rf pkg/api/openapi
 	$(CONTAINER_TOOL) build -t hyperfleet-sentinel-openapi -f Dockerfile.openapi .
 	@OPENAPI_IMAGE_ID=$$($(CONTAINER_TOOL) create hyperfleet-sentinel-openapi) && \
 		$(CONTAINER_TOOL) cp $$OPENAPI_IMAGE_ID:/local/pkg/api/openapi ./pkg/api/openapi && \
 		$(CONTAINER_TOOL) rm $$OPENAPI_IMAGE_ID
-	@echo "✅ OpenAPI client generated successfully"
+	@echo "OpenAPI client generated successfully"
 
 ##@ Development
 

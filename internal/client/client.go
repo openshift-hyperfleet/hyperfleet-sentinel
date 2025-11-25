@@ -77,9 +77,9 @@ type Resource struct {
 // ResourceStatus represents the status of a resource
 type ResourceStatus struct {
 	Phase              string      `json:"phase"`
-	LastTransitionTime time.Time   `json:"lastTransitionTime"`   // Updates only when status.phase changes
-	LastUpdated        time.Time   `json:"lastUpdated"`          // Updates every time an adapter checks the resource
-	ObservedGeneration int64       `json:"observedGeneration"`   // The generation last processed by the adapter
+	LastTransitionTime time.Time   `json:"lastTransitionTime"` // Updates only when status.phase changes
+	LastUpdated        time.Time   `json:"lastUpdated"`        // Updates every time an adapter checks the resource
+	ObservedGeneration int64       `json:"observedGeneration"` // The generation last processed by the adapter
 	Conditions         []Condition `json:"conditions,omitempty"`
 }
 
@@ -160,11 +160,12 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 // fetchResourcesOnce performs a single fetch operation without retry logic
 func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, _ ResourceType, labelSelector map[string]string) ([]Resource, error) {
 	// TODO: Update this when real spec supports different resource types
-	// For now, only clusters endpoint is defined in the placeholder spec
+	// For now, only clusters endpoint is defined in the spec
 
-	req := c.apiClient.DefaultAPI.ListClusters(ctx)
+	req := c.apiClient.DefaultAPI.GetClusters(ctx)
 	if len(labelSelector) > 0 {
-		req = req.Labels(labelSelector)
+		// TODO: Add label selector support once API spec supports search parameter properly
+		// req = req.Search(labelSelector)
 	}
 
 	resourceList, resp, err := req.Execute()
@@ -205,43 +206,56 @@ func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, _ ResourceTyp
 	// Convert OpenAPI models to internal models
 	resources := make([]Resource, 0, len(resourceList.Items))
 	for _, item := range resourceList.Items {
-		// Skip resources with nil status (graceful degradation)
-		// This can happen if a resource is being provisioned or deleted.
-		// We log a warning but continue processing other resources to maintain
-		// service availability rather than failing the entire fetch operation.
-		if item.Status == nil {
-			glog.Warningf("Skipping resource %s (kind: %s): nil status", item.GetId(), item.GetKind())
-			continue
+		// Get ID and Kind with defaults for optional pointer fields
+		id := ""
+		if item.Id != nil {
+			id = *item.Id
+		}
+		href := ""
+		if item.Href != nil {
+			href = *item.Href
 		}
 
 		resource := Resource{
-			ID:         item.GetId(),
-			Href:       item.GetHref(),
-			Kind:       item.GetKind(),
-			Generation: item.GetGeneration(),
-			Labels:     item.GetLabels(),
+			ID:   id,
+			Href: href,
+			Kind: item.Kind,
+			// TODO: Consider changing internal types to int32 to match API spec
+			// Currently we use int64 internally for safety, but API returns int32
+			Generation:  int64(item.Generation),
+			CreatedTime: item.CreatedTime,
+			UpdatedTime: item.UpdatedTime,
 			Status: ResourceStatus{
-				Phase:              item.Status.GetPhase(),
-				LastTransitionTime: item.Status.GetLastTransitionTime(),
-				LastUpdated:        item.Status.GetLastUpdated(),
-				// TODO(HYPERFLEET-117): Remove this cast once client is updated to use int32
-			// The upstream API returns int32 but we maintain int64 internally for safety
-			ObservedGeneration: int64(item.Status.GetObservedGeneration()),
+				Phase:              item.Status.Phase,
+				LastTransitionTime: item.Status.LastTransitionTime,
+				LastUpdated:        item.Status.LastUpdatedTime,
+				// TODO: Consider changing internal types to int32 to match API spec
+				ObservedGeneration: int64(item.Status.ObservedGeneration),
 			},
-			Metadata: item.GetMetadata(),
+		}
+
+		// Handle optional labels
+		if item.Labels != nil {
+			resource.Labels = *item.Labels
 		}
 
 		// Convert conditions
-		if conditions := item.Status.GetConditions(); len(conditions) > 0 {
-			resource.Status.Conditions = make([]Condition, 0, len(conditions))
-			for _, cond := range conditions {
-				resource.Status.Conditions = append(resource.Status.Conditions, Condition{
-					Type:               cond.GetType(),
-					Status:             cond.GetStatus(),
-					LastTransitionTime: cond.GetLastTransitionTime(),
-					Reason:             cond.GetReason(),
-					Message:            cond.GetMessage(),
-				})
+		if len(item.Status.Conditions) > 0 {
+			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
+			for _, cond := range item.Status.Conditions {
+				condition := Condition{
+					Type:               cond.Type,
+					Status:             cond.Status,
+					LastTransitionTime: cond.LastTransitionTime,
+				}
+				// Handle optional reason and message
+				if cond.Reason != nil {
+					condition.Reason = *cond.Reason
+				}
+				if cond.Message != nil {
+					condition.Message = *cond.Message
+				}
+				resource.Status.Conditions = append(resource.Status.Conditions, condition)
 			}
 		}
 
