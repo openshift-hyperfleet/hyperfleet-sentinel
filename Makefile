@@ -25,13 +25,13 @@ help: ## Display this help
 
 ##@ Code Generation
 
-# OpenAPI spec version to fetch from hyperfleet-api-spec repository
-OPENAPI_SPEC_VERSION ?= v1.0.0
-OPENAPI_SPEC_URL = https://github.com/openshift-hyperfleet/hyperfleet-api-spec/releases/download/$(OPENAPI_SPEC_VERSION)/core-openapi.yaml
+# OpenAPI spec configuration from hyperfleet-api repository
+OPENAPI_SPEC_REF ?= main
+OPENAPI_SPEC_URL = https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/$(OPENAPI_SPEC_REF)/openapi/openapi.yaml
 
 .PHONY: generate
 generate: ## Generate OpenAPI client from HyperFleet API spec
-	@echo "Fetching OpenAPI spec from hyperfleet-api-spec $(OPENAPI_SPEC_VERSION)..."
+	@echo "Fetching OpenAPI spec from hyperfleet-api (ref: $(OPENAPI_SPEC_REF))..."
 	@mkdir -p openapi
 	@curl -sSL -o openapi/openapi.yaml "$(OPENAPI_SPEC_URL)" || \
 		(echo "Failed to download OpenAPI spec from $(OPENAPI_SPEC_URL)" && exit 1)

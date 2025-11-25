@@ -1,13 +1,13 @@
 # OpenAPI Specification
 
-This directory contains the OpenAPI specification for the HyperFleet API, fetched from the official [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) repository.
+This directory contains the OpenAPI specification for the HyperFleet API, fetched from the official [hyperfleet-api](https://github.com/openshift-hyperfleet/hyperfleet-api) repository.
 
 ## OpenAPI Spec Source
 
 The `openapi.yaml` file is **automatically downloaded** during `make generate` from:
-- **Repository**: https://github.com/openshift-hyperfleet/hyperfleet-api-spec
-- **Version**: Controlled by `OPENAPI_SPEC_VERSION` in Makefile (default: v1.0.0)
-- **File**: `core-openapi.yaml` from the release
+- **Repository**: https://github.com/openshift-hyperfleet/hyperfleet-api
+- **Default ref**: main (configurable via `OPENAPI_SPEC_REF`)
+- **File**: `openapi/openapi.yaml`
 
 **Important**: The `openapi.yaml` file is **NOT committed** to git. It is downloaded fresh on every `make generate` to ensure you're always using the official specification.
 
@@ -20,28 +20,31 @@ make generate
 ```
 
 This will:
-1. Download `core-openapi.yaml` from hyperfleet-api-spec v1.0.0 release
+1. Download `openapi.yaml` from hyperfleet-api (main branch by default)
 2. Generate Go client code in `pkg/api/openapi/`
 3. Format the generated code
 
 **Important**: Generated files in `pkg/api/openapi/` are also **NOT committed** to git. They must be regenerated locally during development.
 
-## Using a Different Spec Version
+## Using a Different Branch or Tag
 
-To use a different version of the hyperfleet-api-spec:
+To use a specific branch or tag:
 
 ```bash
-# Use a specific version
-make generate OPENAPI_SPEC_VERSION=v1.1.0
+# Use a specific tag
+make generate OPENAPI_SPEC_REF=v1.0.0
 
-# Use the latest release
-make generate OPENAPI_SPEC_VERSION=latest
+# Use a different branch
+make generate OPENAPI_SPEC_REF=develop
+
+# Use a commit SHA
+make generate OPENAPI_SPEC_REF=abc123
 ```
 
-You can also set the version in your environment:
+You can also set it as an environment variable:
 
 ```bash
-export OPENAPI_SPEC_VERSION=v1.1.0
+export OPENAPI_SPEC_REF=v1.0.0
 make generate
 ```
 
@@ -57,9 +60,10 @@ The generator configuration follows the same pattern as [rh-trex](https://github
 
 ## Updating the Client
 
-When the hyperfleet-api-spec repository releases a new version:
+When the hyperfleet-api repository is updated:
 
-1. Update `OPENAPI_SPEC_VERSION` in the Makefile (or use the environment variable)
-2. Run `make generate` to download the new spec and regenerate the client
-3. Update `internal/client/client.go` wrapper if needed to support new endpoints/models
-4. Run tests to ensure compatibility: `make test`
+1. Run `make generate` (or `make generate OPENAPI_SPEC_REF=<ref>`) to download the spec and regenerate the client
+2. Update `internal/client/client.go` wrapper if needed to support new endpoints/models
+3. Run tests to ensure compatibility: `make test`
+
+By default, the spec is fetched from the main branch. Use `OPENAPI_SPEC_REF` to pin to a specific version.

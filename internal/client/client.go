@@ -251,12 +251,12 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 			Href:        href,
 			Kind:        item.Kind,
 			Generation:  item.Generation,
-			CreatedTime: item.CreatedTime,
-			UpdatedTime: item.UpdatedTime,
+			CreatedTime: item.CreatedAt,
+			UpdatedTime: item.UpdatedAt,
 			Status: ResourceStatus{
 				Phase:              item.Status.Phase,
 				LastTransitionTime: item.Status.LastTransitionTime,
-				LastUpdated:        item.Status.LastUpdatedTime,
+				LastUpdated:        item.Status.UpdatedAt,
 				ObservedGeneration: item.Status.ObservedGeneration,
 			},
 		}
@@ -266,21 +266,21 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 			resource.Labels = *item.Labels
 		}
 
-		// Convert conditions
-		if len(item.Status.Conditions) > 0 {
-			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
-			for _, cond := range item.Status.Conditions {
+		// Convert adapters to conditions for backward compatibility
+		if len(item.Status.Adapters) > 0 {
+			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Adapters))
+			for _, adapter := range item.Status.Adapters {
 				condition := Condition{
-					Type:               cond.Type,
-					Status:             cond.Status,
-					LastTransitionTime: cond.LastTransitionTime,
+					Type:               adapter.Type,
+					Status:             adapter.Status,
+					LastTransitionTime: adapter.UpdatedAt,
 				}
 				// Handle optional reason and message
-				if cond.Reason != nil {
-					condition.Reason = *cond.Reason
+				if adapter.Reason != nil {
+					condition.Reason = *adapter.Reason
 				}
-				if cond.Message != nil {
-					condition.Message = *cond.Message
+				if adapter.Message != nil {
+					condition.Message = *adapter.Message
 				}
 				resource.Status.Conditions = append(resource.Status.Conditions, condition)
 			}
@@ -352,12 +352,12 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 			Href:        href,
 			Kind:        kind,
 			Generation:  0, // NodePools don't have Generation field
-			CreatedTime: item.CreatedTime,
-			UpdatedTime: item.UpdatedTime,
+			CreatedTime: item.CreatedAt,
+			UpdatedTime: item.UpdatedAt,
 			Status: ResourceStatus{
 				Phase:              item.Status.Phase,
 				LastTransitionTime: item.Status.LastTransitionTime,
-				LastUpdated:        item.Status.LastUpdatedTime,
+				LastUpdated:        item.Status.UpdatedAt,
 				ObservedGeneration: item.Status.ObservedGeneration,
 			},
 		}
@@ -366,19 +366,20 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 			resource.Labels = *item.Labels
 		}
 
-		if len(item.Status.Conditions) > 0 {
-			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
-			for _, cond := range item.Status.Conditions {
+		// Convert adapters to conditions for backward compatibility
+		if len(item.Status.Adapters) > 0 {
+			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Adapters))
+			for _, adapter := range item.Status.Adapters {
 				condition := Condition{
-					Type:               cond.Type,
-					Status:             cond.Status,
-					LastTransitionTime: cond.LastTransitionTime,
+					Type:               adapter.Type,
+					Status:             adapter.Status,
+					LastTransitionTime: adapter.UpdatedAt,
 				}
-				if cond.Reason != nil {
-					condition.Reason = *cond.Reason
+				if adapter.Reason != nil {
+					condition.Reason = *adapter.Reason
 				}
-				if cond.Message != nil {
-					condition.Message = *cond.Message
+				if adapter.Message != nil {
+					condition.Message = *adapter.Message
 				}
 				resource.Status.Conditions = append(resource.Status.Conditions, condition)
 			}

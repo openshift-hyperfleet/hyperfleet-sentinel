@@ -16,25 +16,25 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
-// createMockCluster creates a mock cluster response matching v1.0.0 spec
+// createMockCluster creates a mock cluster response matching main branch spec
 func createMockCluster(id string, generation int, observedGeneration int, phase string, lastUpdated time.Time) map[string]interface{} {
 	return map[string]interface{}{
-		"id":           id,
-		"href":         "/api/hyperfleet/v1/clusters/" + id,
-		"kind":         "Cluster",
-		"name":         id,
-		"generation":   generation,
-		"created_time": "2025-01-01T09:00:00Z",
-		"updated_time": "2025-01-01T10:00:00Z",
-		"created_by":   "test-user",
-		"updated_by":   "test-user",
-		"spec":         map[string]interface{}{},
+		"id":         id,
+		"href":       "/api/hyperfleet/v1/clusters/" + id,
+		"kind":       "Cluster",
+		"name":       id,
+		"generation": generation,
+		"created_at": "2025-01-01T09:00:00Z",
+		"updated_at": "2025-01-01T10:00:00Z",
+		"created_by": "test-user",
+		"updated_by": "test-user",
+		"spec":       map[string]interface{}{},
 		"status": map[string]interface{}{
 			"phase":                phase,
 			"last_transition_time": "2025-01-01T10:00:00Z",
-			"last_updated_time":    lastUpdated.Format(time.RFC3339),
+			"updated_at":           lastUpdated.Format(time.RFC3339),
 			"observed_generation":  observedGeneration,
-			"conditions":           []interface{}{},
+			"adapters":             []interface{}{},
 		},
 	}
 }
