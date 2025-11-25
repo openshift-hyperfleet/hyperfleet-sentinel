@@ -38,6 +38,7 @@ generate: ## Generate OpenAPI client from HyperFleet API spec
 	@echo "OpenAPI spec downloaded successfully"
 	@echo "Generating OpenAPI client..."
 	@rm -rf pkg/api/openapi
+	@mkdir -p pkg/api
 	$(CONTAINER_TOOL) build -t hyperfleet-sentinel-openapi -f Dockerfile.openapi .
 	@OPENAPI_IMAGE_ID=$$($(CONTAINER_TOOL) create hyperfleet-sentinel-openapi) && \
 		$(CONTAINER_TOOL) cp $$OPENAPI_IMAGE_ID:/local/pkg/api/openapi ./pkg/api/openapi && \
