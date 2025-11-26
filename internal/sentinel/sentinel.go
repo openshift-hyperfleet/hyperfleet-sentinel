@@ -23,7 +23,6 @@ type Sentinel struct {
 	decisionEngine *engine.DecisionEngine
 	publisher      broker.Publisher
 	logger         logger.HyperFleetLogger
-	metrics        *metrics.SentinelMetrics
 }
 
 // NewSentinel creates a new sentinel
@@ -34,7 +33,6 @@ func NewSentinel(
 	decisionEngine *engine.DecisionEngine,
 	pub broker.Publisher,
 	log logger.HyperFleetLogger,
-	m *metrics.SentinelMetrics,
 ) *Sentinel {
 	return &Sentinel{
 		ctx:            ctx,
@@ -43,7 +41,6 @@ func NewSentinel(
 		decisionEngine: decisionEngine,
 		publisher:      pub,
 		logger:         log,
-		metrics:        m,
 	}
 }
 

@@ -124,9 +124,9 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger(ctx)
 
-	// Create metrics with a test registry
+	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
-	m := metrics.NewSentinelMetrics(registry)
+	metrics.NewSentinelMetrics(registry)
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
@@ -135,7 +135,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log, m)
+	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Run Sentinel in background
 	errChan := make(chan error, 1)
@@ -247,9 +247,9 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger(ctx)
 
-	// Create metrics with a test registry
+	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
-	m := metrics.NewSentinelMetrics(registry)
+	metrics.NewSentinelMetrics(registry)
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
@@ -261,7 +261,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		},
 	}
 
-	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log, m)
+	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Run sentinel in goroutine and capture error
 	errChan := make(chan error, 1)

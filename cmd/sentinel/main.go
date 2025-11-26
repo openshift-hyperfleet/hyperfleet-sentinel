@@ -77,7 +77,8 @@ func runServe(cfg *config.SentinelConfig) error {
 
 	// Initialize Prometheus metrics registry
 	registry := prometheus.NewRegistry()
-	m := metrics.NewSentinelMetrics(registry)
+	// Register metrics once (uses sync.Once internally)
+	metrics.NewSentinelMetrics(registry)
 
 	// Initialize components
 	hyperfleetClient := client.NewHyperFleetClient(cfg.HyperFleetAPI.Endpoint, cfg.HyperFleetAPI.Timeout)
@@ -99,7 +100,7 @@ func runServe(cfg *config.SentinelConfig) error {
 	defer cancel()
 
 	// Initialize sentinel with context for proper cancellation
-	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, pub, log, m)
+	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, pub, log)
 
 	// Start metrics and health HTTP server
 	mux := http.NewServeMux()

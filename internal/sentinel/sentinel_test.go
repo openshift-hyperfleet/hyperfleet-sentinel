@@ -92,9 +92,9 @@ func TestTrigger_Success(t *testing.T) {
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger(ctx)
 
-	// Create metrics with a test registry
+	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
-	m := metrics.NewSentinelMetrics(registry)
+	metrics.NewSentinelMetrics(registry)
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
@@ -102,7 +102,7 @@ func TestTrigger_Success(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log, m)
+	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Execute
 	err := s.trigger(ctx)
@@ -157,9 +157,9 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger(ctx)
 
-	// Create metrics with a test registry
+	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
-	m := metrics.NewSentinelMetrics(registry)
+	metrics.NewSentinelMetrics(registry)
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
@@ -167,7 +167,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log, m)
+	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Execute
 	err := s.trigger(ctx)
@@ -199,9 +199,9 @@ func TestTrigger_FetchError(t *testing.T) {
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger(ctx)
 
-	// Create metrics with a test registry
+	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
-	m := metrics.NewSentinelMetrics(registry)
+	metrics.NewSentinelMetrics(registry)
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
@@ -209,7 +209,7 @@ func TestTrigger_FetchError(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log, m)
+	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Execute
 	err := s.trigger(ctx)
@@ -245,9 +245,9 @@ func TestTrigger_PublishError(t *testing.T) {
 	}
 	log := logger.NewHyperFleetLogger(ctx)
 
-	// Create metrics with a test registry
+	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
-	m := metrics.NewSentinelMetrics(registry)
+	metrics.NewSentinelMetrics(registry)
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
@@ -255,7 +255,7 @@ func TestTrigger_PublishError(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log, m)
+	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Execute
 	err := s.trigger(ctx)
@@ -291,9 +291,9 @@ func TestTrigger_MixedResources(t *testing.T) {
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger(ctx)
 
-	// Create metrics with a test registry
+	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
-	m := metrics.NewSentinelMetrics(registry)
+	metrics.NewSentinelMetrics(registry)
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
@@ -301,7 +301,7 @@ func TestTrigger_MixedResources(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log, m)
+	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Execute
 	err := s.trigger(ctx)
