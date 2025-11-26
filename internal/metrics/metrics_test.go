@@ -37,9 +37,6 @@ func TestNewSentinelMetrics(t *testing.T) {
 	if m.BrokerErrors == nil {
 		t.Error("Expected BrokerErrors to be initialized")
 	}
-	if m.ConfigLoads == nil {
-		t.Error("Expected ConfigLoads to be initialized")
-	}
 }
 
 func TestNewSentinelMetrics_MultipleCallsNoPanic(t *testing.T) {
@@ -255,46 +252,6 @@ func TestUpdateBrokerErrorsMetric(t *testing.T) {
 	}
 }
 
-func TestUpdateConfigLoadsMetric(t *testing.T) {
-	ResetSentinelMetrics()
-
-	tests := []struct {
-		name         string
-		status       string
-		expectUpdate bool
-	}{
-		{
-			name:         "success status",
-			status:       "success",
-			expectUpdate: true,
-		},
-		{
-			name:         "failure status",
-			status:       "failure",
-			expectUpdate: true,
-		},
-		{
-			name:         "empty status ignored",
-			status:       "",
-			expectUpdate: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ResetSentinelMetrics()
-			UpdateConfigLoadsMetric(tt.status)
-
-			if tt.expectUpdate {
-				count := testutil.CollectAndCount(configLoadsCounter)
-				if count == 0 {
-					t.Error("Expected ConfigLoads metric to be collected")
-				}
-			}
-		})
-	}
-}
-
 func TestGetResourceSelectorLabel(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -389,15 +346,11 @@ func TestMetricsLabelsConstants(t *testing.T) {
 	if len(MetricsLabelsWithErrorType) != 3 {
 		t.Errorf("Expected MetricsLabelsWithErrorType to have 3 elements, got %d", len(MetricsLabelsWithErrorType))
 	}
-
-	if len(MetricsLabelsConfigLoads) != 1 {
-		t.Errorf("Expected MetricsLabelsConfigLoads to have 1 element, got %d", len(MetricsLabelsConfigLoads))
-	}
 }
 
 func TestMetricsNamesConstants(t *testing.T) {
 	// Verify all metric names are in the MetricsNames array
-	expectedCount := 7
+	expectedCount := 6
 	if len(MetricsNames) != expectedCount {
 		t.Errorf("Expected %d metric names, got %d", expectedCount, len(MetricsNames))
 	}

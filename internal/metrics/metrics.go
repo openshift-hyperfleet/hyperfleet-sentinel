@@ -40,20 +40,14 @@ var MetricsLabelsWithErrorType = []string{
 	metricsErrorTypeLabel,
 }
 
-// MetricsLabelsConfigLoads - Array of labels for config loads metric
-var MetricsLabelsConfigLoads = []string{
-	metricsStatusLabel,
-}
-
 // Names of the metrics
 const (
-	pendingResourcesMetric    = "pending_resources"
-	eventsPublishedMetric     = "events_published_total"
-	resourcesSkippedMetric    = "resources_skipped_total"
-	pollDurationMetric        = "poll_duration_seconds"
-	apiErrorsMetric           = "api_errors_total"
-	brokerErrorsMetric        = "broker_errors_total"
-	configLoadsMetric         = "config_loads_total"
+	pendingResourcesMetric = "pending_resources"
+	eventsPublishedMetric  = "events_published_total"
+	resourcesSkippedMetric = "resources_skipped_total"
+	pollDurationMetric     = "poll_duration_seconds"
+	apiErrorsMetric        = "api_errors_total"
+	brokerErrorsMetric     = "broker_errors_total"
 )
 
 // MetricsNames - Array of names of the metrics
@@ -64,7 +58,6 @@ var MetricsNames = []string{
 	pollDurationMetric,
 	apiErrorsMetric,
 	brokerErrorsMetric,
-	configLoadsMetric,
 }
 
 // Description of the pending resources metric
@@ -128,16 +121,6 @@ var brokerErrorsCounter = prometheus.NewCounterVec(
 	MetricsLabelsWithErrorType,
 )
 
-// Description of the config loads metric
-var configLoadsCounter = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Subsystem: metricsSubsystem,
-		Name:      configLoadsMetric,
-		Help:      "Total number of configuration load attempts",
-	},
-	MetricsLabelsConfigLoads,
-)
-
 // SentinelMetrics holds all Prometheus metrics for the Sentinel service
 type SentinelMetrics struct {
 	// PendingResources tracks the number of resources pending reconciliation
@@ -157,9 +140,6 @@ type SentinelMetrics struct {
 
 	// BrokerErrors tracks errors when publishing to the message broker
 	BrokerErrors *prometheus.CounterVec
-
-	// ConfigLoads tracks configuration load attempts
-	ConfigLoads *prometheus.CounterVec
 }
 
 var (
@@ -183,7 +163,6 @@ func NewSentinelMetrics(registry prometheus.Registerer) *SentinelMetrics {
 		registry.MustRegister(pollDurationHistogram)
 		registry.MustRegister(apiErrorsCounter)
 		registry.MustRegister(brokerErrorsCounter)
-		registry.MustRegister(configLoadsCounter)
 
 		metricsInstance = &SentinelMetrics{
 			PendingResources: pendingResourcesGauge,
@@ -192,7 +171,6 @@ func NewSentinelMetrics(registry prometheus.Registerer) *SentinelMetrics {
 			PollDuration:     pollDurationHistogram,
 			APIErrors:        apiErrorsCounter,
 			BrokerErrors:     brokerErrorsCounter,
-			ConfigLoads:      configLoadsCounter,
 		}
 	})
 
@@ -214,7 +192,6 @@ func ResetSentinelMetrics() {
 	pollDurationHistogram.Reset()
 	apiErrorsCounter.Reset()
 	brokerErrorsCounter.Reset()
-	configLoadsCounter.Reset()
 }
 
 // UpdatePendingResourcesMetric sets the current number of resources pending reconciliation.
@@ -384,29 +361,6 @@ func UpdateBrokerErrorsMetric(resourceType, resourceSelector, errorType string) 
 		metricsErrorTypeLabel:        errorType,
 	}
 	brokerErrorsCounter.With(labels).Inc()
-}
-
-// UpdateConfigLoadsMetric increments the counter of configuration load attempts.
-//
-// Tracks both successful and failed configuration loads at startup, useful for
-// diagnosing configuration issues and monitoring service restarts.
-//
-// Parameters:
-//   - status: Load status ("success" or "failure")
-//
-// Thread-safe: Can be called concurrently from multiple goroutines.
-//
-// Validation: Empty status is silently ignored.
-func UpdateConfigLoadsMetric(status string) {
-	// Validate inputs
-	if status == "" {
-		return
-	}
-
-	labels := prometheus.Labels{
-		metricsStatusLabel: status,
-	}
-	configLoadsCounter.With(labels).Inc()
 }
 
 // GetResourceSelectorLabel converts resource selector to a single label value.

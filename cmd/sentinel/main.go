@@ -79,9 +79,6 @@ func runServe(cfg *config.SentinelConfig) error {
 	registry := prometheus.NewRegistry()
 	m := metrics.NewSentinelMetrics(registry)
 
-	// Record successful config load
-	metrics.UpdateConfigLoadsMetric("success")
-
 	// Initialize components
 	hyperfleetClient := client.NewHyperFleetClient(cfg.HyperFleetAPI.Endpoint, cfg.HyperFleetAPI.Timeout)
 	decisionEngine := engine.NewDecisionEngine(cfg.MaxAgeNotReady, cfg.MaxAgeReady)
