@@ -1,26 +1,52 @@
 # OpenAPI Specification
 
-This directory contains the OpenAPI specification for the HyperFleet API.
+This directory contains the OpenAPI specification for the HyperFleet API, fetched from the official [hyperfleet-api](https://github.com/openshift-hyperfleet/hyperfleet-api) repository.
 
-## Current Status
+## OpenAPI Spec Source
 
-The file `openapi.yaml` is currently a **placeholder** with a minimal schema. It will be replaced with the actual HyperFleet API specification when available.
+The `openapi.yaml` file is **automatically downloaded** during `make generate` from:
+- **Repository**: https://github.com/openshift-hyperfleet/hyperfleet-api
+- **Default ref**: main (configurable via `OPENAPI_SPEC_REF`)
+- **File**: `openapi/openapi.yaml`
 
-The codebase currently uses the OpenAPI-generated client through a wrapper in `internal/client/client.go`.
+**Important**: The `openapi.yaml` file is **NOT committed** to git. It is downloaded fresh on every `make generate` to ensure you're always using the official specification.
 
 ## Generating the Client
 
-When you update the OpenAPI spec:
+To generate the Go client from the latest OpenAPI spec:
 
-1. Edit `openapi.yaml` with new/updated spec
-2. Run the generator:
-   ```bash
-   make generate
-   ```
-3. The generated client will be updated in `pkg/api/openapi/`
-4. Update `internal/client/client.go` wrapper if needed to support new endpoints/models
+```bash
+make generate
+```
 
-**Important**: Generated files in `pkg/api/openapi/` are **NOT committed** to git. They are excluded via `.gitignore` and must be regenerated locally during development.
+This will:
+1. Download `openapi.yaml` from hyperfleet-api (main branch by default)
+2. Generate Go client code in `pkg/api/openapi/`
+3. Format the generated code
+
+**Important**: Generated files in `pkg/api/openapi/` are also **NOT committed** to git. They must be regenerated locally during development.
+
+## Using a Different Branch or Tag
+
+To use a specific branch or tag:
+
+```bash
+# Use a specific tag
+make generate OPENAPI_SPEC_REF=v1.0.0
+
+# Use a different branch
+make generate OPENAPI_SPEC_REF=develop
+
+# Use a commit SHA
+make generate OPENAPI_SPEC_REF=abc123
+```
+
+You can also set it as an environment variable:
+
+```bash
+export OPENAPI_SPEC_REF=v1.0.0
+make generate
+```
 
 ## Generator Details
 
@@ -32,20 +58,12 @@ When you update the OpenAPI spec:
 
 The generator configuration follows the same pattern as [rh-trex](https://github.com/openshift-online/rh-trex).
 
-### Alternative: Direct Docker/Podman Commands
+## Updating the Client
 
-If you prefer to run the generation manually without `make`:
+When the hyperfleet-api repository is updated:
 
-```bash
-# Using Docker
-docker build -t hyperfleet-sentinel-openapi -f Dockerfile.openapi .
-OPENAPI_IMAGE_ID=$(docker create hyperfleet-sentinel-openapi)
-docker cp $OPENAPI_IMAGE_ID:/local/pkg/api/openapi ./pkg/api/openapi
-docker rm $OPENAPI_IMAGE_ID
+1. Run `make generate` (or `make generate OPENAPI_SPEC_REF=<ref>`) to download the spec and regenerate the client
+2. Update `internal/client/client.go` wrapper if needed to support new endpoints/models
+3. Run tests to ensure compatibility: `make test`
 
-# Using Podman
-podman build -t hyperfleet-sentinel-openapi -f Dockerfile.openapi .
-OPENAPI_IMAGE_ID=$(podman create hyperfleet-sentinel-openapi)
-podman cp $OPENAPI_IMAGE_ID:/local/pkg/api/openapi ./pkg/api/openapi
-podman rm $OPENAPI_IMAGE_ID
-```
+By default, the spec is fetched from the main branch. Use `OPENAPI_SPEC_REF` to pin to a specific version.

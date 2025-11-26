@@ -16,6 +16,40 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
+// createMockCluster creates a mock cluster response matching main branch spec
+func createMockCluster(id string, generation int, observedGeneration int, phase string, lastUpdated time.Time) map[string]interface{} {
+	return map[string]interface{}{
+		"id":         id,
+		"href":       "/api/hyperfleet/v1/clusters/" + id,
+		"kind":       "Cluster",
+		"name":       id,
+		"generation": generation,
+		"created_at": "2025-01-01T09:00:00Z",
+		"updated_at": "2025-01-01T10:00:00Z",
+		"created_by": "test-user",
+		"updated_by": "test-user",
+		"spec":       map[string]interface{}{},
+		"status": map[string]interface{}{
+			"phase":                phase,
+			"last_transition_time": "2025-01-01T10:00:00Z",
+			"updated_at":           lastUpdated.Format(time.RFC3339),
+			"observed_generation":  observedGeneration,
+			"adapters":             []interface{}{},
+		},
+	}
+}
+
+// createMockClusterList creates a mock ClusterList response
+func createMockClusterList(clusters []map[string]interface{}) map[string]interface{} {
+	return map[string]interface{}{
+		"kind":  "ClusterList",
+		"page":  1,
+		"size":  len(clusters),
+		"total": len(clusters),
+		"items": clusters,
+	}
+}
+
 // MockPublisher implements broker.Publisher for testing
 type MockPublisher struct {
 	publishedEvents []*cloudevents.Event
@@ -42,23 +76,9 @@ func TestTrigger_Success(t *testing.T) {
 
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]interface{}{
-			"items": []map[string]interface{}{
-				{
-					"id":   "cluster-1",
-					"href": "/api/hyperfleet/v1/clusters/cluster-1",
-					"kind": "Cluster",
-					"generation": 2,
-					"status": map[string]interface{}{
-						"phase":              "Ready",
-						"lastTransitionTime": "2025-01-01T10:00:00Z",
-						"lastUpdated":        time.Now().Add(-31 * time.Minute).Format(time.RFC3339), // Exceeds max age
-						"observedGeneration": 2,
-					},
-				},
-			},
-			"total": 1,
-		}
+		// Cluster exceeds max age (31 minutes ago)
+		cluster := createMockCluster("cluster-1", 2, 2, "Ready", time.Now().Add(-31*time.Minute))
+		response := createMockClusterList([]map[string]interface{}{cluster})
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -117,22 +137,9 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]interface{}{
-			"items": []map[string]interface{}{
-				{
-					"id":   "cluster-1",
-					"kind": "Cluster",
-					"generation": 1,
-					"status": map[string]interface{}{
-						"phase":              "Ready",
-						"lastTransitionTime": "2025-01-01T10:00:00Z",
-						"lastUpdated":        time.Now().Add(-5 * time.Minute).Format(time.RFC3339), // Within max age
-						"observedGeneration": 1,                                                      // Generation in sync
-					},
-				},
-			},
-			"total": 1,
-		}
+		// Cluster within max age and generation in sync - should NOT publish
+		cluster := createMockCluster("cluster-1", 1, 1, "Ready", time.Now().Add(-5*time.Minute))
+		response := createMockClusterList([]map[string]interface{}{cluster})
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -209,22 +216,8 @@ func TestTrigger_PublishError(t *testing.T) {
 
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]interface{}{
-			"items": []map[string]interface{}{
-				{
-					"id":   "cluster-1",
-					"kind": "Cluster",
-					"generation": 2,
-					"status": map[string]interface{}{
-						"phase":              "Ready",
-						"lastTransitionTime": "2025-01-01T10:00:00Z",
-						"lastUpdated":        time.Now().Add(-31 * time.Minute).Format(time.RFC3339),
-						"observedGeneration": 2,
-					},
-				},
-			},
-			"total": 1,
-		}
+		cluster := createMockCluster("cluster-1", 2, 2, "Ready", time.Now().Add(-31*time.Minute))
+		response := createMockClusterList([]map[string]interface{}{cluster})
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -262,55 +255,13 @@ func TestTrigger_MixedResources(t *testing.T) {
 
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		response := map[string]interface{}{
-			"items": []map[string]interface{}{
-				{
-					"id":   "cluster-1",
-					"kind": "Cluster",
-					"generation": 2,
-					"status": map[string]interface{}{
-						"phase":              "Ready",
-						"lastTransitionTime": "2025-01-01T10:00:00Z",
-						"lastUpdated":        now.Add(-31 * time.Minute).Format(time.RFC3339), // Should publish
-						"observedGeneration": 2,
-					},
-				},
-				{
-					"id":   "cluster-2",
-					"kind": "Cluster",
-					"generation": 1,
-					"status": map[string]interface{}{
-						"phase":              "Ready",
-						"lastTransitionTime": "2025-01-01T10:00:00Z",
-						"lastUpdated":        now.Add(-5 * time.Minute).Format(time.RFC3339), // Should skip
-						"observedGeneration": 1,
-					},
-				},
-				{
-					"id":   "cluster-3",
-					"kind": "Cluster",
-					"generation": 3,
-					"status": map[string]interface{}{
-						"phase":              "NotReady",
-						"lastTransitionTime": "2025-01-01T10:00:00Z",
-						"lastUpdated":        now.Add(-1 * time.Minute).Format(time.RFC3339), // Should skip
-						"observedGeneration": 3,
-					},
-				},
-				{
-					"id":   "cluster-4",
-					"kind": "Cluster",
-					"generation": 5,
-					"status": map[string]interface{}{
-						"phase":              "Ready",
-						"lastTransitionTime": "2025-01-01T10:00:00Z",
-						"lastUpdated":        now.Add(-5 * time.Minute).Format(time.RFC3339),
-						"observedGeneration": 4, // Generation changed - should publish
-					},
-				},
-			},
-			"total": 4,
+		clusters := []map[string]interface{}{
+			createMockCluster("cluster-1", 2, 2, "Ready", now.Add(-31*time.Minute)),   // Should publish (max age exceeded)
+			createMockCluster("cluster-2", 1, 1, "Ready", now.Add(-5*time.Minute)),    // Should skip (within max age)
+			createMockCluster("cluster-3", 3, 3, "NotReady", now.Add(-1*time.Minute)), // Should skip (NotReady within max age)
+			createMockCluster("cluster-4", 5, 4, "Ready", now.Add(-5*time.Minute)),    // Should publish (generation changed)
 		}
+		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))

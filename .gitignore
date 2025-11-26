@@ -47,3 +47,6 @@ secrets/
 
 # Generated code
 pkg/api/openapi/
+
+# Downloaded OpenAPI spec (fetched during make generate)
+openapi/openapi.yaml
