@@ -199,29 +199,7 @@ func NewSentinelMetrics(registry prometheus.Registerer) *SentinelMetrics {
 	return metricsInstance
 }
 
-// RegisterSentinelMetrics registers all metrics with the default registry
-func RegisterSentinelMetrics() {
-	prometheus.MustRegister(pendingResourcesGauge)
-	prometheus.MustRegister(eventsPublishedCounter)
-	prometheus.MustRegister(resourcesSkippedCounter)
-	prometheus.MustRegister(pollDurationHistogram)
-	prometheus.MustRegister(apiErrorsCounter)
-	prometheus.MustRegister(brokerErrorsCounter)
-	prometheus.MustRegister(configLoadsCounter)
-}
-
-// UnregisterSentinelMetrics unregisters all metrics from the default registry
-func UnregisterSentinelMetrics() {
-	prometheus.Unregister(pendingResourcesGauge)
-	prometheus.Unregister(eventsPublishedCounter)
-	prometheus.Unregister(resourcesSkippedCounter)
-	prometheus.Unregister(pollDurationHistogram)
-	prometheus.Unregister(apiErrorsCounter)
-	prometheus.Unregister(brokerErrorsCounter)
-	prometheus.Unregister(configLoadsCounter)
-}
-
-// ResetSentinelMetrics resets all metric collectors
+// ResetSentinelMetrics resets all metric collectors for testing purposes
 func ResetSentinelMetrics() {
 	pendingResourcesGauge.Reset()
 	eventsPublishedCounter.Reset()
