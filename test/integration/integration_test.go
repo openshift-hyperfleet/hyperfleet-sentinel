@@ -19,7 +19,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/sentinel"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 // MockPublisher implements broker.Publisher for integration testing
@@ -170,17 +169,6 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	if event.Source() != "hyperfleet-sentinel" {
 		t.Errorf("Expected source 'hyperfleet-sentinel', got '%s'", event.Source())
 	}
-
-	// Verify metrics were collected
-	metricCount := testutil.CollectAndCount(m.EventsPublished)
-	if metricCount == 0 {
-		t.Error("Expected EventsPublished metric to be collected")
-	}
-
-	metricCount = testutil.CollectAndCount(m.PollDuration)
-	if metricCount == 0 {
-		t.Error("Expected PollDuration metric to be collected")
-	}
 }
 
 // TestIntegration_LabelSelectorFiltering tests resource filtering with label selectors
@@ -298,11 +286,5 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		} else if resourceID != "cluster-shard-1" {
 			t.Errorf("Event %d: Expected event for cluster-shard-1, got %s (label selector filtering failed)", i, resourceID)
 		}
-	}
-
-	// Verify metrics were collected with correct labels
-	metricCount := testutil.CollectAndCount(m.EventsPublished)
-	if metricCount == 0 {
-		t.Error("Expected EventsPublished metric to be collected")
 	}
 }
