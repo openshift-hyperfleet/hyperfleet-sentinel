@@ -4,6 +4,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/golang/glog"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -207,10 +208,12 @@ func ResetSentinelMetrics() {
 //
 // Thread-safe: Can be called concurrently from multiple goroutines.
 //
-// Validation: Empty resourceType or resourceSelector are silently ignored.
+// Validation: Empty resourceType or resourceSelector trigger a warning and are ignored to prevent
+// cardinality issues. This should never happen in normal operation and indicates a bug.
 func UpdatePendingResourcesMetric(resourceType, resourceSelector string, count int) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" {
+		glog.Warningf("Attempted to update pending_resources metric with empty parameters: resourceType=%q resourceSelector=%q", resourceType, resourceSelector)
 		return
 	}
 	if count < 0 {
@@ -236,10 +239,12 @@ func UpdatePendingResourcesMetric(resourceType, resourceSelector string, count i
 //
 // Thread-safe: Can be called concurrently from multiple goroutines.
 //
-// Validation: Empty parameters are silently ignored.
+// Validation: Empty parameters trigger a warning and are ignored to prevent cardinality issues.
+// This should never happen in normal operation and indicates a bug.
 func UpdateEventsPublishedMetric(resourceType, resourceSelector, reason string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || reason == "" {
+		glog.Warningf("Attempted to update events_published metric with empty parameters: resourceType=%q resourceSelector=%q reason=%q", resourceType, resourceSelector, reason)
 		return
 	}
 
@@ -264,10 +269,12 @@ func UpdateEventsPublishedMetric(resourceType, resourceSelector, reason string) 
 //
 // Thread-safe: Can be called concurrently from multiple goroutines.
 //
-// Validation: Empty parameters are silently ignored.
+// Validation: Empty parameters trigger a warning and are ignored to prevent cardinality issues.
+// This should never happen in normal operation and indicates a bug.
 func UpdateResourcesSkippedMetric(resourceType, resourceSelector, reason string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || reason == "" {
+		glog.Warningf("Attempted to update resources_skipped metric with empty parameters: resourceType=%q resourceSelector=%q reason=%q", resourceType, resourceSelector, reason)
 		return
 	}
 
@@ -288,17 +295,20 @@ func UpdateResourcesSkippedMetric(resourceType, resourceSelector, reason string)
 // Parameters:
 //   - resourceType: Type of resource (e.g., "clusters", "nodepools")
 //   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
-//   - durationSeconds: Duration in seconds (negative values are silently ignored)
+//   - durationSeconds: Duration in seconds (negative values trigger a warning and are ignored)
 //
 // Thread-safe: Can be called concurrently from multiple goroutines.
 //
-// Validation: Empty resourceType/resourceSelector or negative duration are silently ignored.
+// Validation: Empty resourceType/resourceSelector or negative duration trigger a warning and are
+// ignored to prevent invalid metrics. This should never happen in normal operation and indicates a bug.
 func UpdatePollDurationMetric(resourceType, resourceSelector string, durationSeconds float64) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" {
+		glog.Warningf("Attempted to update poll_duration metric with empty parameters: resourceType=%q resourceSelector=%q", resourceType, resourceSelector)
 		return
 	}
 	if durationSeconds < 0 {
+		glog.Warningf("Attempted to update poll_duration metric with negative duration: %f", durationSeconds)
 		return
 	}
 
@@ -321,10 +331,12 @@ func UpdatePollDurationMetric(resourceType, resourceSelector string, durationSec
 //
 // Thread-safe: Can be called concurrently from multiple goroutines.
 //
-// Validation: Empty parameters are silently ignored.
+// Validation: Empty parameters trigger a warning and are ignored to prevent cardinality issues.
+// This should never happen in normal operation and indicates a bug.
 func UpdateAPIErrorsMetric(resourceType, resourceSelector, errorType string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || errorType == "" {
+		glog.Warningf("Attempted to update api_errors metric with empty parameters: resourceType=%q resourceSelector=%q errorType=%q", resourceType, resourceSelector, errorType)
 		return
 	}
 
@@ -348,10 +360,12 @@ func UpdateAPIErrorsMetric(resourceType, resourceSelector, errorType string) {
 //
 // Thread-safe: Can be called concurrently from multiple goroutines.
 //
-// Validation: Empty parameters are silently ignored.
+// Validation: Empty parameters trigger a warning and are ignored to prevent cardinality issues.
+// This should never happen in normal operation and indicates a bug.
 func UpdateBrokerErrorsMetric(resourceType, resourceSelector, errorType string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || errorType == "" {
+		glog.Warningf("Attempted to update broker_errors metric with empty parameters: resourceType=%q resourceSelector=%q errorType=%q", resourceType, resourceSelector, errorType)
 		return
 	}
 
