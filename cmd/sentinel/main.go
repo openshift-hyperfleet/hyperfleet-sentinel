@@ -3,16 +3,21 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
 
 	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/sentinel"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
@@ -70,6 +75,13 @@ func runServe(cfg *config.SentinelConfig) error {
 
 	log.Infof("Starting HyperFleet Sentinel version=%s commit=%s", version, commit)
 
+	// Initialize Prometheus metrics registry
+	registry := prometheus.NewRegistry()
+	m := metrics.NewSentinelMetrics(registry)
+
+	// Record successful config load
+	metrics.UpdateConfigLoadsMetric("success")
+
 	// Initialize components
 	hyperfleetClient := client.NewHyperFleetClient(cfg.HyperFleetAPI.Endpoint, cfg.HyperFleetAPI.Timeout)
 	decisionEngine := engine.NewDecisionEngine(cfg.MaxAgeNotReady, cfg.MaxAgeReady)
@@ -90,7 +102,35 @@ func runServe(cfg *config.SentinelConfig) error {
 	defer cancel()
 
 	// Initialize sentinel with context for proper cancellation
-	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, pub, log)
+	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, pub, log, m)
+
+	// Start metrics and health HTTP server
+	mux := http.NewServeMux()
+
+	// Health endpoint
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
+	// Metrics endpoint
+	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+
+	metricsServer := &http.Server{
+		Addr:         ":8080",
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+
+	// Start HTTP server in background
+	go func() {
+		log.Info("Starting metrics server on :8080")
+		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Infof("Metrics server error: %v", err)
+		}
+	}()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -99,6 +139,13 @@ func runServe(cfg *config.SentinelConfig) error {
 		<-sigChan
 		log.Info("Received shutdown signal")
 		cancel()
+
+		// Shutdown metrics server
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
+			log.Infof("Metrics server shutdown error: %v", err)
+		}
 	}()
 
 	// Start sentinel
