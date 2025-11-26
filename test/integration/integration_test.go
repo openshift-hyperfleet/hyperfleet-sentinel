@@ -44,7 +44,12 @@ func (m *MockPublisher) Close() error {
 
 // createMockCluster creates a mock cluster response
 func createMockCluster(id string, generation int, observedGeneration int, phase string, lastUpdated time.Time) map[string]interface{} {
-	return map[string]interface{}{
+	return createMockClusterWithLabels(id, generation, observedGeneration, phase, lastUpdated, nil)
+}
+
+// createMockClusterWithLabels creates a mock cluster response with labels
+func createMockClusterWithLabels(id string, generation int, observedGeneration int, phase string, lastUpdated time.Time, labels map[string]string) map[string]interface{} {
+	cluster := map[string]interface{}{
 		"id":         id,
 		"href":       "/api/hyperfleet/v1/clusters/" + id,
 		"kind":       "Cluster",
@@ -63,6 +68,12 @@ func createMockCluster(id string, generation int, observedGeneration int, phase 
 			"adapters":             []interface{}{},
 		},
 	}
+
+	if labels != nil && len(labels) > 0 {
+		cluster["labels"] = labels
+	}
+
+	return cluster
 }
 
 // createMockClusterList creates a mock ClusterList response
@@ -179,14 +190,52 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 
 	now := time.Now()
 
-	// Create mock server that returns clusters with label
+	// Create mock server that returns 2 clusters: one with shard:1, one with shard:2
+	// Server implements server-side filtering based on search parameter
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Note: Label filtering is done client-side in the HyperFleet client
-		// The server just returns all clusters that match the query
-		clusters := []map[string]interface{}{
-			createMockCluster("cluster-1", 2, 2, "Ready", now.Add(-31*time.Minute)),
+		// All available clusters
+		allClusters := []map[string]interface{}{
+			// This cluster has shard:1 - SHOULD match selector and trigger event
+			createMockClusterWithLabels(
+				"cluster-shard-1",
+				2,
+				2,
+				"Ready",
+				now.Add(-31*time.Minute), // Exceeds max_age_ready (30m)
+				map[string]string{"shard": "1"},
+			),
+			// This cluster has shard:2 - should NOT match selector
+			createMockClusterWithLabels(
+				"cluster-shard-2",
+				2,
+				2,
+				"Ready",
+				now.Add(-31*time.Minute), // Also exceeds max_age, but should be filtered
+				map[string]string{"shard": "2"},
+			),
 		}
-		response := createMockClusterList(clusters)
+
+		// Server-side filtering: check for search parameter
+		searchParam := r.URL.Query().Get("search")
+		filteredClusters := allClusters
+
+		if searchParam != "" {
+			// Parse search parameter (format: "key1=value1,key2=value2")
+			filteredClusters = []map[string]interface{}{}
+			for _, cluster := range allClusters {
+				labels, ok := cluster["labels"].(map[string]string)
+				if !ok {
+					continue
+				}
+
+				// Simple matching: if search contains "shard=1", only include clusters with shard=1
+				if searchParam == "shard=1" && labels["shard"] == "1" {
+					filteredClusters = append(filteredClusters, cluster)
+				}
+			}
+		}
+
+		response := createMockClusterList(filteredClusters)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -214,19 +263,41 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 
 	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log, m)
 
-	// Run sentinel
+	// Run sentinel in goroutine and capture error
+	errChan := make(chan error, 1)
 	go func() {
-		s.Start(ctx)
+		errChan <- s.Start(ctx)
 	}()
 
+	// Wait for a few polling cycles
 	time.Sleep(300 * time.Millisecond)
 	cancel()
 
-	time.Sleep(100 * time.Millisecond)
+	// Check Start error
+	startErr := <-errChan
+	if startErr != nil && startErr != context.Canceled {
+		t.Errorf("Expected Start to return nil or context.Canceled, got: %v", startErr)
+	}
 
-	// Verify event was published
-	if len(mockPublisher.publishedEvents) == 0 {
-		t.Error("Expected at least 1 event to be published")
+	// Verify at least 1 event was published
+	// (multiple events are ok due to multiple polling cycles)
+	if len(mockPublisher.publishedEvents) < 1 {
+		t.Error("Expected at least 1 event to be published for cluster-shard-1")
+	}
+
+	// Verify ALL published events are for cluster-shard-1 (not cluster-shard-2)
+	for i, event := range mockPublisher.publishedEvents {
+		var eventData map[string]interface{}
+		if err := event.DataAs(&eventData); err != nil {
+			t.Fatalf("Failed to parse event data for event %d: %v", i, err)
+		}
+
+		resourceID, ok := eventData["resourceId"].(string)
+		if !ok {
+			t.Errorf("Event %d: Expected resourceId in event data", i)
+		} else if resourceID != "cluster-shard-1" {
+			t.Errorf("Event %d: Expected event for cluster-shard-1, got %s (label selector filtering failed)", i, resourceID)
+		}
 	}
 
 	// Verify metrics were collected with correct labels
