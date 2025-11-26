@@ -199,7 +199,14 @@ func NewSentinelMetrics(registry prometheus.Registerer) *SentinelMetrics {
 	return metricsInstance
 }
 
-// ResetSentinelMetrics resets all metric collectors for testing purposes
+// ResetSentinelMetrics resets all metric collectors to their initial state.
+//
+// This function is intended for testing purposes only. It clears all metric values
+// across all collectors (gauges, counters, histograms) without unregistering them.
+//
+// WARNING: Do not use in production code. This will clear operational metrics.
+//
+// Thread-safe: Safe to call concurrently, but should only be called from test code.
 func ResetSentinelMetrics() {
 	pendingResourcesGauge.Reset()
 	eventsPublishedCounter.Reset()
@@ -210,7 +217,20 @@ func ResetSentinelMetrics() {
 	configLoadsCounter.Reset()
 }
 
-// UpdatePendingResourcesMetric sets the number of pending resources
+// UpdatePendingResourcesMetric sets the current number of resources pending reconciliation.
+//
+// This gauge metric tracks resources that need reconciliation based on max age intervals
+// or generation mismatches. The count is set (not incremented) and represents the current
+// snapshot of pending resources.
+//
+// Parameters:
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
+//   - count: Number of pending resources (negative values are clamped to 0)
+//
+// Thread-safe: Can be called concurrently from multiple goroutines.
+//
+// Validation: Empty resourceType or resourceSelector are silently ignored.
 func UpdatePendingResourcesMetric(resourceType, resourceSelector string, count int) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" {
@@ -227,7 +247,19 @@ func UpdatePendingResourcesMetric(resourceType, resourceSelector string, count i
 	pendingResourcesGauge.With(labels).Set(float64(count))
 }
 
-// UpdateEventsPublishedMetric increments the events published counter
+// UpdateEventsPublishedMetric increments the counter of reconciliation events published to the broker.
+//
+// This counter tracks successful event publications, labeled by resource type, selector, and reason.
+// Common reasons include "max_age_exceeded" and "generation_mismatch".
+//
+// Parameters:
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
+//   - reason: Reason for publishing (e.g., "max_age_exceeded", "generation_mismatch")
+//
+// Thread-safe: Can be called concurrently from multiple goroutines.
+//
+// Validation: Empty parameters are silently ignored.
 func UpdateEventsPublishedMetric(resourceType, resourceSelector, reason string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || reason == "" {
@@ -242,7 +274,20 @@ func UpdateEventsPublishedMetric(resourceType, resourceSelector, reason string) 
 	eventsPublishedCounter.With(labels).Inc()
 }
 
-// UpdateResourcesSkippedMetric increments the resources skipped counter
+// UpdateResourcesSkippedMetric increments the counter of resources that were skipped during evaluation.
+//
+// Resources are skipped when they don't meet the criteria for publishing events, such as
+// being recently updated (within max age) or having matching observed generation.
+// Common reasons include "within_max_age" and "generation_match".
+//
+// Parameters:
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
+//   - reason: Reason for skipping (e.g., "within_max_age", "generation_match")
+//
+// Thread-safe: Can be called concurrently from multiple goroutines.
+//
+// Validation: Empty parameters are silently ignored.
 func UpdateResourcesSkippedMetric(resourceType, resourceSelector, reason string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || reason == "" {
@@ -257,7 +302,20 @@ func UpdateResourcesSkippedMetric(resourceType, resourceSelector, reason string)
 	resourcesSkippedCounter.With(labels).Inc()
 }
 
-// UpdatePollDurationMetric records the poll duration
+// UpdatePollDurationMetric records the duration of a polling cycle in seconds.
+//
+// This histogram metric tracks how long each polling cycle takes, including API calls,
+// decision evaluation, and event publishing. Useful for identifying performance issues
+// and API latency.
+//
+// Parameters:
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
+//   - durationSeconds: Duration in seconds (negative values are silently ignored)
+//
+// Thread-safe: Can be called concurrently from multiple goroutines.
+//
+// Validation: Empty resourceType/resourceSelector or negative duration are silently ignored.
 func UpdatePollDurationMetric(resourceType, resourceSelector string, durationSeconds float64) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" {
@@ -274,7 +332,19 @@ func UpdatePollDurationMetric(resourceType, resourceSelector string, durationSec
 	pollDurationHistogram.With(labels).Observe(durationSeconds)
 }
 
-// UpdateAPIErrorsMetric increments the API errors counter
+// UpdateAPIErrorsMetric increments the counter of errors when calling the HyperFleet API.
+//
+// Tracks API errors by type to help diagnose connectivity and availability issues.
+// Common error types include "fetch_error", "timeout", "auth_error".
+//
+// Parameters:
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
+//   - errorType: Type of error (e.g., "fetch_error", "timeout", "auth_error")
+//
+// Thread-safe: Can be called concurrently from multiple goroutines.
+//
+// Validation: Empty parameters are silently ignored.
 func UpdateAPIErrorsMetric(resourceType, resourceSelector, errorType string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || errorType == "" {
@@ -289,7 +359,19 @@ func UpdateAPIErrorsMetric(resourceType, resourceSelector, errorType string) {
 	apiErrorsCounter.With(labels).Inc()
 }
 
-// UpdateBrokerErrorsMetric increments the broker errors counter
+// UpdateBrokerErrorsMetric increments the counter of errors when publishing events to the message broker.
+//
+// Tracks broker errors by type to help diagnose message delivery and broker connectivity issues.
+// Common error types include "publish_error", "connection_error", "timeout".
+//
+// Parameters:
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
+//   - errorType: Type of error (e.g., "publish_error", "connection_error")
+//
+// Thread-safe: Can be called concurrently from multiple goroutines.
+//
+// Validation: Empty parameters are silently ignored.
 func UpdateBrokerErrorsMetric(resourceType, resourceSelector, errorType string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || errorType == "" {
@@ -304,7 +386,17 @@ func UpdateBrokerErrorsMetric(resourceType, resourceSelector, errorType string) 
 	brokerErrorsCounter.With(labels).Inc()
 }
 
-// UpdateConfigLoadsMetric increments the config loads counter
+// UpdateConfigLoadsMetric increments the counter of configuration load attempts.
+//
+// Tracks both successful and failed configuration loads at startup, useful for
+// diagnosing configuration issues and monitoring service restarts.
+//
+// Parameters:
+//   - status: Load status ("success" or "failure")
+//
+// Thread-safe: Can be called concurrently from multiple goroutines.
+//
+// Validation: Empty status is silently ignored.
 func UpdateConfigLoadsMetric(status string) {
 	// Validate inputs
 	if status == "" {
