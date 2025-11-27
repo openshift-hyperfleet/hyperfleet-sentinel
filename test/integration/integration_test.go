@@ -6,11 +6,15 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"runtime"
 	"testing"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
@@ -19,6 +23,15 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 )
+
+// TestMain provides centralized setup/teardown for integration tests
+func TestMain(m *testing.M) {
+	flag.Parse()
+	glog.Infof("Starting integration test using go version %s", runtime.Version())
+	exitCode := m.Run()
+	glog.Infof("Integration tests completed with exit code %d", exitCode)
+	os.Exit(exitCode)
+}
 
 // createMockCluster creates a mock cluster response
 func createMockCluster(id string, generation int, observedGeneration int, phase string, lastUpdated time.Time) map[string]interface{} {
