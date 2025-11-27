@@ -87,10 +87,14 @@ func (tc *RabbitMQTestContainer) Close(ctx context.Context) error {
 		}
 	}
 
-	// Terminate container
+	// Terminate container with background context (test context may be canceled)
 	if tc.container != nil {
 		glog.Infof("Stopping RabbitMQ testcontainer...")
-		if err := tc.container.Terminate(ctx); err != nil {
+		// Use background context with timeout for cleanup, as test context may be canceled
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		if err := tc.container.Terminate(cleanupCtx); err != nil {
 			glog.Errorf("Error terminating testcontainer: %v", err)
 			errs = append(errs, err)
 		}
