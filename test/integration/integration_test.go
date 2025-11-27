@@ -171,6 +171,88 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	}
 }
 
+// TestIntegration_EndToEnd_RealBroker tests the full workflow with a real RabbitMQ broker using testcontainers
+func TestIntegration_EndToEnd_RealBroker(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Start RabbitMQ testcontainer
+	rabbitMQ, err := NewRabbitMQTestContainer(ctx)
+	if err != nil {
+		t.Fatalf("Failed to start RabbitMQ testcontainer: %v", err)
+	}
+	defer rabbitMQ.Close(ctx)
+
+	now := time.Now()
+
+	// Create mock HyperFleet API server
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+
+		// First call: Return clusters with one needing reconciliation
+		if callCount == 1 {
+			clusters := []map[string]interface{}{
+				createMockCluster("cluster-1", 2, 2, "Ready", now.Add(-31*time.Minute)), // Max age exceeded
+				createMockCluster("cluster-2", 1, 1, "Ready", now.Add(-5*time.Minute)),  // Within max age
+			}
+			response := createMockClusterList(clusters)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(response)
+			return
+		}
+
+		// Subsequent calls: Empty list
+		response := createMockClusterList([]map[string]interface{}{})
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	// Setup components with real broker
+	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	log := logger.NewHyperFleetLogger(ctx)
+
+	// Create metrics with a test registry
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry)
+
+	cfg := &config.SentinelConfig{
+		ResourceType:   "clusters",
+		PollInterval:   100 * time.Millisecond, // Short interval for testing
+		MaxAgeNotReady: 10 * time.Second,
+		MaxAgeReady:    30 * time.Minute,
+	}
+
+	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, rabbitMQ.Publisher(), log)
+
+	// Run Sentinel in background
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- s.Start(ctx)
+	}()
+
+	// Wait for at least 2 polling cycles
+	time.Sleep(300 * time.Millisecond)
+	cancel()
+
+	// Wait for Sentinel to stop
+	select {
+	case err := <-errChan:
+		if err != nil && err != context.Canceled {
+			t.Fatalf("Sentinel failed: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Sentinel did not stop within timeout")
+	}
+
+	// NOTE: With real broker, we can't easily verify events were published without a subscriber
+	// This test validates the integration works end-to-end without errors
+	// More detailed event verification would require a subscriber in the test
+	t.Log("Integration test with real RabbitMQ broker completed successfully")
+}
+
 // TestIntegration_LabelSelectorFiltering tests resource filtering with label selectors
 func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
