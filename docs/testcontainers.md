@@ -24,7 +24,7 @@ Testcontainers officially supports Docker only, and some compatibility issues ma
 
 #### Common Error
 
-```
+```text
 Failed to start RabbitMQ testcontainer: create container: container create: Error response from daemon: container create: unable to find network with name or ID bridge: network not found: creating reaper failed
 ```
 
