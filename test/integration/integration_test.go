@@ -148,6 +148,11 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	cancel()
 
+	// Verify that Sentinel actually polled the API at least twice
+	if callCount < 2 {
+		t.Errorf("Expected at least 2 polling cycles, got %d", callCount)
+	}
+
 	// Wait for Sentinel to stop
 	select {
 	case err := <-errChan:
