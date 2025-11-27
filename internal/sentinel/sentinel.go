@@ -11,6 +11,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
@@ -71,7 +72,12 @@ func (s *Sentinel) Start(ctx context.Context) error {
 
 // trigger checks resources and publishes events to trigger reconciliation
 func (s *Sentinel) trigger(ctx context.Context) error {
+	startTime := time.Now()
 	s.logger.V(2).Info("Starting trigger cycle")
+
+	// Get metric labels
+	resourceType := s.config.ResourceType
+	resourceSelector := metrics.GetResourceSelectorLabel(s.config.ResourceSelector)
 
 	// Convert label selectors to map for filtering
 	labelSelector := s.config.ResourceSelector.ToMap()
@@ -79,6 +85,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	// Fetch resources from HyperFleet API
 	resources, err := s.client.FetchResources(ctx, client.ResourceType(s.config.ResourceType), labelSelector)
 	if err != nil {
+		// Record API error
+		metrics.UpdateAPIErrorsMetric(resourceType, resourceSelector, "fetch_error")
 		return fmt.Errorf("failed to fetch resources: %w", err)
 	}
 
@@ -87,6 +95,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	now := time.Now()
 	published := 0
 	skipped := 0
+	pending := 0
 
 	// Evaluate each resource
 	for i := range resources {
@@ -95,6 +104,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 		decision := s.decisionEngine.Evaluate(resource, now)
 
 		if decision.ShouldPublish {
+			pending++
+
 			// Create CloudEvent
 			event := cloudevents.NewEvent()
 			event.SetSpecVersion(cloudevents.VersionV1)
@@ -113,22 +124,37 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Publish to broker (topic = resource kind)
 			topic := resource.Kind
 			if err := s.publisher.Publish(topic, &event); err != nil {
+				// Record broker error
+				metrics.UpdateBrokerErrorsMetric(resourceType, resourceSelector, "publish_error")
 				s.logger.Infof("Failed to publish event resource_id=%s error=%v", resource.ID, err)
 				continue
 			}
+
+			// Record successful event publication
+			metrics.UpdateEventsPublishedMetric(resourceType, resourceSelector, decision.Reason)
 
 			s.logger.Infof("Published event resource_id=%s phase=%s reason=%s",
 				resource.ID, resource.Status.Phase, decision.Reason)
 			published++
 		} else {
+			// Record skipped resource
+			metrics.UpdateResourcesSkippedMetric(resourceType, resourceSelector, decision.Reason)
+
 			s.logger.V(2).Infof("Skipped resource resource_id=%s phase=%s reason=%s",
 				resource.ID, resource.Status.Phase, decision.Reason)
 			skipped++
 		}
 	}
 
-	s.logger.Infof("Trigger cycle completed total=%d published=%d skipped=%d",
-		len(resources), published, skipped)
+	// Record pending resources count
+	metrics.UpdatePendingResourcesMetric(resourceType, resourceSelector, pending)
+
+	// Record poll duration
+	duration := time.Since(startTime).Seconds()
+	metrics.UpdatePollDurationMetric(resourceType, resourceSelector, duration)
+
+	s.logger.Infof("Trigger cycle completed total=%d published=%d skipped=%d duration=%.3fs",
+		len(resources), published, skipped, duration)
 
 	return nil
 }

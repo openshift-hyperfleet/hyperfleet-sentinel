@@ -50,9 +50,31 @@ HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, make
 - `make generate` - Generate OpenAPI client from spec (Docker/Podman-based)
 - `make build` - Build the sentinel binary
 - `make test` - Run unit tests with coverage
+- `make test-integration` - Run integration tests (requires Docker/Podman)
+- `make test-all` - Run all tests (unit + integration)
 - `make fmt` - Format Go code
 - `make lint` - Run golangci-lint (requires golangci-lint installed)
 - `make clean` - Remove build artifacts and generated code
+
+### Testing
+
+The project uses a hybrid testing approach:
+
+- **Unit tests**: Fast, isolated tests using mocks
+- **Integration tests**: End-to-end tests with real message brokers via testcontainers
+
+```bash
+# Run only unit tests (fast)
+make test
+
+# Run integration tests (requires Docker or Podman)
+make test-integration
+
+# Run all tests
+make test-all
+```
+
+Integration tests automatically work with both Docker and Podman. For troubleshooting and advanced configuration, see [docs/testcontainers.md](docs/testcontainers.md).
 
 ### OpenAPI Client Generation
 

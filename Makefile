@@ -86,14 +86,14 @@ test-unit: ## Run unit tests only
 .PHONY: test-integration
 test-integration: ## Run integration tests only
 	@echo "Running integration tests..."
-	$(GO) test -v -race -tags=integration ./test/integration/... -timeout 30m
+	TESTCONTAINERS_RYUK_DISABLED=true $(GO) test -v -race -tags=integration ./test/integration/... -timeout 30m
 
 .PHONY: test-all
 test-all: ## Run both unit and integration tests
 	@echo "Running unit tests..."
 	$(MAKE) test
 	@echo "Running integration tests..."
-	$(MAKE) test-integration
+	TESTCONTAINERS_RYUK_DISABLED=true $(MAKE) test-integration
 
 .PHONY: test-coverage
 test-coverage: test ## Run tests and show coverage

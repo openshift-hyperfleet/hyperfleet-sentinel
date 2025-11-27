@@ -13,7 +13,9 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // createMockCluster creates a mock cluster response matching main branch spec
@@ -90,6 +92,10 @@ func TestTrigger_Success(t *testing.T) {
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger(ctx)
 
+	// Create metrics with a test registry (registers metrics once via sync.Once)
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry)
+
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		MaxAgeNotReady: 10 * time.Second,
@@ -151,6 +157,10 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger(ctx)
 
+	// Create metrics with a test registry (registers metrics once via sync.Once)
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry)
+
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		MaxAgeNotReady: 10 * time.Second,
@@ -188,6 +198,10 @@ func TestTrigger_FetchError(t *testing.T) {
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger(ctx)
+
+	// Create metrics with a test registry (registers metrics once via sync.Once)
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry)
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
@@ -231,6 +245,10 @@ func TestTrigger_PublishError(t *testing.T) {
 	}
 	log := logger.NewHyperFleetLogger(ctx)
 
+	// Create metrics with a test registry (registers metrics once via sync.Once)
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry)
+
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		MaxAgeNotReady: 10 * time.Second,
@@ -272,6 +290,10 @@ func TestTrigger_MixedResources(t *testing.T) {
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger(ctx)
+
+	// Create metrics with a test registry (registers metrics once via sync.Once)
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry)
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
