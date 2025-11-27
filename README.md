@@ -67,17 +67,14 @@ The project uses a hybrid testing approach:
 # Run only unit tests (fast)
 make test
 
-# Run integration tests with Docker
+# Run integration tests (requires Docker or Podman)
 make test-integration
-
-# Run integration tests with Podman
-TESTCONTAINERS_RYUK_DISABLED=true make test-integration
 
 # Run all tests
 make test-all
 ```
 
-For detailed information about testcontainers and Podman compatibility, see [docs/testcontainers.md](docs/testcontainers.md).
+Integration tests automatically work with both Docker and Podman. For troubleshooting and advanced configuration, see [docs/testcontainers.md](docs/testcontainers.md).
 
 ### OpenAPI Client Generation
 
