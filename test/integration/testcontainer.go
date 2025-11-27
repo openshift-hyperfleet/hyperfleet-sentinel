@@ -1,11 +1,11 @@
 //go:build integration
-// +build integration
 
 package integration
 
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/golang/glog"
@@ -52,7 +52,7 @@ func NewRabbitMQTestContainer(ctx context.Context) (*RabbitMQTestContainer, erro
 	// Create publisher using hyperfleet-broker library with configMap
 	// This allows us to pass configuration programmatically for testing
 	configMap := map[string]string{
-		"broker.type":        "rabbitmq",
+		"broker.type":         "rabbitmq",
 		"broker.rabbitmq.url": amqpURL,
 	}
 
@@ -106,4 +106,47 @@ func (tc *RabbitMQTestContainer) Close(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+var (
+	testHelper *IntegrationHelper
+	once       sync.Once
+)
+
+// IntegrationHelper provides shared resources for integration tests
+type IntegrationHelper struct {
+	RabbitMQ *RabbitMQTestContainer
+}
+
+// NewHelper creates or returns the singleton integration test helper
+func NewHelper() *IntegrationHelper {
+	once.Do(func() {
+		glog.Info("Initializing integration test helper...")
+
+		// Start shared RabbitMQ testcontainer
+		ctx := context.Background()
+		rabbitMQ, err := NewRabbitMQTestContainer(ctx)
+		if err != nil {
+			glog.Fatalf("Failed to start shared RabbitMQ testcontainer: %v", err)
+		}
+
+		testHelper = &IntegrationHelper{
+			RabbitMQ: rabbitMQ,
+		}
+
+		glog.Info("Integration test helper initialized successfully")
+	})
+
+	return testHelper
+}
+
+// Teardown cleans up shared resources
+func (h *IntegrationHelper) Teardown() {
+	if h.RabbitMQ != nil {
+		glog.Info("Cleaning up shared RabbitMQ testcontainer...")
+		ctx := context.Background()
+		if err := h.RabbitMQ.Close(ctx); err != nil {
+			glog.Errorf("Error cleaning up RabbitMQ: %v", err)
+		}
+	}
 }

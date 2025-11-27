@@ -1,5 +1,4 @@
 //go:build integration
-// +build integration
 
 package integration
 
@@ -28,7 +27,16 @@ import (
 func TestMain(m *testing.M) {
 	flag.Parse()
 	glog.Infof("Starting integration test using go version %s", runtime.Version())
+
+	// Initialize shared test helper (creates RabbitMQ container once)
+	helper := NewHelper()
+
+	// Run all tests
 	exitCode := m.Run()
+
+	// Cleanup shared resources
+	helper.Teardown()
+
 	glog.Infof("Integration tests completed with exit code %d", exitCode)
 	os.Exit(exitCode)
 }
@@ -60,7 +68,7 @@ func createMockClusterWithLabels(id string, generation int, observedGeneration i
 		},
 	}
 
-	if labels != nil && len(labels) > 0 {
+	if len(labels) > 0 {
 		cluster["labels"] = labels
 	}
 
@@ -83,12 +91,8 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Start RabbitMQ testcontainer
-	rabbitMQ, err := NewRabbitMQTestContainer(ctx)
-	if err != nil {
-		t.Fatalf("Failed to start RabbitMQ testcontainer: %v", err)
-	}
-	defer rabbitMQ.Close(ctx)
+	// Get shared RabbitMQ testcontainer from helper
+	helper := NewHelper()
 
 	now := time.Now()
 
@@ -132,7 +136,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, rabbitMQ.Publisher(), log)
+	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
 
 	// Run Sentinel in background
 	errChan := make(chan error, 1)
@@ -164,12 +168,8 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Start RabbitMQ testcontainer
-	rabbitMQ, err := NewRabbitMQTestContainer(ctx)
-	if err != nil {
-		t.Fatalf("Failed to start RabbitMQ testcontainer: %v", err)
-	}
-	defer rabbitMQ.Close(ctx)
+	// Get shared RabbitMQ testcontainer from helper
+	helper := NewHelper()
 
 	now := time.Now()
 
@@ -243,7 +243,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		},
 	}
 
-	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, rabbitMQ.Publisher(), log)
+	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
 
 	// Run sentinel in goroutine and capture error
 	errChan := make(chan error, 1)
