@@ -251,12 +251,12 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 			Href:        href,
 			Kind:        item.Kind,
 			Generation:  item.Generation,
-			CreatedTime: item.CreatedAt,
-			UpdatedTime: item.UpdatedAt,
+			CreatedTime: item.CreatedTime,
+			UpdatedTime: item.UpdatedTime,
 			Status: ResourceStatus{
 				Phase:              item.Status.Phase,
 				LastTransitionTime: item.Status.LastTransitionTime,
-				LastUpdated:        item.Status.UpdatedAt,
+				LastUpdated:        item.Status.LastUpdatedTime,
 				ObservedGeneration: item.Status.ObservedGeneration,
 			},
 		}
@@ -266,21 +266,20 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 			resource.Labels = *item.Labels
 		}
 
-		// Convert adapters to conditions for backward compatibility
-		if len(item.Status.Adapters) > 0 {
-			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Adapters))
-			for _, adapter := range item.Status.Adapters {
+		// Convert conditions from OpenAPI model
+		if len(item.Status.Conditions) > 0 {
+			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
+			for _, cond := range item.Status.Conditions {
 				condition := Condition{
-					Type:               adapter.Type,
-					Status:             adapter.Status,
-					LastTransitionTime: adapter.UpdatedAt,
+					Type:               cond.Type,
+					Status:             cond.Status,
+					LastTransitionTime: cond.LastTransitionTime,
 				}
-				// Handle optional reason and message
-				if adapter.Reason != nil {
-					condition.Reason = *adapter.Reason
+				if cond.Reason != nil {
+					condition.Reason = *cond.Reason
 				}
-				if adapter.Message != nil {
-					condition.Message = *adapter.Message
+				if cond.Message != nil {
+					condition.Message = *cond.Message
 				}
 				resource.Status.Conditions = append(resource.Status.Conditions, condition)
 			}
@@ -331,9 +330,10 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 		}
 	}
 
-	// Convert NodePool items to Resource
+	// Convert OpenAPI models to internal models
 	resources := make([]Resource, 0, len(resourceList.Items))
 	for _, item := range resourceList.Items {
+		// Get ID and Href with defaults for optional pointer fields
 		id := ""
 		if item.Id != nil {
 			id = *item.Id
@@ -342,7 +342,7 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 		if item.Href != nil {
 			href = *item.Href
 		}
-		kind := "NodePool"
+		kind := ""
 		if item.Kind != nil {
 			kind = *item.Kind
 		}
@@ -351,35 +351,36 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 			ID:          id,
 			Href:        href,
 			Kind:        kind,
-			Generation:  0, // NodePools don't have Generation field
-			CreatedTime: item.CreatedAt,
-			UpdatedTime: item.UpdatedAt,
+			Generation:  0, // NodePool doesn't have a generation field
+			CreatedTime: item.CreatedTime,
+			UpdatedTime: item.UpdatedTime,
 			Status: ResourceStatus{
 				Phase:              item.Status.Phase,
 				LastTransitionTime: item.Status.LastTransitionTime,
-				LastUpdated:        item.Status.UpdatedAt,
+				LastUpdated:        item.Status.LastUpdatedTime,
 				ObservedGeneration: item.Status.ObservedGeneration,
 			},
 		}
 
+		// Handle optional labels
 		if item.Labels != nil {
 			resource.Labels = *item.Labels
 		}
 
-		// Convert adapters to conditions for backward compatibility
-		if len(item.Status.Adapters) > 0 {
-			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Adapters))
-			for _, adapter := range item.Status.Adapters {
+		// Convert conditions from OpenAPI model
+		if len(item.Status.Conditions) > 0 {
+			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
+			for _, cond := range item.Status.Conditions {
 				condition := Condition{
-					Type:               adapter.Type,
-					Status:             adapter.Status,
-					LastTransitionTime: adapter.UpdatedAt,
+					Type:               cond.Type,
+					Status:             cond.Status,
+					LastTransitionTime: cond.LastTransitionTime,
 				}
-				if adapter.Reason != nil {
-					condition.Reason = *adapter.Reason
+				if cond.Reason != nil {
+					condition.Reason = *cond.Reason
 				}
-				if adapter.Message != nil {
-					condition.Message = *adapter.Message
+				if cond.Message != nil {
+					condition.Message = *cond.Message
 				}
 				resource.Status.Conditions = append(resource.Status.Conditions, condition)
 			}

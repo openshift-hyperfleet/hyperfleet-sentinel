@@ -12,10 +12,10 @@ import (
 
 // newTestResource creates a test resource with the given parameters
 // This follows TRex pattern of using test factories for consistent test data
-func newTestResource(id, kind, phase string, lastUpdated time.Time) *client.Resource {
+func newTestResource(phase string, lastUpdated time.Time) *client.Resource {
 	return &client.Resource{
-		ID:          id,
-		Kind:        kind,
+		ID:          testResourceID,
+		Kind:        testResourceKind,
 		Generation:  1,                              // Default generation
 		CreatedTime: time.Now().Add(-1 * time.Hour), // Default: created 1 hour ago
 		Status: client.ResourceStatus{
@@ -255,7 +255,7 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resource := newTestResource(testResourceID, testResourceKind, tt.resourcePhase, tt.lastUpdated)
+			resource := newTestResource(tt.resourcePhase, tt.lastUpdated)
 			decision := engine.Evaluate(resource, tt.now)
 
 			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
@@ -317,7 +317,7 @@ func TestDecisionEngine_Evaluate_ZeroMaxAge(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := NewDecisionEngine(tt.maxAgeNotReady, tt.maxAgeReady)
-			resource := newTestResource(testResourceID, testResourceKind, tt.resourcePhase, tt.lastUpdated)
+			resource := newTestResource(tt.resourcePhase, tt.lastUpdated)
 			decision := engine.Evaluate(resource, now)
 
 			assertDecision(t, decision, tt.wantShouldPublish, "")
@@ -356,7 +356,7 @@ func TestDecisionEngine_Evaluate_NegativeMaxAge(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			engine := NewDecisionEngine(tt.maxAgeNotReady, tt.maxAgeReady)
-			resource := newTestResource(testResourceID, testResourceKind, tt.resourcePhase, lastUpdated)
+			resource := newTestResource(tt.resourcePhase, lastUpdated)
 			decision := engine.Evaluate(resource, now)
 
 			assertDecision(t, decision, tt.wantShouldPublish, "")
@@ -368,7 +368,7 @@ func TestDecisionEngine_Evaluate_NegativeMaxAge(t *testing.T) {
 func TestDecisionEngine_Evaluate_ConsistentBehavior(t *testing.T) {
 	engine := newTestEngine()
 	now := time.Now()
-	resource := newTestResource(testResourceID, testResourceKind, "Ready", now.Add(-31*time.Minute))
+	resource := newTestResource("Ready", now.Add(-31*time.Minute))
 
 	// Call multiple times - should get same result
 	decision1 := engine.Evaluate(resource, now)
@@ -405,7 +405,7 @@ func TestDecisionEngine_Evaluate_InvalidInputs(t *testing.T) {
 		},
 		{
 			name:              "zero now time",
-			resource:          newTestResource(testResourceID, testResourceKind, "Ready", now),
+			resource:          newTestResource("Ready", now),
 			now:               time.Time{}, // Zero time
 			wantShouldPublish: false,
 			wantReason:        ReasonZeroNow,
@@ -473,7 +473,7 @@ func TestDecisionEngine_Evaluate_CaseInsensitivePhase(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set LastUpdated to now + 1ms to ensure max age hasn't been exceeded yet
-			resource := newTestResource(testResourceID, testResourceKind, tt.phase, now.Add(1*time.Millisecond))
+			resource := newTestResource(tt.phase, now.Add(1*time.Millisecond))
 
 			decision := engine.Evaluate(resource, now)
 

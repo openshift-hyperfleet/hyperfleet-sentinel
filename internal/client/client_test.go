@@ -11,24 +11,24 @@ import (
 )
 
 // createMockCluster creates a mock cluster response with all required fields
-func createMockCluster(id string, phase string) map[string]interface{} {
+func createMockCluster(id string) map[string]interface{} {
 	return map[string]interface{}{
-		"id":         id,
-		"href":       "/api/hyperfleet/v1/clusters/" + id,
-		"kind":       "Cluster",
-		"name":       id,
-		"generation": 5,
-		"created_at": "2025-01-01T09:00:00Z",
-		"updated_at": "2025-01-01T10:00:00Z",
-		"created_by": "test-user",
-		"updated_by": "test-user",
-		"spec":       map[string]interface{}{},
+		"id":           id,
+		"href":         "/api/hyperfleet/v1/clusters/" + id,
+		"kind":         "Cluster",
+		"name":         id,
+		"generation":   5,
+		"created_time": "2025-01-01T09:00:00Z",
+		"updated_time": "2025-01-01T10:00:00Z",
+		"created_by":   "test-user",
+		"updated_by":   "test-user",
+		"spec":         map[string]interface{}{},
 		"status": map[string]interface{}{
-			"phase":                phase,
+			"phase":                "Ready",
 			"last_transition_time": "2025-01-01T10:00:00Z",
-			"updated_at":           "2025-01-01T12:00:00Z",
+			"last_updated_time":    "2025-01-01T12:00:00Z",
 			"observed_generation":  5,
-			"adapters":             []interface{}{},
+			"conditions":           []interface{}{},
 		},
 	}
 }
@@ -57,7 +57,7 @@ func TestFetchResources_Success(t *testing.T) {
 		}
 
 		// Return mock response matching v1.0.0 spec
-		cluster := createMockCluster("cluster-1", "Ready")
+		cluster := createMockCluster("cluster-1")
 		cluster["labels"] = map[string]string{"region": "us-east"}
 		response := createMockClusterList([]map[string]interface{}{cluster})
 
@@ -192,7 +192,7 @@ func TestFetchResources_503ServiceUnavailable_ThenSuccess(t *testing.T) {
 
 		// Second attempt succeeds
 		response := createMockClusterList([]map[string]interface{}{
-			createMockCluster("cluster-1", "Ready"),
+			createMockCluster("cluster-1"),
 		})
 
 		w.Header().Set("Content-Type", "application/json")
@@ -385,7 +385,7 @@ func TestFetchResources_NilStatus(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Note: With v1.0.0 spec, status is required, so this test will fail validation
 		// This test might need to be removed or modified since status is now required
-		cluster2 := createMockCluster("cluster-2", "Ready")
+		cluster2 := createMockCluster("cluster-2")
 		response := createMockClusterList([]map[string]interface{}{
 			cluster2,
 		})
@@ -522,14 +522,14 @@ func TestFetchResources_NodePools(t *testing.T) {
 			"total": 1,
 			"items": []map[string]interface{}{
 				{
-					"id":         "nodepool-1",
-					"href":       "/api/hyperfleet/v1/nodepools/nodepool-1",
-					"kind":       "NodePool",
-					"name":       "workers",
-					"created_at": "2025-01-01T09:00:00Z",
-					"updated_at": "2025-01-01T10:00:00Z",
-					"created_by": "test-user@example.com",
-					"updated_by": "test-user@example.com",
+					"id":           "nodepool-1",
+					"href":         "/api/hyperfleet/v1/nodepools/nodepool-1",
+					"kind":         "NodePool",
+					"name":         "workers",
+					"created_time": "2025-01-01T09:00:00Z",
+					"updated_time": "2025-01-01T10:00:00Z",
+					"created_by":   "test-user@example.com",
+					"updated_by":   "test-user@example.com",
 					"owner_references": map[string]interface{}{
 						"id":   "cluster-123",
 						"kind": "Cluster",
@@ -539,9 +539,9 @@ func TestFetchResources_NodePools(t *testing.T) {
 					"status": map[string]interface{}{
 						"phase":                "Ready",
 						"last_transition_time": "2025-01-01T10:00:00Z",
-						"updated_at":           "2025-01-01T12:00:00Z",
+						"last_updated_time":    "2025-01-01T12:00:00Z",
 						"observed_generation":  3,
-						"adapters":             []interface{}{},
+						"conditions":           []interface{}{},
 					},
 				},
 			},
@@ -584,7 +584,7 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedSearchParam = r.URL.Query().Get("search")
 
-		cluster := createMockCluster("cluster-1", "Ready")
+		cluster := createMockCluster("cluster-1")
 		response := createMockClusterList([]map[string]interface{}{cluster})
 
 		w.Header().Set("Content-Type", "application/json")
