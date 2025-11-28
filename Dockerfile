@@ -21,8 +21,8 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /build/sentinel /app/sentinel
 
-# Copy default config
-COPY configs/sentinel.yaml /app/configs/sentinel.yaml
+# Config will be provided via Helm ConfigMap mount
+# COPY configs/sentinel.yaml /app/configs/sentinel.yaml
 
 ENTRYPOINT ["/app/sentinel"]
 CMD ["serve"]
