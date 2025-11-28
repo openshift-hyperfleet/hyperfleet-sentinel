@@ -1,0 +1,24 @@
+{{- if .Values.monitoring.podMonitoring.enabled }}
+apiVersion: monitoring.googleapis.com/v1
+kind: PodMonitoring
+metadata:
+  name: {{ include "sentinel.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "sentinel.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.podMonitoring.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "sentinel.selectorLabels" . | nindent 6 }}
+  endpoints:
+  - port: http
+    interval: {{ .Values.monitoring.podMonitoring.interval | default "30s" }}
+    path: /metrics
+    {{- with .Values.monitoring.podMonitoring.metricRelabeling }}
+    metricRelabeling:
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

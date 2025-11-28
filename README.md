@@ -273,6 +273,77 @@ message_data:
   generation: .generation
 ```
 
+## Observability
+
+The Sentinel service exposes Prometheus metrics on port 8080 at `/metrics` for monitoring and alerting.
+
+### Metrics
+
+Sentinel provides 6 core metrics for comprehensive observability:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `hyperfleet_sentinel_pending_resources` | Gauge | Number of resources pending reconciliation |
+| `hyperfleet_sentinel_events_published_total` | Counter | Total events published to message broker |
+| `hyperfleet_sentinel_resources_skipped_total` | Counter | Resources skipped (preconditions not met) |
+| `hyperfleet_sentinel_poll_duration_seconds` | Histogram | Duration of each polling cycle |
+| `hyperfleet_sentinel_api_errors_total` | Counter | Errors when calling HyperFleet API |
+| `hyperfleet_sentinel_broker_errors_total` | Counter | Errors when publishing to message broker |
+
+All metrics include `resource_type` and `resource_selector` labels for filtering.
+
+**For detailed metric descriptions, example queries, and alerting rules**, see [docs/metrics.md](docs/metrics.md).
+
+### Grafana Dashboard
+
+A pre-built Grafana dashboard is available at `deployments/dashboards/sentinel-metrics.json` with 8 visualization panels covering all metrics.
+
+To import:
+1. Navigate to Grafana → Dashboards → Import
+2. Upload `deployments/dashboards/sentinel-metrics.json`
+3. Select your Prometheus datasource
+
+### GKE Integration with Google Cloud Managed Prometheus
+
+Sentinel integrates with Google Cloud Managed Prometheus (GMP) for automated metrics collection:
+
+```bash
+# Deploy with PodMonitoring enabled (default)
+helm install sentinel ./deployments/helm/sentinel \
+  --namespace hyperfleet-system \
+  --create-namespace
+
+# Verify metrics in Google Cloud Console
+# Navigate to: Monitoring → Metrics Explorer
+# Query: hyperfleet_sentinel_pending_resources
+```
+
+GMP automatically discovers the PodMonitoring resource and begins scraping metrics. No additional configuration required.
+
+#### Alerting
+
+Configure alerts in **Google Cloud Console → Monitoring → Alerting** using the PromQL expressions provided in [docs/metrics.md](docs/metrics.md).
+
+Recommended alerts:
+- SentinelHighPendingResources - High number of pending resources
+- SentinelAPIErrorRateHigh - High API error rate
+- SentinelBrokerErrorRateHigh - High broker error rate
+- SentinelSlowPolling - Slow polling cycles
+- SentinelNoEventsPublished - No events published despite pending resources
+- SentinelHighSkipRatio - High ratio of skipped resources
+- SentinelDown - Sentinel service is down
+
+See [docs/metrics.md](docs/metrics.md) for complete alerting rules documentation.
+
+### Accessing Metrics
+
+Access metrics through Google Cloud Console:
+1. Navigate to **Monitoring → Metrics Explorer**
+2. Select resource type: **Prometheus Target**
+3. Query: `hyperfleet_sentinel_pending_resources`
+
+Metrics are automatically collected by Google Cloud Managed Prometheus via the PodMonitoring resource.
+
 ## Repository Access
 
 All members of the **hyperfleet** team have write access to this repository.

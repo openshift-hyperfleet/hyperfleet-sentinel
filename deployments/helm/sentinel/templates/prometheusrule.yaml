@@ -1,0 +1,118 @@
+{{- if .Values.monitoring.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "sentinel.fullname" . }}-alerts
+  {{- if .Values.monitoring.prometheusRule.namespace }}
+  namespace: {{ .Values.monitoring.prometheusRule.namespace }}
+  {{- else }}
+  namespace: {{ .Release.Namespace }}
+  {{- end }}
+  labels:
+    {{- include "sentinel.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.prometheusRule.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+  - name: sentinel.rules
+    interval: 30s
+    rules:
+    # Alert when too many resources are pending reconciliation
+    - alert: SentinelHighPendingResources
+      expr: |
+        sum(hyperfleet_sentinel_pending_resources) > 100
+      for: 10m
+      labels:
+        severity: warning
+        component: sentinel
+      annotations:
+        summary: "High number of pending resources in Sentinel"
+        description: "{{ $value }} resources are pending reconciliation for more than 10 minutes. This may indicate processing bottleneck or API issues."
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#high-pending-resources"
+
+    # Alert when API errors are happening frequently
+    - alert: SentinelAPIErrorRateHigh
+      expr: |
+        rate(hyperfleet_sentinel_api_errors_total[5m]) > 0.1
+      for: 5m
+      labels:
+        severity: critical
+        component: sentinel
+      annotations:
+        summary: "High API error rate in Sentinel"
+        description: "Sentinel is experiencing {{ $value | humanize }} API errors/sec for resource_type {{ $labels.resource_type }}. Check HyperFleet API availability."
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#api-error-rate-high"
+
+    # Alert when broker errors are happening
+    - alert: SentinelBrokerErrorRateHigh
+      expr: |
+        rate(hyperfleet_sentinel_broker_errors_total[5m]) > 0.05
+      for: 5m
+      labels:
+        severity: critical
+        component: sentinel
+      annotations:
+        summary: "High broker error rate in Sentinel"
+        description: "Sentinel is experiencing {{ $value | humanize }} broker errors/sec for resource_type {{ $labels.resource_type }}. Check message broker connectivity."
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#broker-error-rate-high"
+
+    # Alert when polling is too slow
+    - alert: SentinelSlowPolling
+      expr: |
+        histogram_quantile(0.95,
+          rate(hyperfleet_sentinel_poll_duration_seconds_bucket[5m])) > 5
+      for: 10m
+      labels:
+        severity: warning
+        component: sentinel
+      annotations:
+        summary: "Sentinel polling cycles are slow"
+        description: "95th percentile poll duration is {{ $value | humanize }}s for {{ $labels.resource_type }}. This may indicate API latency or processing issues."
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#slow-poll-duration"
+
+    # Alert when no events are published despite pending resources
+    - alert: SentinelNoEventsPublished
+      expr: |
+        hyperfleet_sentinel_pending_resources > 0
+        unless on(resource_type, resource_selector)
+        rate(hyperfleet_sentinel_events_published_total[15m]) > 0
+      for: 15m
+      labels:
+        severity: warning
+        component: sentinel
+      annotations:
+        summary: "Sentinel not publishing events"
+        description: "Sentinel has pending resources but hasn't published any events in 15 minutes. Service may be stuck."
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#no-events-published"
+
+    # Alert when skip ratio is too high (may indicate configuration issues)
+    - alert: SentinelHighSkipRatio
+      expr: |
+        (
+          rate(hyperfleet_sentinel_resources_skipped_total[10m]) /
+          (rate(hyperfleet_sentinel_resources_skipped_total[10m]) +
+           rate(hyperfleet_sentinel_events_published_total[10m]))
+        ) > 0.95
+      for: 30m
+      labels:
+        severity: info
+        component: sentinel
+      annotations:
+        summary: "High resource skip ratio in Sentinel"
+        description: "{{ $value | humanizePercentage }} of resources are being skipped. This may indicate max_age configuration issues."
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#high-skip-ratio"
+
+    # Alert when Sentinel pod is down
+    - alert: SentinelDown
+      expr: |
+        absent(up{service="sentinel"}) or up{service="sentinel"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        component: sentinel
+      annotations:
+        summary: "Sentinel service is down"
+        description: "Sentinel metrics endpoint is not responding. Service may be down or unreachable."
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#troubleshooting"
+{{- end }}

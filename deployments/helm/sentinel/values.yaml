@@ -124,6 +124,29 @@ subscriber:
   # Number of parallel workers for message processing
   parallelism: 1
 
+# Monitoring configuration for Google Cloud Managed Prometheus (GMP)
+monitoring:
+  # PodMonitoring for Google Cloud Managed Prometheus
+  podMonitoring:
+    # Enable PodMonitoring creation
+    enabled: true
+    # Scrape interval
+    interval: 30s
+    # Additional labels for PodMonitoring
+    additionalLabels: {}
+    # Metric relabel configs to apply to samples before ingestion
+    metricRelabeling: []
+
+  # PrometheusRule for alerting (requires Prometheus Operator or compatible system)
+  prometheusRule:
+    # Enable PrometheusRule creation
+    # Note: GMP supports rules via Google Cloud Alerting, this is for Prometheus Operator compatibility
+    enabled: false
+    # Namespace where PrometheusRule will be created (defaults to release namespace)
+    namespace: ""
+    # Additional labels for PrometheusRule
+    additionalLabels: {}
+
 # Existing secret name (optional)
 # If provided, the chart will not create a Secret and will use this existing one
 # existingSecret: sentinel-broker-credentials
