@@ -91,7 +91,11 @@ func runServe(cfg *config.SentinelConfig) error {
 		return fmt.Errorf("failed to initialize broker publisher: %w", err)
 	}
 	if pub != nil {
-		defer pub.Close()
+		defer func() {
+			if err := pub.Close(); err != nil {
+				log.Infof("Error closing publisher: %v", err)
+			}
+		}()
 	}
 	log.Info("Initialized broker publisher")
 
@@ -108,7 +112,9 @@ func runServe(cfg *config.SentinelConfig) error {
 	// Health endpoint
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		if _, err := w.Write([]byte("OK")); err != nil {
+			log.Infof("Error writing health response: %v", err)
+		}
 	})
 
 	// Metrics endpoint

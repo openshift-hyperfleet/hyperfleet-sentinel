@@ -21,22 +21,22 @@ import (
 // createMockCluster creates a mock cluster response matching main branch spec
 func createMockCluster(id string, generation int, observedGeneration int, phase string, lastUpdated time.Time) map[string]interface{} {
 	return map[string]interface{}{
-		"id":         id,
-		"href":       "/api/hyperfleet/v1/clusters/" + id,
-		"kind":       "Cluster",
-		"name":       id,
-		"generation": generation,
-		"created_at": "2025-01-01T09:00:00Z",
-		"updated_at": "2025-01-01T10:00:00Z",
-		"created_by": "test-user",
-		"updated_by": "test-user",
-		"spec":       map[string]interface{}{},
+		"id":           id,
+		"href":         "/api/hyperfleet/v1/clusters/" + id,
+		"kind":         "Cluster",
+		"name":         id,
+		"generation":   generation,
+		"created_time": "2025-01-01T09:00:00Z",
+		"updated_time": "2025-01-01T10:00:00Z",
+		"created_by":   "test-user",
+		"updated_by":   "test-user",
+		"spec":         map[string]interface{}{},
 		"status": map[string]interface{}{
 			"phase":                phase,
 			"last_transition_time": "2025-01-01T10:00:00Z",
-			"updated_at":           lastUpdated.Format(time.RFC3339),
+			"last_updated_time":    lastUpdated.Format(time.RFC3339),
 			"observed_generation":  observedGeneration,
-			"adapters":             []interface{}{},
+			"conditions":           []interface{}{},
 		},
 	}
 }
@@ -82,7 +82,9 @@ func TestTrigger_Success(t *testing.T) {
 		cluster := createMockCluster("cluster-1", 2, 2, "Ready", time.Now().Add(-31*time.Minute))
 		response := createMockClusterList([]map[string]interface{}{cluster})
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Logf("Error encoding response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -147,7 +149,9 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 		cluster := createMockCluster("cluster-1", 1, 1, "Ready", time.Now().Add(-5*time.Minute))
 		response := createMockClusterList([]map[string]interface{}{cluster})
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Logf("Error encoding response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -189,7 +193,9 @@ func TestTrigger_FetchError(t *testing.T) {
 	// Create mock server that returns 500 errors
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error": "internal server error"}`))
+		if _, err := w.Write([]byte(`{"error": "internal server error"}`)); err != nil {
+			t.Logf("Error writing error response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -233,7 +239,9 @@ func TestTrigger_PublishError(t *testing.T) {
 		cluster := createMockCluster("cluster-1", 2, 2, "Ready", time.Now().Add(-31*time.Minute))
 		response := createMockClusterList([]map[string]interface{}{cluster})
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Logf("Error encoding response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -281,7 +289,9 @@ func TestTrigger_MixedResources(t *testing.T) {
 		}
 		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Logf("Error encoding response: %v", err)
+		}
 	}))
 	defer server.Close()
 
