@@ -457,7 +457,7 @@ Access metrics in **Google Cloud Console → Metrics Explorer**:
 Query metrics through the Google Cloud Console:
 
 1. **Navigate to the Google Cloud Console**
-2. **Go to: Observe → Metrics**
+2. **Go to: Monitoring → Metrics Explorer**
 3. **Query your metrics**, for example:
    ```promql
    hyperfleet_sentinel_pending_resources
@@ -505,35 +505,47 @@ Metrics are collected internally by Google Cloud Managed Prometheus (GMP) via th
 
 ## Troubleshooting
 
-### Metrics not appearing in Prometheus
+### Metrics not appearing in Google Cloud Console
 
-**GKE:**
+**GKE with Google Cloud Managed Prometheus:**
 
-1. **Verify User Workload Monitoring is enabled:**
+1. **Verify Managed Prometheus is enabled:**
    ```bash
-   kubectl get pod -n openshift-user-workload-monitoring
-   # Should see prometheus-user-workload pods running
+   gcloud container clusters describe CLUSTER_NAME \
+     --zone=ZONE \
+     --format="value(monitoringConfig.managedPrometheusConfig.enabled)"
+   # Should return: true
    ```
 
 2. **Check if PodMonitoring is created:**
    ```bash
-   kubectl get servicemonitor -n hyperfleet-system
-   oc describe servicemonitor sentinel -n hyperfleet-system
+   kubectl get podmonitoring -n hyperfleet-system
+   kubectl describe podmonitoring sentinel -n hyperfleet-system
    ```
 
 3. **Verify Service and endpoints:**
    ```bash
-   kubectl get svc -n hyperfleet-system
+   kubectl get svc sentinel -n hyperfleet-system
    kubectl get endpoints sentinel -n hyperfleet-system
+   # Should show pod IP:8080
    ```
 
-4. **Review Prometheus User Workload logs:**
+4. **Review GMP collector logs:**
    ```bash
-   oc logs -n openshift-user-workload-monitoring -l app.kubernetes.io/name=prometheus
+   kubectl logs -n gmp-system -l app.kubernetes.io/name=collector
+   # Look for scrape errors or connection issues
    ```
 
-5. **Check if metrics appear in Google Cloud Console:**
-   - Navigate to: **Observe → Metrics**
+5. **Test metrics endpoint directly:**
+   ```bash
+   kubectl port-forward -n hyperfleet-system svc/sentinel 8080:8080
+   # In another terminal:
+   curl http://localhost:8080/metrics | grep hyperfleet_sentinel
+   ```
+
+6. **Check if metrics appear in Google Cloud Console:**
+   - Navigate to: **Monitoring → Metrics Explorer**
+   - Select resource type: **Prometheus Target**
    - Query: `hyperfleet_sentinel_pending_resources`
 
 
@@ -557,5 +569,6 @@ If you see warnings about high cardinality:
 
 - [Prometheus Query Language (PromQL)](https://prometheus.io/docs/prometheus/latest/querying/basics/)
 - [Grafana Dashboards](https://grafana.com/docs/grafana/latest/dashboards/)
-- [Prometheus Operator PodMonitoring](https://prometheus-operator.dev/docs/operator/design/#servicemonitor)
+- [Google Cloud Managed Prometheus](https://cloud.google.com/stackdriver/docs/managed-prometheus)
+- [PodMonitoring API Reference](https://github.com/GoogleCloudPlatform/prometheus-engine/blob/main/doc/api.md#podmonitoring)
 - [HyperFleet Architecture Documentation](https://github.com/openshift-hyperfleet/architecture)

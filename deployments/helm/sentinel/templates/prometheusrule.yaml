@@ -28,7 +28,7 @@ spec:
         component: sentinel
       annotations:
         summary: "High number of pending resources in Sentinel"
-        description: "{{ $value }} resources are pending reconciliation for more than 10 minutes. This may indicate processing bottleneck or API issues."
+        description: "{{`{{ $value }}`}} resources are pending reconciliation for more than 10 minutes. This may indicate processing bottleneck or API issues."
         runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#high-pending-resources"
 
     # Alert when API errors are happening frequently
@@ -41,7 +41,7 @@ spec:
         component: sentinel
       annotations:
         summary: "High API error rate in Sentinel"
-        description: "Sentinel is experiencing {{ $value | humanize }} API errors/sec for resource_type {{ $labels.resource_type }}. Check HyperFleet API availability."
+        description: "Sentinel is experiencing {{`{{ $value | humanize }}`}} API errors/sec for resource_type {{`{{ $labels.resource_type }}`}}. Check HyperFleet API availability."
         runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#api-error-rate-high"
 
     # Alert when broker errors are happening
@@ -54,7 +54,7 @@ spec:
         component: sentinel
       annotations:
         summary: "High broker error rate in Sentinel"
-        description: "Sentinel is experiencing {{ $value | humanize }} broker errors/sec for resource_type {{ $labels.resource_type }}. Check message broker connectivity."
+        description: "Sentinel is experiencing {{`{{ $value | humanize }}`}} broker errors/sec for resource_type {{`{{ $labels.resource_type }}`}}. Check message broker connectivity."
         runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#broker-error-rate-high"
 
     # Alert when polling is too slow
@@ -68,7 +68,7 @@ spec:
         component: sentinel
       annotations:
         summary: "Sentinel polling cycles are slow"
-        description: "95th percentile poll duration is {{ $value | humanize }}s for {{ $labels.resource_type }}. This may indicate API latency or processing issues."
+        description: "95th percentile poll duration is {{`{{ $value | humanize }}`}}s for {{`{{ $labels.resource_type }}`}}. This may indicate API latency or processing issues."
         runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#slow-poll-duration"
 
     # Alert when no events are published despite pending resources
@@ -100,7 +100,7 @@ spec:
         component: sentinel
       annotations:
         summary: "High resource skip ratio in Sentinel"
-        description: "{{ $value | humanizePercentage }} of resources are being skipped. This may indicate max_age configuration issues."
+        description: "{{`{{ $value | humanizePercentage }}`}} of resources are being skipped. This may indicate max_age configuration issues."
         runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#high-skip-ratio"
 
     # Alert when Sentinel pod is down
