@@ -75,20 +75,9 @@ export BROKER_RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
 
 For Google Pub/Sub Emulator:
 
-First, create a broker configuration file `configs/broker-pubsub.yaml`:
-
-```yaml
-broker:
-  type: googlepubsub
-  googlepubsub:
-    project_id: test-project
-```
-
-Then set the environment variables:
-
 ```bash
 export PUBSUB_EMULATOR_HOST=localhost:8085
-export BROKER_CONFIG_FILE=configs/broker-pubsub.yaml
+export BROKER_GOOGLEPUBSUB_PROJECT_ID=test-project
 ```
 
 ### 3. Running Sentinel
