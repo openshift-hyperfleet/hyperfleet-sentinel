@@ -12,7 +12,6 @@ This guide enables developers to run Sentinel both locally (for development) and
   - [Configuring Sentinel](#2-configuring-sentinel)
   - [Running Sentinel](#3-running-sentinel)
   - [Verification Steps](#4-verification-steps)
-  - [Running Tests](#5-running-tests)
 - [Running on GKE](#running-on-gke)
   - [Prerequisites](#prerequisites-for-gke)
   - [Building Container Image](#1-building-container-image)
@@ -147,51 +146,6 @@ Watch console output for startup and broker connection messages.
 **For Google Pub/Sub**, there is no explicit connection log (see [HYPERFLEET-276](https://issues.redhat.com/browse/HYPERFLEET-276)). The publisher initializes silently. You can verify it's working by checking the health endpoint (`curl http://localhost:8080/health`) and metrics.
 
 > **Note**: If the HyperFleet API is not running, Sentinel will still start but API polling will fail silently (visible in metrics as `api_errors_total`). This is expected for local broker validation.
-
-#### Verify Broker Integration
-
-**For RabbitMQ:**
-1. Open management console at http://localhost:15672
-2. Login with guest/guest
-3. Check Exchanges tab for `hyperfleet.sentinel` exchange
-4. Check Queues tab for any bound queues
-
-**For Pub/Sub Emulator:**
-- Check emulator logs for published messages
-
-### 5. Running Tests
-
-#### Unit Tests
-
-```bash
-make test
-```
-
-#### Integration Tests
-
-Integration tests use testcontainers to automatically spin up broker containers:
-
-```bash
-make test-integration
-```
-
-> **Note**: Integration tests require Podman. See [testcontainers.md](testcontainers.md) for Podman-specific configuration.
-
-#### All Tests
-
-```bash
-make test-all
-```
-
-#### Check Test Coverage
-
-```bash
-# Run tests with coverage
-go test -coverprofile=coverage.out ./...
-
-# View coverage report in browser
-go tool cover -html=coverage.out
-```
 
 ---
 
@@ -417,12 +371,3 @@ podman build --platform linux/amd64 -t your-image:tag .
 make generate
 make build
 ```
-
-### Integration Tests Failing with Container Errors
-
-**Problem**: Integration tests fail to start containers
-
-**Solution**:
-1. Ensure Podman is running
-2. See [testcontainers.md](testcontainers.md) for Podman-specific configuration
-3. Check available disk space and memory
