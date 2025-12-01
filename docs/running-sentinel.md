@@ -13,8 +13,8 @@ This guide enables developers to run Sentinel both locally (for development) and
   - [Running Sentinel](#3-running-sentinel)
   - [Verification Steps](#4-verification-steps)
 - [Running on GKE](#running-on-gke)
-  - [Shared GKE Cluster](#shared-gke-cluster)
   - [Prerequisites](#prerequisites-for-gke)
+  - [Shared GKE Cluster](#shared-gke-cluster)
   - [Building Container Image](#1-building-container-image)
   - [Authentication and Image Push](#2-authentication-and-image-push)
   - [Helm Deployment](#3-helm-deployment)
@@ -152,6 +152,15 @@ Watch console output for startup and broker connection messages.
 
 ## Running on GKE
 
+### Prerequisites for GKE
+
+- GKE cluster access (use the shared cluster below or your own)
+- `gcloud` CLI configured and authenticated
+- `kubectl` configured for the cluster
+- `podman` for building images
+- `helm` for deploying the chart
+- Access to `gcr.io/hcm-hyperfleet` container registry (or your own registry)
+
 ### Shared GKE Cluster
 
 A shared GKE cluster with Config Connector enabled is available for development and testing:
@@ -165,15 +174,6 @@ gcloud container clusters get-credentials hyperfleet-dev --zone=us-central1-a --
 - For team collaboration, use a designated namespace to separate resources among members
 
 > **Note**: This environment is scheduled for deletion every Friday at 8:00 PM (EST). See [GKE deployment docs](https://github.com/openshift-hyperfleet/architecture/tree/main/hyperfleet/deployment/GKE) for more details.
-
-### Prerequisites for GKE
-
-- GKE cluster access (use the shared cluster above or your own)
-- `gcloud` CLI configured and authenticated
-- `kubectl` configured for the cluster
-- `podman` for building images
-- `helm` for deploying the chart
-- Access to `gcr.io/hcm-hyperfleet` container registry (or your own registry)
 
 ### 1. Building Container Image
 
