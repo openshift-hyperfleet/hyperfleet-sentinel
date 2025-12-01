@@ -76,7 +76,7 @@ make test-all
 
 Integration tests automatically work with both Docker and Podman. For troubleshooting and advanced configuration, see [docs/testcontainers.md](docs/testcontainers.md).
 
-For comprehensive testing and deployment procedures (local development and GKE integration testing), see [docs/testing.md](docs/testing.md).
+For instructions on running Sentinel locally or on GKE, see [docs/running-sentinel.md](docs/running-sentinel.md).
 
 ### OpenAPI Client Generation
 

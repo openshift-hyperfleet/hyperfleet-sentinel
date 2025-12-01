@@ -1,32 +1,32 @@
-# Testing and Deployment Guide
+# Running Sentinel
 
-> **IMPORTANT**: This documentation is for **TESTING purposes only**. Production deployments are handled via CI/CD pipelines.
+> **IMPORTANT**: This documentation covers running Sentinel for **development and testing purposes**. Production deployments are handled via CI/CD pipelines.
 
-This guide enables developers to test Sentinel both locally (for development) and on GKE (for integration testing) before merging code changes.
+This guide enables developers to run Sentinel both locally (for development) and on GKE (for integration) before merging code changes.
 
 ## Table of Contents
 
-- [Local Testing (Development Environment)](#local-testing-development-environment)
-  - [Prerequisites](#prerequisites-for-local-testing)
-  - [Setting Up Local Broker](#1-setting-up-local-broker)
-  - [Configuring Sentinel](#2-configuring-sentinel-for-local-testing)
-  - [Running Sentinel](#3-running-sentinel-locally)
-  - [Verification Steps](#4-verification-steps-for-local-testing)
-  - [Running Tests](#5-running-tests-locally)
-- [GKE Testing (Integration Environment)](#gke-testing-integration-environment)
-  - [Prerequisites](#prerequisites-for-gke-testing)
-  - [Building Container Image](#1-building-container-image-for-gke)
+- [Running Locally](#running-locally)
+  - [Prerequisites](#prerequisites-for-running-locally)
+  - [Setting Up a Message Broker](#1-setting-up-a-message-broker)
+  - [Configuring Sentinel](#2-configuring-sentinel)
+  - [Running Sentinel](#3-running-sentinel)
+  - [Verification Steps](#4-verification-steps)
+  - [Running Tests](#5-running-tests)
+- [Running on GKE](#running-on-gke)
+  - [Prerequisites](#prerequisites-for-gke)
+  - [Building Container Image](#1-building-container-image)
   - [Authentication and Image Push](#2-authentication-and-image-push)
-  - [Helm Deployment](#3-helm-deployment-test-environment)
+  - [Helm Deployment](#3-helm-deployment)
   - [Verification Steps](#4-verification-steps-for-gke)
   - [Cleanup](#5-cleanup)
 - [Troubleshooting](#troubleshooting)
 
 ---
 
-## Local Testing (Development Environment)
+## Running Locally
 
-### Prerequisites for Local Testing
+### Prerequisites for Running Locally
 
 - Go 1.25+ installed
 - Podman (for running broker locally and integration tests)
@@ -34,7 +34,7 @@ This guide enables developers to test Sentinel both locally (for development) an
 - Access to a message broker (RabbitMQ recommended for local development)
 - HyperFleet API accessible (local or remote instance)
 
-### 1. Setting Up Local Broker
+### 1. Setting Up a Message Broker
 
 #### Option A: RabbitMQ via Podman (Recommended)
 
@@ -53,7 +53,7 @@ gcloud beta emulators pubsub start --project=test-project --host-port=localhost:
 
 > **Note**: The emulator runs in the foreground. Open a new terminal for subsequent commands.
 
-### 2. Configuring Sentinel for Local Testing
+### 2. Configuring Sentinel
 
 #### Step 1: Generate the OpenAPI Client
 
@@ -91,7 +91,7 @@ export PUBSUB_EMULATOR_HOST=localhost:8085
 export BROKER_CONFIG_FILE=configs/broker-pubsub.yaml
 ```
 
-### 3. Running Sentinel Locally
+### 3. Running Sentinel
 
 #### Option A: Build and Run Binary
 
@@ -109,7 +109,7 @@ make build
 go run ./cmd/sentinel serve --config=configs/dev-example.yaml
 ```
 
-### 4. Verification Steps for Local Testing
+### 4. Verification Steps
 
 #### Check Health Endpoint
 
@@ -135,7 +135,7 @@ curl http://localhost:8080/metrics | grep hyperfleet_sentinel
 hyperfleet_sentinel_api_errors_total{error_type="fetch_error",resource_selector="all",resource_type="clusters"} 1
 ```
 
-> **Note**: This is expected behavior when testing locally without a HyperFleet API instance. The `api_errors_total` metric indicates the Sentinel is running correctly but cannot reach the API.
+> **Note**: This is expected behavior when running locally without a HyperFleet API instance. The `api_errors_total` metric indicates the Sentinel is running correctly but cannot reach the API.
 
 **With HyperFleet API running**, you will see additional metrics:
 
@@ -157,7 +157,7 @@ Watch console output for startup and broker connection messages.
 
 **For Google Pub/Sub**, there is no explicit connection log (see [HYPERFLEET-276](https://issues.redhat.com/browse/HYPERFLEET-276)). The publisher initializes silently. You can verify it's working by checking the health endpoint (`curl http://localhost:8080/health`) and metrics.
 
-> **Note**: If the HyperFleet API is not running, Sentinel will still start but API polling will fail silently (visible in metrics as `api_errors_total`). This is expected for local broker testing.
+> **Note**: If the HyperFleet API is not running, Sentinel will still start but API polling will fail silently (visible in metrics as `api_errors_total`). This is expected for local broker validation.
 
 #### Verify Broker Integration
 
@@ -170,7 +170,7 @@ Watch console output for startup and broker connection messages.
 **For Pub/Sub Emulator:**
 - Check emulator logs for published messages
 
-### 5. Running Tests Locally
+### 5. Running Tests
 
 #### Unit Tests
 
@@ -206,9 +206,9 @@ go tool cover -html=coverage.out
 
 ---
 
-## GKE Testing (Integration Environment)
+## Running on GKE
 
-### Prerequisites for GKE Testing
+### Prerequisites for GKE
 
 - GKE cluster with Google Cloud Managed Prometheus (GMP) enabled
 - `gcloud` CLI configured and authenticated
@@ -217,7 +217,7 @@ go tool cover -html=coverage.out
 - `helm` for deploying the chart
 - Access to `gcr.io/hcm-hyperfleet` container registry (or your own registry)
 
-### 1. Building Container Image for GKE
+### 1. Building Container Image
 
 ```bash
 # Build for AMD64 (required for GKE)
@@ -234,13 +234,13 @@ podman build --platform linux/amd64 -t gcr.io/hcm-hyperfleet/sentinel:test-$(git
 gcloud auth configure-docker gcr.io
 ```
 
-#### Push Test Image to Registry
+#### Push Image to Registry
 
 ```bash
 podman push gcr.io/hcm-hyperfleet/sentinel:test-$(git rev-parse --abbrev-ref HEAD)
 ```
 
-### 3. Helm Deployment (Test Environment)
+### 3. Helm Deployment
 
 #### Basic Deployment
 
@@ -248,7 +248,7 @@ podman push gcr.io/hcm-hyperfleet/sentinel:test-$(git rev-parse --abbrev-ref HEA
 # Get your branch name
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-# Deploy Sentinel with your test image
+# Deploy Sentinel with your image
 helm install sentinel-test ./deployments/helm/sentinel \
   --namespace hyperfleet-system \
   --create-namespace \
@@ -326,17 +326,17 @@ kubectl describe podmonitoring -n hyperfleet-system -l app.kubernetes.io/name=se
 2. Select resource type: **Prometheus Target**
 3. Query: `hyperfleet_sentinel_pending_resources`
 
-You should see metrics from your test deployment.
+You should see metrics from your deployment.
 
 ### 5. Cleanup
 
-Remove the test deployment when done:
+Remove the deployment when done:
 
 ```bash
 helm uninstall sentinel-test -n hyperfleet-system
 ```
 
-Optionally, delete the test image from the registry:
+Optionally, delete the image from the registry:
 
 ```bash
 gcloud container images delete gcr.io/hcm-hyperfleet/sentinel:test-$(git rev-parse --abbrev-ref HEAD) --quiet
@@ -410,7 +410,7 @@ podman build --platform linux/amd64 -t your-image:tag .
 
 **Solution**:
 1. Verify the API endpoint is correct in your config
-2. For local testing, ensure the API is running
+2. For local execution, ensure the API is running
 3. For GKE, use the in-cluster service name:
    ```yaml
    hyperfleet_api:
