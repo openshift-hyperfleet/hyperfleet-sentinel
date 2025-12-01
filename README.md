@@ -76,6 +76,8 @@ make test-all
 
 Integration tests automatically work with both Docker and Podman. For troubleshooting and advanced configuration, see [docs/testcontainers.md](docs/testcontainers.md).
 
+For comprehensive testing and deployment procedures (local development and GKE integration testing), see [docs/testing.md](docs/testing.md).
+
 ### OpenAPI Client Generation
 
 This project follows the [rh-trex](https://github.com/openshift-online/rh-trex) pattern for OpenAPI client generation. The OpenAPI specification is automatically downloaded from the official [hyperfleet-api](https://github.com/openshift-hyperfleet/hyperfleet-api) repository (main branch by default) during `make generate`.
