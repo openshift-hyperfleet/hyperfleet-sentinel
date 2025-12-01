@@ -186,7 +186,7 @@ Integration tests use testcontainers to automatically spin up broker containers:
 make test-integration
 ```
 
-> **Note**: Integration tests require Podman. See [docs/testcontainers.md](testcontainers.md) for Podman-specific configuration.
+> **Note**: Integration tests require Podman. See [testcontainers.md](testcontainers.md) for Podman-specific configuration.
 
 #### All Tests
 
@@ -435,5 +435,5 @@ make build
 
 **Solution**:
 1. Ensure Podman is running
-2. See [docs/testcontainers.md](testcontainers.md) for Podman-specific configuration
+2. See [testcontainers.md](testcontainers.md) for Podman-specific configuration
 3. Check available disk space and memory
