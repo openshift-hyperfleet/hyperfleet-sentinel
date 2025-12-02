@@ -43,7 +43,7 @@ This guide enables developers to run Sentinel both locally (for development) and
 podman run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
 ```
 
-Verify: Access RabbitMQ management console at http://localhost:15672 (guest/guest)
+Verify: Access RabbitMQ management console at `http://localhost:15672` (guest/guest)
 
 #### Option B: Google Pub/Sub Emulator (gcloud CLI)
 
@@ -132,7 +132,7 @@ curl http://localhost:8080/health
 
 Expected response:
 
-```
+```text
 OK
 ```
 
@@ -144,7 +144,7 @@ curl http://localhost:8080/metrics | grep hyperfleet_sentinel
 
 **Without HyperFleet API running**, you will see error metrics:
 
-```
+```text
 hyperfleet_sentinel_api_errors_total{error_type="fetch_error",resource_selector="all",resource_type="clusters"} 1
 ```
 
@@ -152,7 +152,7 @@ hyperfleet_sentinel_api_errors_total{error_type="fetch_error",resource_selector=
 
 **With HyperFleet API running**, you will see additional metrics:
 
-```
+```text
 hyperfleet_sentinel_pending_resources{...} 0
 hyperfleet_sentinel_events_published_total{...} 0
 hyperfleet_sentinel_poll_duration_seconds_bucket{...}
@@ -164,7 +164,7 @@ Watch console output for startup and broker connection messages.
 
 **For RabbitMQ**, you should see the broker connection log:
 
-```
+```log
 [watermill] 2025/12/01 15:28:26.051755 connection.go:99: level=INFO msg="Connected to AMQP"
 ```
 
@@ -204,11 +204,11 @@ gcloud container clusters get-credentials hyperfleet-dev --zone=us-central1-a --
 Set these variables once and use them throughout the deployment:
 
 ```bash
-# Your namespace (use your name for personal work)
-export NAMESPACE=hyperfleet-system
+# Your namespace (use your name for personal work, e.g., "rafael")
+export NAMESPACE=<your_user>
 
-# Your branch name (used for image tagging)
-export BRANCH=$(git rev-parse --abbrev-ref HEAD)
+# Image tag includes namespace to avoid collisions
+export BRANCH=${NAMESPACE}-$(git rev-parse --abbrev-ref HEAD)
 ```
 
 ### 2. Building Container Image
@@ -249,7 +249,7 @@ helm install sentinel-test ./deployments/helm/sentinel \
 ```
 
 > **Note**: Replace `{google-project}` with your GCP project ID (e.g., `hcm-hyperfleet`).
-
+>
 > **Warning**: When using real Google Pub/Sub (not the emulator), all Sentinels publish to shared topics named after resource types (e.g., `Cluster`, `NodePool`). For isolated testing, use the Pub/Sub emulator or ensure your test messages won't interfere with production consumers.
 
 ### 5. Verification Steps for GKE
