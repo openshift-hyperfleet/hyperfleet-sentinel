@@ -256,7 +256,7 @@ kubectl describe podmonitoring -n hyperfleet-system -l app.kubernetes.io/name=se
 
 #### Verify Metrics in Google Cloud Console
 
-1. Navigate to: **Monitoring > Metrics Explorer**
+1. Open the [Metrics Explorer](https://console.cloud.google.com/monitoring/metrics-explorer?project=hcm-hyperfleet)
 2. Select resource type: **Prometheus Target**
 3. Query: `hyperfleet_sentinel_pending_resources`
 
