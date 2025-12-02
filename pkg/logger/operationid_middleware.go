@@ -8,8 +8,15 @@ import (
 
 type OperationIDKey string
 
-const OpIDKey OperationIDKey = "opID"
+const OpIDKey OperationIDKey = "op_id"
 
+// TransactionIDKey is the typed context key for transaction ID
+type TransactionIDKey string
+
+const TxIDKey TransactionIDKey = "tx_id"
+
+// WithOpID ensures the provided context contains an operation ID.
+// If the context already contains a value for OpIDKey it is returned unchanged; otherwise a new KSUID string is generated and stored under OpIDKey in the returned context.
 func WithOpID(ctx context.Context) context.Context {
 	if ctx.Value(OpIDKey) != nil {
 		return ctx
