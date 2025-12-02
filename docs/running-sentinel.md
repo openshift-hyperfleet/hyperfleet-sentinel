@@ -231,6 +231,8 @@ kubectl get pods -n hyperfleet-system -l app.kubernetes.io/name=sentinel
 kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel -f
 ```
 
+> **Note**: Currently, Sentinel does not output logs during normal operation (see [HYPERFLEET-276](https://issues.redhat.com/browse/HYPERFLEET-276)). Use the health endpoint and metrics to verify the service is running correctly.
+
 #### Verify Health Endpoint
 
 ```bash
