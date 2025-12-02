@@ -40,11 +40,11 @@ func NewHyperFleetLogger() HyperFleetLogger {
 	return logger
 }
 
-func (l *logger) prepareLogPrefix(ctx context.Context, message string, extra extra) string {
+func (l *logger) buildContextPrefix(ctx context.Context) string {
 	prefix := " "
 
 	if ctx != nil {
-		if txid, ok := ctx.Value("txid").(int64); ok {
+		if txid, ok := ctx.Value(TxIDKey).(int64); ok {
 			prefix = fmt.Sprintf("[tx_id=%d]%s", txid, prefix)
 		}
 	}
@@ -58,6 +58,12 @@ func (l *logger) prepareLogPrefix(ctx context.Context, message string, extra ext
 			prefix = fmt.Sprintf("[opid=%s]%s", opid, prefix)
 		}
 	}
+
+	return prefix
+}
+
+func (l *logger) prepareLogPrefix(ctx context.Context, message string, extra extra) string {
+	prefix := l.buildContextPrefix(ctx)
 
 	var args []string
 	for k, v := range extra {
@@ -69,23 +75,7 @@ func (l *logger) prepareLogPrefix(ctx context.Context, message string, extra ext
 
 func (l *logger) prepareLogPrefixf(ctx context.Context, format string, args ...interface{}) string {
 	orig := fmt.Sprintf(format, args...)
-	prefix := " "
-
-	if ctx != nil {
-		if txid, ok := ctx.Value("txid").(int64); ok {
-			prefix = fmt.Sprintf("[tx_id=%d]%s", txid, prefix)
-		}
-	}
-
-	if l.accountID != "" {
-		prefix = fmt.Sprintf("[accountID=%s]%s", l.accountID, prefix)
-	}
-
-	if ctx != nil {
-		if opid, ok := ctx.Value(OpIDKey).(string); ok {
-			prefix = fmt.Sprintf("[opid=%s]%s", opid, prefix)
-		}
-	}
+	prefix := l.buildContextPrefix(ctx)
 
 	return fmt.Sprintf("%s%s", prefix, orig)
 }

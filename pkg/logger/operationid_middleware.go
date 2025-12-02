@@ -8,7 +8,12 @@ import (
 
 type OperationIDKey string
 
-const OpIDKey OperationIDKey = "opID"
+const OpIDKey OperationIDKey = "op_id"
+
+// TransactionIDKey is the typed context key for transaction ID
+type TransactionIDKey string
+
+const TxIDKey TransactionIDKey = "tx_id"
 
 func WithOpID(ctx context.Context) context.Context {
 	if ctx.Value(OpIDKey) != nil {
