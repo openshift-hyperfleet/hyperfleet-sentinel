@@ -15,11 +15,12 @@ This guide enables developers to run Sentinel both locally (for development) and
 - [Running on GKE](#running-on-gke)
   - [Prerequisites](#prerequisites-for-gke)
   - [Shared GKE Cluster](#shared-gke-cluster)
-  - [Building Container Image](#1-building-container-image)
-  - [Authentication and Image Push](#2-authentication-and-image-push)
-  - [Helm Deployment](#3-helm-deployment)
-  - [Verification Steps](#4-verification-steps-for-gke)
-  - [Cleanup](#5-cleanup)
+  - [Set Up Environment Variables](#1-set-up-environment-variables)
+  - [Building Container Image](#2-building-container-image)
+  - [Authentication and Image Push](#3-authentication-and-image-push)
+  - [Helm Deployment](#4-helm-deployment)
+  - [Verification Steps](#5-verification-steps-for-gke)
+  - [Cleanup](#6-cleanup)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -44,7 +45,7 @@ podman run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
 
 Verify: Access RabbitMQ management console at http://localhost:15672 (guest/guest)
 
-#### Option B: Google Pub/Sub Emulator
+#### Option B: Google Pub/Sub Emulator (gcloud CLI)
 
 ```bash
 # Start the emulator (runs on port 8085 by default)
@@ -53,7 +54,27 @@ gcloud beta emulators pubsub start --project=test-project --host-port=localhost:
 
 > **Note**: The emulator runs in the foreground. Open a new terminal for subsequent commands.
 
+#### Option C: Google Pub/Sub Emulator via Podman
+
+You can also run the emulator in Podman, as documented in the [broker library](https://github.com/openshift-hyperfleet/hyperfleet-broker?tab=readme-ov-file#running-rabbitmq-and-pubsub-emulator-in-containers):
+
+```bash
+export PUBSUB_PROJECT_ID=hcm-hyperfleet
+export PUBSUB_EMULATOR_HOST=localhost:8085
+
+podman run --rm --name pubsub-emulator -d -p 8085:8085 google/cloud-sdk:emulators \
+  /bin/bash -c "gcloud beta emulators pubsub start --project=hcm-hyperfleet --host-port='0.0.0.0:8085'"
+```
+
 ### 2. Configuring Sentinel
+
+Broker configuration happens in two places:
+
+- **`broker.yaml`** - For non-sensitive settings (broker type, project ID, etc.)
+- **Environment variables** - For sensitive settings (credentials, URLs with passwords)
+  - For the Pub/Sub emulator, environment variables are also required for the Google SDK to work properly
+
+> **Note**: If using real Google Pub/Sub (not the emulator), you need GCP credentials in place via `gcloud auth application-default login` or by setting `GOOGLE_APPLICATION_CREDENTIALS` to a service account key file.
 
 #### Step 1: Generate the OpenAPI Client
 
@@ -82,20 +103,23 @@ export BROKER_GOOGLEPUBSUB_PROJECT_ID=test-project
 
 ### 3. Running Sentinel
 
+> **Note**: The default `broker.yaml` in the project root is configured for RabbitMQ. Modify it to match your broker setup, or set `BROKER_CONFIG_FILE` to point to a different configuration file.
+
 #### Option A: Build and Run Binary
 
 ```bash
 # Build the binary
 make build
 
-# Run Sentinel
+# Run Sentinel (uses broker.yaml from current directory)
 ./sentinel serve --config=configs/dev-example.yaml
 ```
 
 #### Option B: Run Directly with Go
 
 ```bash
-go run ./cmd/sentinel serve --config=configs/dev-example.yaml
+# Run with explicit broker config path
+BROKER_CONFIG_FILE=broker.yaml go run ./cmd/sentinel serve --config=configs/dev-example.yaml
 ```
 
 ### 4. Verification Steps
@@ -175,16 +199,28 @@ gcloud container clusters get-credentials hyperfleet-dev --zone=us-central1-a --
 
 > **Note**: This environment is scheduled for deletion every Friday at 8:00 PM (EST). See [GKE deployment docs](https://github.com/openshift-hyperfleet/architecture/tree/main/hyperfleet/deployment/GKE) for more details.
 
-### 1. Building Container Image
+### 1. Set Up Environment Variables
+
+Set these variables once and use them throughout the deployment:
+
+```bash
+# Your namespace (use your name for personal work)
+export NAMESPACE=hyperfleet-system
+
+# Your branch name (used for image tagging)
+export BRANCH=$(git rev-parse --abbrev-ref HEAD)
+```
+
+### 2. Building Container Image
 
 ```bash
 # Build for AMD64 (required for GKE)
-podman build --platform linux/amd64 -t gcr.io/hcm-hyperfleet/sentinel:test-$(git rev-parse --abbrev-ref HEAD) .
+podman build --platform linux/amd64 -t gcr.io/hcm-hyperfleet/sentinel:test-${BRANCH} .
 ```
 
 > **Note**: If building on ARM64 Mac for AMD64 GKE, you must use `--platform linux/amd64` to avoid architecture mismatch errors.
 
-### 2. Authentication and Image Push
+### 3. Authentication and Image Push
 
 #### Configure Authentication with GCR
 
@@ -195,18 +231,15 @@ gcloud auth configure-docker gcr.io
 #### Push Image to Registry
 
 ```bash
-podman push gcr.io/hcm-hyperfleet/sentinel:test-$(git rev-parse --abbrev-ref HEAD)
+podman push gcr.io/hcm-hyperfleet/sentinel:test-${BRANCH}
 ```
 
-### 3. Helm Deployment
+### 4. Helm Deployment
 
 ```bash
-# Get your branch name
-BRANCH=$(git rev-parse --abbrev-ref HEAD)
-
 # Deploy Sentinel with Google Pub/Sub
 helm install sentinel-test ./deployments/helm/sentinel \
-  --namespace hyperfleet-system \
+  --namespace ${NAMESPACE} \
   --create-namespace \
   --set image.repository=gcr.io/hcm-hyperfleet/sentinel \
   --set image.tag=test-${BRANCH} \
@@ -217,18 +250,20 @@ helm install sentinel-test ./deployments/helm/sentinel \
 
 > **Note**: Replace `{google-project}` with your GCP project ID (e.g., `hcm-hyperfleet`).
 
-### 4. Verification Steps for GKE
+> **Warning**: When using real Google Pub/Sub (not the emulator), all Sentinels publish to shared topics named after resource types (e.g., `Cluster`, `NodePool`). For isolated testing, use the Pub/Sub emulator or ensure your test messages won't interfere with production consumers.
+
+### 5. Verification Steps for GKE
 
 #### Check Pod Status
 
 ```bash
-kubectl get pods -n hyperfleet-system -l app.kubernetes.io/name=sentinel
+kubectl get pods -n ${NAMESPACE} -l app.kubernetes.io/name=sentinel
 ```
 
 #### View Pod Logs
 
 ```bash
-kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel -f
+kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=sentinel -f
 ```
 
 > **Note**: Currently, Sentinel does not output logs during normal operation (see [HYPERFLEET-276](https://issues.redhat.com/browse/HYPERFLEET-276)). Use the health endpoint and metrics to verify the service is running correctly.
@@ -237,7 +272,7 @@ kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel -f
 
 ```bash
 # Port-forward to access health endpoint
-kubectl port-forward -n hyperfleet-system svc/sentinel-test 8080:8080 &
+kubectl port-forward -n ${NAMESPACE} svc/sentinel-test 8080:8080 &
 
 # Check health
 curl http://localhost:8080/health
@@ -250,32 +285,35 @@ curl http://localhost:8080/metrics | grep hyperfleet_sentinel
 
 ```bash
 # List PodMonitoring resources
-kubectl get podmonitoring -n hyperfleet-system
+kubectl get podmonitoring -n ${NAMESPACE}
 
 # Describe PodMonitoring
-kubectl describe podmonitoring -n hyperfleet-system -l app.kubernetes.io/name=sentinel
+kubectl describe podmonitoring -n ${NAMESPACE} -l app.kubernetes.io/name=sentinel
 ```
 
 #### Verify Metrics in Google Cloud Console
 
 1. Open the [Metrics Explorer](https://console.cloud.google.com/monitoring/metrics-explorer?project=hcm-hyperfleet)
 2. Select resource type: **Prometheus Target**
-3. Query: `hyperfleet_sentinel`
+3. Switch to **PromQL** view and query with namespace filter:
+   ```promql
+   sum(rate({"__name__"="hyperfleet_sentinel_api_errors_total", "namespace"="${NAMESPACE}"}[${__interval}]))
+   ```
 
-You should see metrics from your deployment.
+> **Note**: Without filtering by namespace, metrics will aggregate across all deployed Sentinels in all namespaces.
 
-### 5. Cleanup
+### 6. Cleanup
 
 Remove the deployment when done:
 
 ```bash
-helm uninstall sentinel-test -n hyperfleet-system
+helm uninstall sentinel-test -n ${NAMESPACE}
 ```
 
 Optionally, delete the image from the registry:
 
 ```bash
-gcloud container images delete gcr.io/hcm-hyperfleet/sentinel:test-$(git rev-parse --abbrev-ref HEAD) --quiet --force-delete-tags
+gcloud container images delete gcr.io/hcm-hyperfleet/sentinel:test-${BRANCH} --quiet --force-delete-tags
 ```
 
 ---
