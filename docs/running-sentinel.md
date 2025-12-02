@@ -200,46 +200,22 @@ podman push gcr.io/hcm-hyperfleet/sentinel:test-$(git rev-parse --abbrev-ref HEA
 
 ### 3. Helm Deployment
 
-#### Basic Deployment
-
 ```bash
 # Get your branch name
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
-# Deploy Sentinel with your image
-helm install sentinel-test ./deployments/helm/sentinel \
-  --namespace hyperfleet-system \
-  --create-namespace \
-  --set image.repository=gcr.io/hcm-hyperfleet/sentinel \
-  --set image.tag=test-${BRANCH} \
-  --set monitoring.podMonitoring.enabled=true
-```
-
-#### Deployment with RabbitMQ
-
-```bash
-helm install sentinel-test ./deployments/helm/sentinel \
-  --namespace hyperfleet-system \
-  --create-namespace \
-  --set image.repository=gcr.io/hcm-hyperfleet/sentinel \
-  --set image.tag=test-${BRANCH} \
-  --set broker.type=rabbitmq \
-  --set broker.rabbitmq.url="amqp://user:pass@rabbitmq.hyperfleet-system.svc.cluster.local:5672/" \
-  --set monitoring.podMonitoring.enabled=true
-```
-
-#### Deployment with Google Pub/Sub
-
-```bash
+# Deploy Sentinel with Google Pub/Sub
 helm install sentinel-test ./deployments/helm/sentinel \
   --namespace hyperfleet-system \
   --create-namespace \
   --set image.repository=gcr.io/hcm-hyperfleet/sentinel \
   --set image.tag=test-${BRANCH} \
   --set broker.type=googlepubsub \
-  --set broker.googlepubsub.projectId=your-gcp-project-id \
+  --set broker.googlepubsub.projectId={google-project} \
   --set monitoring.podMonitoring.enabled=true
 ```
+
+> **Note**: Replace `{google-project}` with your GCP project ID (e.g., `hcm-hyperfleet`).
 
 ### 4. Verification Steps for GKE
 
