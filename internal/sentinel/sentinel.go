@@ -17,7 +17,6 @@ import (
 
 // Sentinel polls the HyperFleet API and triggers reconciliation events
 type Sentinel struct {
-	ctx            context.Context
 	config         *config.SentinelConfig
 	client         *client.HyperFleetClient
 	decisionEngine *engine.DecisionEngine
@@ -27,7 +26,6 @@ type Sentinel struct {
 
 // NewSentinel creates a new sentinel
 func NewSentinel(
-	ctx context.Context,
 	cfg *config.SentinelConfig,
 	client *client.HyperFleetClient,
 	decisionEngine *engine.DecisionEngine,
@@ -35,7 +33,6 @@ func NewSentinel(
 	log logger.HyperFleetLogger,
 ) *Sentinel {
 	return &Sentinel{
-		ctx:            ctx,
 		config:         cfg,
 		client:         client,
 		decisionEngine: decisionEngine,
@@ -46,7 +43,7 @@ func NewSentinel(
 
 // Start starts the polling loop
 func (s *Sentinel) Start(ctx context.Context) error {
-	s.logger.Infof("Starting sentinel resource_type=%s poll_interval=%s max_age_not_ready=%s max_age_ready=%s",
+	s.logger.Infof(ctx, "Starting sentinel resource_type=%s poll_interval=%s max_age_not_ready=%s max_age_ready=%s",
 		s.config.ResourceType, s.config.PollInterval, s.config.MaxAgeNotReady, s.config.MaxAgeReady)
 
 	ticker := time.NewTicker(s.config.PollInterval)
@@ -54,17 +51,17 @@ func (s *Sentinel) Start(ctx context.Context) error {
 
 	// Run immediately on start
 	if err := s.trigger(ctx); err != nil {
-		s.logger.Infof("Initial trigger failed: %v", err)
+		s.logger.Infof(ctx, "Initial trigger failed: %v", err)
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			s.logger.Info("Stopping sentinel due to context cancellation")
+			s.logger.Info(ctx, "Stopping sentinel due to context cancellation")
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.trigger(ctx); err != nil {
-				s.logger.Infof("Trigger failed: %v", err)
+				s.logger.Infof(ctx, "Trigger failed: %v", err)
 			}
 		}
 	}
@@ -73,7 +70,7 @@ func (s *Sentinel) Start(ctx context.Context) error {
 // trigger checks resources and publishes events to trigger reconciliation
 func (s *Sentinel) trigger(ctx context.Context) error {
 	startTime := time.Now()
-	s.logger.V(2).Info("Starting trigger cycle")
+	s.logger.V(2).Info(ctx, "Starting trigger cycle")
 
 	// Get metric labels
 	resourceType := s.config.ResourceType
@@ -90,7 +87,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch resources: %w", err)
 	}
 
-	s.logger.Infof("Fetched resources count=%d label_selectors=%d", len(resources), len(s.config.ResourceSelector))
+	s.logger.Infof(ctx, "Fetched resources count=%d label_selectors=%d", len(resources), len(s.config.ResourceSelector))
 
 	now := time.Now()
 	published := 0
@@ -117,7 +114,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				"resourceId":   resource.ID,
 				"reason":       decision.Reason,
 			}); err != nil {
-				s.logger.Infof("Failed to set event data resource_id=%s error=%v", resource.ID, err)
+				s.logger.Infof(ctx, "Failed to set event data resource_id=%s error=%v", resource.ID, err)
 				continue
 			}
 
@@ -126,21 +123,21 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			if err := s.publisher.Publish(topic, &event); err != nil {
 				// Record broker error
 				metrics.UpdateBrokerErrorsMetric(resourceType, resourceSelector, "publish_error")
-				s.logger.Infof("Failed to publish event resource_id=%s error=%v", resource.ID, err)
+				s.logger.Infof(ctx, "Failed to publish event resource_id=%s error=%v", resource.ID, err)
 				continue
 			}
 
 			// Record successful event publication
 			metrics.UpdateEventsPublishedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.Infof("Published event resource_id=%s phase=%s reason=%s",
+			s.logger.Infof(ctx, "Published event resource_id=%s phase=%s reason=%s",
 				resource.ID, resource.Status.Phase, decision.Reason)
 			published++
 		} else {
 			// Record skipped resource
 			metrics.UpdateResourcesSkippedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.V(2).Infof("Skipped resource resource_id=%s phase=%s reason=%s",
+			s.logger.V(2).Infof(ctx, "Skipped resource resource_id=%s phase=%s reason=%s",
 				resource.ID, resource.Status.Phase, decision.Reason)
 			skipped++
 		}
@@ -153,7 +150,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	duration := time.Since(startTime).Seconds()
 	metrics.UpdatePollDurationMetric(resourceType, resourceSelector, duration)
 
-	s.logger.Infof("Trigger cycle completed total=%d published=%d skipped=%d duration=%.3fs",
+	s.logger.Infof(ctx, "Trigger cycle completed total=%d published=%d skipped=%d duration=%.3fs",
 		len(resources), published, skipped, duration)
 
 	return nil

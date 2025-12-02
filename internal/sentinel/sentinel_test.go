@@ -92,7 +92,7 @@ func TestTrigger_Success(t *testing.T) {
 	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
-	log := logger.NewHyperFleetLogger(ctx)
+	log := logger.NewHyperFleetLogger()
 
 	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
@@ -104,7 +104,7 @@ func TestTrigger_Success(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Execute
 	err := s.trigger(ctx)
@@ -159,7 +159,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
-	log := logger.NewHyperFleetLogger(ctx)
+	log := logger.NewHyperFleetLogger()
 
 	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
@@ -171,7 +171,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Execute
 	err := s.trigger(ctx)
@@ -203,7 +203,7 @@ func TestTrigger_FetchError(t *testing.T) {
 	hyperfleetClient := client.NewHyperFleetClient(server.URL, 1*time.Second) // Short timeout
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
-	log := logger.NewHyperFleetLogger(ctx)
+	log := logger.NewHyperFleetLogger()
 
 	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
@@ -215,7 +215,7 @@ func TestTrigger_FetchError(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Execute
 	err := s.trigger(ctx)
@@ -251,7 +251,7 @@ func TestTrigger_PublishError(t *testing.T) {
 	mockPublisher := &MockPublisher{
 		publishError: errors.New("broker connection failed"),
 	}
-	log := logger.NewHyperFleetLogger(ctx)
+	log := logger.NewHyperFleetLogger()
 
 	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
@@ -263,7 +263,7 @@ func TestTrigger_PublishError(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Execute
 	err := s.trigger(ctx)
@@ -299,7 +299,7 @@ func TestTrigger_MixedResources(t *testing.T) {
 	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
-	log := logger.NewHyperFleetLogger(ctx)
+	log := logger.NewHyperFleetLogger()
 
 	// Create metrics with a test registry (registers metrics once via sync.Once)
 	registry := prometheus.NewRegistry()
@@ -311,7 +311,7 @@ func TestTrigger_MixedResources(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Execute
 	err := s.trigger(ctx)

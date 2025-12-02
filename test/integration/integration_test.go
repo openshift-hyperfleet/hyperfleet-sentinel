@@ -123,7 +123,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	// Setup components with real RabbitMQ broker
 	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
-	log := logger.NewHyperFleetLogger(ctx)
+	log := logger.NewHyperFleetLogger()
 
 	// Create metrics with a test registry
 	registry := prometheus.NewRegistry()
@@ -136,7 +136,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	s := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
 
 	// Run Sentinel in background
 	errChan := make(chan error, 1)
@@ -232,7 +232,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	// Setup components with real RabbitMQ broker
 	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
-	log := logger.NewHyperFleetLogger(ctx)
+	log := logger.NewHyperFleetLogger()
 
 	// Create metrics with a test registry
 	registry := prometheus.NewRegistry()
@@ -248,7 +248,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		},
 	}
 
-	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	s := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
 
 	// Run sentinel in goroutine and capture error
 	errChan := make(chan error, 1)
