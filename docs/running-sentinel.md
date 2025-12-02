@@ -273,7 +273,7 @@ helm uninstall sentinel-test -n hyperfleet-system
 Optionally, delete the image from the registry:
 
 ```bash
-gcloud container images delete gcr.io/hcm-hyperfleet/sentinel:test-$(git rev-parse --abbrev-ref HEAD) --quiet
+gcloud container images delete gcr.io/hcm-hyperfleet/sentinel:test-$(git rev-parse --abbrev-ref HEAD) --quiet --force-delete-tags
 ```
 
 ---
