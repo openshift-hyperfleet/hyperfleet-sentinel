@@ -69,11 +69,11 @@ func newServeCommand() *cobra.Command {
 }
 
 func runServe(cfg *config.SentinelConfig) error {
-	// Initialize logger
+	// Initialize context and logger
 	ctx := context.Background()
-	log := logger.NewHyperFleetLogger(ctx)
+	log := logger.NewHyperFleetLogger()
 
-	log.Infof("Starting HyperFleet Sentinel version=%s commit=%s", version, commit)
+	log.Infof(ctx, "Starting HyperFleet Sentinel version=%s commit=%s", version, commit)
 
 	// Initialize Prometheus metrics registry
 	registry := prometheus.NewRegistry()
@@ -93,18 +93,18 @@ func runServe(cfg *config.SentinelConfig) error {
 	if pub != nil {
 		defer func() {
 			if err := pub.Close(); err != nil {
-				log.Infof("Error closing publisher: %v", err)
+				log.Infof(ctx, "Error closing publisher: %v", err)
 			}
 		}()
 	}
-	log.Info("Initialized broker publisher")
+	log.Info(ctx, "Initialized broker publisher")
 
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// Initialize sentinel with context for proper cancellation
-	s := sentinel.NewSentinel(ctx, cfg, hyperfleetClient, decisionEngine, pub, log)
+	// Initialize sentinel
+	s := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, pub, log)
 
 	// Start metrics and health HTTP server
 	mux := http.NewServeMux()
@@ -113,7 +113,7 @@ func runServe(cfg *config.SentinelConfig) error {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("OK")); err != nil {
-			log.Infof("Error writing health response: %v", err)
+			log.Infof(r.Context(), "Error writing health response: %v", err)
 		}
 	})
 
@@ -130,9 +130,9 @@ func runServe(cfg *config.SentinelConfig) error {
 
 	// Start HTTP server in background
 	go func() {
-		log.Info("Starting metrics server on :8080")
+		log.Info(ctx, "Starting metrics server on :8080")
 		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Infof("Metrics server error: %v", err)
+			log.Infof(ctx, "Metrics server error: %v", err)
 		}
 	}()
 
@@ -141,23 +141,23 @@ func runServe(cfg *config.SentinelConfig) error {
 
 	go func() {
 		<-sigChan
-		log.Info("Received shutdown signal")
+		log.Info(ctx, "Received shutdown signal")
 		cancel()
 
 		// Shutdown metrics server
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
-			log.Infof("Metrics server shutdown error: %v", err)
+			log.Infof(shutdownCtx, "Metrics server shutdown error: %v", err)
 		}
 	}()
 
 	// Start sentinel
-	log.Info("Starting sentinel loop")
+	log.Info(ctx, "Starting sentinel loop")
 	if err := s.Start(ctx); err != nil && err != context.Canceled {
 		return fmt.Errorf("sentinel failed: %w", err)
 	}
 
-	log.Info("Sentinel stopped gracefully")
+	log.Info(ctx, "Sentinel stopped gracefully")
 	return nil
 }
