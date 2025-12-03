@@ -76,6 +76,8 @@ make test-all
 
 Integration tests automatically work with both Docker and Podman. For troubleshooting and advanced configuration, see [docs/testcontainers.md](docs/testcontainers.md).
 
+For instructions on running Sentinel locally or on GKE, see [docs/running-sentinel.md](docs/running-sentinel.md).
+
 ### OpenAPI Client Generation
 
 This project follows the [rh-trex](https://github.com/openshift-online/rh-trex) pattern for OpenAPI client generation. The OpenAPI specification is automatically downloaded from the official [hyperfleet-api](https://github.com/openshift-hyperfleet/hyperfleet-api) repository (main branch by default) during `make generate`.
@@ -173,60 +175,11 @@ Broker configuration is managed by the [hyperfleet-broker library](https://githu
 
 For detailed broker configuration options, see the [hyperfleet-broker documentation](https://github.com/openshift-hyperfleet/hyperfleet-broker).
 
-### Running Locally
+### Running Sentinel
 
-#### 1. Start a Message Broker
+For detailed instructions on running Sentinel locally or deploying to GKE, see [docs/running-sentinel.md](docs/running-sentinel.md).
 
-**RabbitMQ (easiest for local development):**
-```bash
-docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
-```
-
-RabbitMQ Management UI: http://localhost:15672 (guest/guest)
-
-#### 2. Set Environment Variables
-
-```bash
-# For RabbitMQ (using hyperfleet-broker library)
-export BROKER_RABBITMQ_URL=amqp://guest:guest@localhost:5672/
-
-# Or configure via broker.yaml file (see broker.yaml in project root)
-```
-
-#### 3. Run Sentinel
-
-```bash
-# Copy example config
-cp configs/dev-example.yaml config.yaml
-
-# Edit config.yaml to match your local HyperFleet API endpoint
-vim config.yaml
-
-# Build and run
-make build
-./bin/sentinel serve --config=config.yaml
-```
-
-### Kubernetes Deployment
-
-Deploy Sentinel to Kubernetes using the Helm chart:
-
-```bash
-# Install with default values (RabbitMQ)
-helm install sentinel ./deployments/helm/sentinel \
-  --namespace hyperfleet-system \
-  --create-namespace
-
-# Check status
-helm status sentinel -n hyperfleet-system
-
-# View logs
-kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel -f
-```
-
-> **Note**: The `--create-namespace` flag creates the namespace if it doesn't exist. If the namespace already exists, Helm will use it and this flag has no effect.
-
-See [deployments/helm/sentinel/README.md](deployments/helm/sentinel/README.md) for detailed Helm chart documentation, configuration options, and examples.
+For Helm chart documentation and configuration options, see [deployments/helm/sentinel/README.md](deployments/helm/sentinel/README.md).
 
 ### Configuration Validation
 
