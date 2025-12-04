@@ -29,7 +29,7 @@ type SentinelConfig struct {
 	ResourceSelector LabelSelectorList    `mapstructure:"resource_selector"`
 	HyperFleetAPI    *HyperFleetAPIConfig `mapstructure:"hyperfleet_api"`
 	MessageData      map[string]string    `mapstructure:"message_data"`
-	TopicPrefix      string               `mapstructure:"topic_prefix"`
+	Topic            string               `mapstructure:"topic"`
 }
 
 // HyperFleetAPIConfig defines the HyperFleet API client configuration
@@ -92,10 +92,10 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Override topic_prefix from environment variable if set
-	// Environment variable takes precedence over config file
-	if prefix := os.Getenv("BROKER_TOPIC_PREFIX"); prefix != "" {
-		cfg.TopicPrefix = prefix
+	// Override topic from environment variable if explicitly provided
+	// Environment variable takes precedence over config file (including empty value to clear)
+	if topic, ok := os.LookupEnv("BROKER_TOPIC"); ok {
+		cfg.Topic = topic
 	}
 
 	// Validate configuration

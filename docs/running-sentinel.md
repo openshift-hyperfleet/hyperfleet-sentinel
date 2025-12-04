@@ -111,15 +111,19 @@ export BROKER_RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
    export PUBSUB_EMULATOR_HOST=localhost:8085
    ```
 
-#### Step 3: Set Topic Prefix (Optional)
+#### Step 3: Set Topic Name
 
-For multi-tenant isolation, set a topic prefix:
+Set the topic name for event publishing:
 
 ```bash
-export BROKER_TOPIC_PREFIX=hyperfleet-dev-${USER}
+# For clusters
+export BROKER_TOPIC=hyperfleet-dev-${USER}-clusters
+
+# For nodepools
+export BROKER_TOPIC=hyperfleet-dev-${USER}-nodepools
 ```
 
-When set, topics are named `{prefix}-{resourceKind}` (e.g., `hyperfleet-dev-rafael-Cluster`). See [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) for details.
+This sets the full topic name where events will be published (e.g., `hyperfleet-dev-rafael-clusters`). See [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) for details.
 
 ### 3. Running Sentinel
 
@@ -261,7 +265,7 @@ podman push gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TAG}
 ### 5. Helm Deployment
 
 ```bash
-# Deploy Sentinel with Google Pub/Sub
+# Deploy Sentinel with Google Pub/Sub (default topic: {namespace}-{resourceType})
 helm install sentinel-test ./deployments/helm/sentinel \
   --namespace ${NAMESPACE} \
   --create-namespace \
@@ -269,11 +273,10 @@ helm install sentinel-test ./deployments/helm/sentinel \
   --set image.tag=${IMAGE_TAG} \
   --set broker.type=googlepubsub \
   --set broker.googlepubsub.projectId=${GCP_PROJECT} \
-  --set broker.topicPrefix=${NAMESPACE} \
   --set monitoring.podMonitoring.enabled=true
 ```
 
-> **Tip**: Setting `broker.topicPrefix=${NAMESPACE}` isolates your topics from other developers. Topics will be named `{namespace}-Cluster`, `{namespace}-NodePool`. See [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) for details.
+> **Tip**: The default topic is `{namespace}-{resourceType}` (e.g., `hyperfleet-dev-rafael-clusters`). You can override with `--set broker.topic=custom-topic`. See [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) for details.
 
 ### 6. Verification Steps
 
