@@ -60,6 +60,11 @@ spec:
           # Broker configuration file location
           - name: BROKER_CONFIG_FILE
             value: /etc/sentinel/broker.yaml
+          # Topic prefix for multi-tenant isolation
+          {{- if .Values.broker.topicPrefix }}
+          - name: BROKER_TOPIC_PREFIX
+            value: {{ .Values.broker.topicPrefix | quote }}
+          {{- end }}
           # Broker credentials can be overridden via environment variables from Secret
           {{- if eq .Values.broker.type "rabbitmq" }}
           - name: BROKER_RABBITMQ_URL

@@ -173,6 +173,13 @@ Broker configuration is managed by the [hyperfleet-broker library](https://githu
 | `BROKER_GOOGLEPUBSUB_PROJECT_ID` | GCP project ID | `my-gcp-project` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Service account key path (optional, uses ADC if not set) | `/path/to/key.json` |
 
+**Topic Naming (Multi-tenant Isolation):**
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `BROKER_TOPIC_PREFIX` | Prefix for topic names (optional) | `hyperfleet-dev` |
+
+When `BROKER_TOPIC_PREFIX` is set, topics are named `{prefix}-{resourceKind}` (e.g., `hyperfleet-dev-Cluster`). This enables isolation between different environments or tenants sharing the same broker. See [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) for details.
+
 For detailed broker configuration options, see the [hyperfleet-broker documentation](https://github.com/openshift-hyperfleet/hyperfleet-broker).
 
 ### Running Sentinel

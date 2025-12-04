@@ -104,6 +104,12 @@ broker:
   # Broker type: rabbitmq or googlepubsub
   type: rabbitmq
 
+  # Topic prefix for multi-tenant isolation
+  # When set, topics are named: {topicPrefix}-{resourceKind} (e.g., "dev-Cluster")
+  # Defaults to empty (no prefix, uses resourceKind directly)
+  # For namespace isolation, set to {{ .Release.Namespace }}
+  topicPrefix: ""
+
   # RabbitMQ configuration
   # Uses BROKER_RABBITMQ_URL environment variable (single connection string)
   rabbitmq:

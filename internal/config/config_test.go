@@ -407,3 +407,88 @@ func TestLoadConfig_FullWorkflow(t *testing.T) {
 		t.Errorf("Expected 4 message_data fields, got %d", len(cfg.MessageData))
 	}
 }
+
+// ============================================================================
+// Topic Prefix Tests
+// ============================================================================
+
+func TestLoadConfig_TopicPrefixFromEnvVar(t *testing.T) {
+	// Set environment variable
+	os.Setenv("BROKER_TOPIC_PREFIX", "test-namespace")
+	defer os.Unsetenv("BROKER_TOPIC_PREFIX")
+
+	configPath := filepath.Join("testdata", "minimal.yaml")
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if cfg.TopicPrefix != "test-namespace" {
+		t.Errorf("Expected topic_prefix 'test-namespace', got '%s'", cfg.TopicPrefix)
+	}
+}
+
+func TestLoadConfig_TopicPrefixEnvVarOverridesConfig(t *testing.T) {
+	// Set environment variable
+	os.Setenv("BROKER_TOPIC_PREFIX", "env-prefix")
+	defer os.Unsetenv("BROKER_TOPIC_PREFIX")
+
+	// Create config with topic_prefix set
+	yaml := `
+resource_type: clusters
+hyperfleet_api:
+  endpoint: http://localhost:8000
+topic_prefix: config-prefix
+`
+	configPath := createTempConfigFile(t, yaml)
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	// Environment variable should override config file
+	if cfg.TopicPrefix != "env-prefix" {
+		t.Errorf("Expected topic_prefix 'env-prefix' (from env), got '%s'", cfg.TopicPrefix)
+	}
+}
+
+func TestLoadConfig_TopicPrefixFromConfigFile(t *testing.T) {
+	// Ensure environment variable is not set
+	os.Unsetenv("BROKER_TOPIC_PREFIX")
+
+	yaml := `
+resource_type: clusters
+hyperfleet_api:
+  endpoint: http://localhost:8000
+topic_prefix: my-namespace
+`
+	configPath := createTempConfigFile(t, yaml)
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	if cfg.TopicPrefix != "my-namespace" {
+		t.Errorf("Expected topic_prefix 'my-namespace', got '%s'", cfg.TopicPrefix)
+	}
+}
+
+func TestLoadConfig_TopicPrefixEmpty(t *testing.T) {
+	// Ensure environment variable is not set
+	os.Unsetenv("BROKER_TOPIC_PREFIX")
+
+	configPath := filepath.Join("testdata", "minimal.yaml")
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	// TopicPrefix should be empty when not configured
+	if cfg.TopicPrefix != "" {
+		t.Errorf("Expected empty topic_prefix, got '%s'", cfg.TopicPrefix)
+	}
+}
