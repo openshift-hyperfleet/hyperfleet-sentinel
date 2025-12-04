@@ -118,8 +118,11 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				continue
 			}
 
-			// Publish to broker (topic = resource kind)
+			// Publish to broker (topic = prefix + resource kind)
 			topic := resource.Kind
+			if s.config.TopicPrefix != "" {
+				topic = s.config.TopicPrefix + "-" + resource.Kind
+			}
 			if err := s.publisher.Publish(topic, &event); err != nil {
 				// Record broker error
 				metrics.UpdateBrokerErrorsMetric(resourceType, resourceSelector, "publish_error")

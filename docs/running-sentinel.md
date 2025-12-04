@@ -14,13 +14,13 @@ This guide enables developers to run Sentinel both locally (for development) and
   - [Verification Steps](#4-verification-steps)
 - [Running on GKE](#running-on-gke)
   - [Prerequisites](#prerequisites-for-gke)
-  - [Shared GKE Cluster](#shared-gke-cluster)
   - [Set Up Environment Variables](#1-set-up-environment-variables)
-  - [Building Container Image](#2-building-container-image)
-  - [Authentication and Image Push](#3-authentication-and-image-push)
-  - [Helm Deployment](#4-helm-deployment)
-  - [Verification Steps](#5-verification-steps-for-gke)
-  - [Cleanup](#6-cleanup)
+  - [Connect to GKE Cluster](#2-connect-to-gke-cluster)
+  - [Building Container Image](#3-building-container-image)
+  - [Authentication and Image Push](#4-authentication-and-image-push)
+  - [Helm Deployment](#5-helm-deployment)
+  - [Verification Steps](#6-verification-steps)
+  - [Cleanup](#7-cleanup)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -59,11 +59,11 @@ gcloud beta emulators pubsub start --project=test-project --host-port=localhost:
 You can also run the emulator in Podman, as documented in the [broker library](https://github.com/openshift-hyperfleet/hyperfleet-broker?tab=readme-ov-file#running-rabbitmq-and-pubsub-emulator-in-containers):
 
 ```bash
-export PUBSUB_PROJECT_ID=hcm-hyperfleet
+export PUBSUB_PROJECT_ID=test-project
 export PUBSUB_EMULATOR_HOST=localhost:8085
 
 podman run --rm --name pubsub-emulator -d -p 8085:8085 google/cloud-sdk:emulators \
-  /bin/bash -c "gcloud beta emulators pubsub start --project=hcm-hyperfleet --host-port='0.0.0.0:8085'"
+  /bin/bash -c "gcloud beta emulators pubsub start --project=test-project --host-port='0.0.0.0:8085'"
 ```
 
 ### 2. Configuring Sentinel
@@ -86,24 +86,42 @@ make generate
 
 This downloads the OpenAPI spec from [hyperfleet-api](https://github.com/openshift-hyperfleet/hyperfleet-api) and generates the Go client code.
 
-#### Step 2: Set Broker Environment Variable
+#### Step 2: Configure Broker
 
-For RabbitMQ:
+The default `broker.yaml` is configured for RabbitMQ. Choose your broker below:
+
+**For RabbitMQ** (default, no changes needed to `broker.yaml`):
 
 ```bash
 export BROKER_RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
 ```
 
-For Google Pub/Sub Emulator:
+**For Google Pub/Sub Emulator** (requires `broker.yaml` modification):
+
+1. Edit `broker.yaml` to use `googlepubsub`:
+   ```yaml
+   broker:
+     type: googlepubsub
+     googlepubsub:
+       project_id: test-project
+   ```
+
+2. Set the emulator host (required for the Google SDK):
+   ```bash
+   export PUBSUB_EMULATOR_HOST=localhost:8085
+   ```
+
+#### Step 3: Set Topic Prefix (Optional)
+
+For multi-tenant isolation, set a topic prefix:
 
 ```bash
-export PUBSUB_EMULATOR_HOST=localhost:8085
-export BROKER_GOOGLEPUBSUB_PROJECT_ID=test-project
+export BROKER_TOPIC_PREFIX=hyperfleet-dev-${USER}
 ```
 
-### 3. Running Sentinel
+When set, topics are named `{prefix}-{resourceKind}` (e.g., `hyperfleet-dev-rafael-Cluster`). See [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) for details.
 
-> **Note**: The default `broker.yaml` in the project root is configured for RabbitMQ. Modify it to match your broker setup, or set `BROKER_CONFIG_FILE` to point to a different configuration file.
+### 3. Running Sentinel
 
 #### Option A: Build and Run Binary
 
@@ -183,14 +201,32 @@ Watch console output for startup and broker connection messages.
 - `kubectl` configured for the cluster
 - `podman` for building images
 - `helm` for deploying the chart
-- Access to `gcr.io/hcm-hyperfleet` container registry (or your own registry)
+- Access to Google Container Registry (GCR) for your project
 
-### Shared GKE Cluster
+### 1. Set Up Environment Variables
+
+Set these variables once and use them throughout the deployment:
+
+```bash
+# GCP project ID
+export GCP_PROJECT=hcm-hyperfleet
+
+# Your namespace: hyperfleet-{env}-{username}
+export NAMESPACE=hyperfleet-dev-${USER}
+
+# Image tag: {namespace}-{git-sha-short} (follows naming convention)
+export IMAGE_TAG=${NAMESPACE}-$(git rev-parse --short HEAD)
+# Example: hyperfleet-dev-rafael-a1b2c3d (if USER=rafael)
+```
+
+> **Note**: The image tag format `{namespace}-{git-sha-short}` follows the [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) convention to prevent collisions between developers.
+
+### 2. Connect to GKE Cluster
 
 A shared GKE cluster with Config Connector enabled is available for development and testing:
 
 ```bash
-gcloud container clusters get-credentials hyperfleet-dev --zone=us-central1-a --project=hcm-hyperfleet
+gcloud container clusters get-credentials hyperfleet-dev --zone=us-central1-a --project=${GCP_PROJECT}
 ```
 
 **Usage guidelines:**
@@ -199,28 +235,16 @@ gcloud container clusters get-credentials hyperfleet-dev --zone=us-central1-a --
 
 > **Note**: This environment is scheduled for deletion every Friday at 8:00 PM (EST). See [GKE deployment docs](https://github.com/openshift-hyperfleet/architecture/tree/main/hyperfleet/deployment/GKE) for more details.
 
-### 1. Set Up Environment Variables
-
-Set these variables once and use them throughout the deployment:
-
-```bash
-# Your namespace (use your name for personal work, e.g., "rafael")
-export NAMESPACE=<your_user>
-
-# Image tag includes namespace to avoid collisions
-export BRANCH=${NAMESPACE}-$(git rev-parse --abbrev-ref HEAD)
-```
-
-### 2. Building Container Image
+### 3. Building Container Image
 
 ```bash
 # Build for AMD64 (required for GKE)
-podman build --platform linux/amd64 -t gcr.io/hcm-hyperfleet/sentinel:test-${BRANCH} .
+podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TAG} .
 ```
 
 > **Note**: If building on ARM64 Mac for AMD64 GKE, you must use `--platform linux/amd64` to avoid architecture mismatch errors.
 
-### 3. Authentication and Image Push
+### 4. Authentication and Image Push
 
 #### Configure Authentication with GCR
 
@@ -231,28 +255,27 @@ gcloud auth configure-docker gcr.io
 #### Push Image to Registry
 
 ```bash
-podman push gcr.io/hcm-hyperfleet/sentinel:test-${BRANCH}
+podman push gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TAG}
 ```
 
-### 4. Helm Deployment
+### 5. Helm Deployment
 
 ```bash
 # Deploy Sentinel with Google Pub/Sub
 helm install sentinel-test ./deployments/helm/sentinel \
   --namespace ${NAMESPACE} \
   --create-namespace \
-  --set image.repository=gcr.io/hcm-hyperfleet/sentinel \
-  --set image.tag=test-${BRANCH} \
+  --set image.repository=gcr.io/${GCP_PROJECT}/sentinel \
+  --set image.tag=${IMAGE_TAG} \
   --set broker.type=googlepubsub \
-  --set broker.googlepubsub.projectId={google-project} \
+  --set broker.googlepubsub.projectId=${GCP_PROJECT} \
+  --set broker.topicPrefix=${NAMESPACE} \
   --set monitoring.podMonitoring.enabled=true
 ```
 
-> **Note**: Replace `{google-project}` with your GCP project ID (e.g., `hcm-hyperfleet`).
->
-> **Warning**: When using real Google Pub/Sub (not the emulator), all Sentinels publish to shared topics named after resource types (e.g., `Cluster`, `NodePool`). For isolated testing, use the Pub/Sub emulator or ensure your test messages won't interfere with production consumers.
+> **Tip**: Setting `broker.topicPrefix=${NAMESPACE}` isolates your topics from other developers. Topics will be named `{namespace}-Cluster`, `{namespace}-NodePool`. See [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) for details.
 
-### 5. Verification Steps for GKE
+### 6. Verification Steps
 
 #### Check Pod Status
 
@@ -270,39 +293,45 @@ kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=sentinel -f
 
 #### Verify Health Endpoint
 
+Start port-forward in a separate terminal:
+
 ```bash
-# Port-forward to access health endpoint
-kubectl port-forward -n ${NAMESPACE} svc/sentinel-test 8080:8080 &
+kubectl port-forward -n ${NAMESPACE} svc/sentinel-test 8080:8080
+```
 
-# Check health
+Check health:
+
+```bash
 curl http://localhost:8080/health
+```
 
-# Check metrics
+Check metrics:
+
+```bash
 curl http://localhost:8080/metrics | grep hyperfleet_sentinel
 ```
 
 #### Check PodMonitoring Status
 
-```bash
-# List PodMonitoring resources
-kubectl get podmonitoring -n ${NAMESPACE}
+List PodMonitoring resources:
 
-# Describe PodMonitoring
+```bash
+kubectl get podmonitoring -n ${NAMESPACE}
+```
+
+Describe PodMonitoring:
+
+```bash
 kubectl describe podmonitoring -n ${NAMESPACE} -l app.kubernetes.io/name=sentinel
 ```
 
 #### Verify Metrics in Google Cloud Console
 
-1. Open the [Metrics Explorer](https://console.cloud.google.com/monitoring/metrics-explorer?project=hcm-hyperfleet)
-2. Select resource type: **Prometheus Target**
-3. Switch to **PromQL** view and query with namespace filter:
-   ```promql
-   sum(rate({"__name__"="hyperfleet_sentinel_api_errors_total", "namespace"="${NAMESPACE}"}[${__interval}]))
-   ```
+1. Open the [Metrics Explorer](https://console.cloud.google.com/monitoring/metrics-explorer) for your project
+2. In "Select a metric", search for `hyperfleet_sentinel`
+3. Select **Prometheus Target** > **Hyperfleet** > choose a metric (e.g., `api_errors_total`)
 
-> **Note**: Without filtering by namespace, metrics will aggregate across all deployed Sentinels in all namespaces.
-
-### 6. Cleanup
+### 7. Cleanup
 
 Remove the deployment when done:
 
@@ -313,7 +342,7 @@ helm uninstall sentinel-test -n ${NAMESPACE}
 Optionally, delete the image from the registry:
 
 ```bash
-gcloud container images delete gcr.io/hcm-hyperfleet/sentinel:test-${BRANCH} --quiet --force-delete-tags
+gcloud container images delete gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TAG} --quiet --force-delete-tags
 ```
 
 ---
@@ -329,22 +358,20 @@ gcloud container images delete gcr.io/hcm-hyperfleet/sentinel:test-${BRANCH} --q
 **Solution**: Ensure `--platform linux/amd64` is used when building:
 
 ```bash
-podman build --platform linux/amd64 -t your-image:tag .
+podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TAG} .
 ```
 
 ### Broker connection refused
 
-**Problem**: Sentinel logs show "connection refused" errors for broker
+**Problem**: Sentinel fails to start with "connection refused" errors for broker
 
-**Cause**: Broker URL is incorrect or broker service is not accessible
+**Cause**: Broker is not running or `broker.yaml` is configured for the wrong broker type
 
 **Solution**:
-1. Verify broker URL is correct
-2. Ensure broker service is running and accessible from the pod
-3. For Kubernetes, verify the service name and namespace are correct:
-   ```bash
-   kubectl get svc -n hyperfleet-system
-   ```
+1. Verify the broker is running (RabbitMQ or Pub/Sub emulator)
+2. Ensure `broker.yaml` has the correct `type` (rabbitmq or googlepubsub)
+3. For Pub/Sub emulator, ensure `PUBSUB_EMULATOR_HOST` is set
+4. For RabbitMQ, ensure `BROKER_RABBITMQ_URL` is set or the URL in `broker.yaml` is correct
 
 ### Metrics not appearing in GMP
 
@@ -355,7 +382,7 @@ podman build --platform linux/amd64 -t your-image:tag .
 **Solution**:
 1. Verify PodMonitoring is created:
    ```bash
-   kubectl get podmonitoring -n hyperfleet-system
+   kubectl get podmonitoring -n ${NAMESPACE}
    ```
 2. Check GMP collector logs:
    ```bash
@@ -363,7 +390,7 @@ podman build --platform linux/amd64 -t your-image:tag .
    ```
 3. Ensure the metrics endpoint is accessible:
    ```bash
-   kubectl port-forward -n hyperfleet-system pod/<pod-name> 8080:8080
+   kubectl port-forward -n ${NAMESPACE} svc/sentinel-test 8080:8080
    curl http://localhost:8080/metrics
    ```
 

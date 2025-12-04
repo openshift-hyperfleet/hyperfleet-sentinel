@@ -80,7 +80,6 @@ The testcontainers infrastructure currently supports:
 
 - **RabbitMQ** ([testcontainers-go/modules/rabbitmq](https://golang.testcontainers.org/modules/rabbitmq/))
 - *Future*: Google Pub/Sub via emulator ([testcontainers-go/modules/gcloud](https://golang.testcontainers.org/modules/gcloud/))
-- *Future*: AWS SQS via LocalStack ([testcontainers-go/modules/localstack](https://golang.testcontainers.org/modules/localstack/))
 
 ## Test Structure
 
