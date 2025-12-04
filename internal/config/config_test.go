@@ -409,13 +409,12 @@ func TestLoadConfig_FullWorkflow(t *testing.T) {
 }
 
 // ============================================================================
-// Topic Prefix Tests
+// Topic Tests
 // ============================================================================
 
-func TestLoadConfig_TopicPrefixFromEnvVar(t *testing.T) {
-	// Set environment variable
-	os.Setenv("BROKER_TOPIC_PREFIX", "test-namespace")
-	defer os.Unsetenv("BROKER_TOPIC_PREFIX")
+func TestLoadConfig_TopicFromEnvVar(t *testing.T) {
+	// Set environment variable (t.Setenv auto-cleans after test)
+	t.Setenv("BROKER_TOPIC", "test-namespace-clusters")
 
 	configPath := filepath.Join("testdata", "minimal.yaml")
 
@@ -424,22 +423,21 @@ func TestLoadConfig_TopicPrefixFromEnvVar(t *testing.T) {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	if cfg.TopicPrefix != "test-namespace" {
-		t.Errorf("Expected topic_prefix 'test-namespace', got '%s'", cfg.TopicPrefix)
+	if cfg.Topic != "test-namespace-clusters" {
+		t.Errorf("Expected topic 'test-namespace-clusters', got '%s'", cfg.Topic)
 	}
 }
 
-func TestLoadConfig_TopicPrefixEnvVarOverridesConfig(t *testing.T) {
-	// Set environment variable
-	os.Setenv("BROKER_TOPIC_PREFIX", "env-prefix")
-	defer os.Unsetenv("BROKER_TOPIC_PREFIX")
+func TestLoadConfig_TopicEnvVarOverridesConfig(t *testing.T) {
+	// Set environment variable (t.Setenv auto-cleans after test)
+	t.Setenv("BROKER_TOPIC", "env-topic")
 
-	// Create config with topic_prefix set
+	// Create config with topic set
 	yaml := `
 resource_type: clusters
 hyperfleet_api:
   endpoint: http://localhost:8000
-topic_prefix: config-prefix
+topic: config-topic
 `
 	configPath := createTempConfigFile(t, yaml)
 
@@ -449,20 +447,24 @@ topic_prefix: config-prefix
 	}
 
 	// Environment variable should override config file
-	if cfg.TopicPrefix != "env-prefix" {
-		t.Errorf("Expected topic_prefix 'env-prefix' (from env), got '%s'", cfg.TopicPrefix)
+	if cfg.Topic != "env-topic" {
+		t.Errorf("Expected topic 'env-topic' (from env), got '%s'", cfg.Topic)
 	}
 }
 
-func TestLoadConfig_TopicPrefixFromConfigFile(t *testing.T) {
-	// Ensure environment variable is not set
-	os.Unsetenv("BROKER_TOPIC_PREFIX")
+func TestLoadConfig_TopicFromConfigFile(t *testing.T) {
+	// Save and restore original value, then unset for test
+	origValue, wasSet := os.LookupEnv("BROKER_TOPIC")
+	if wasSet {
+		defer func() { _ = os.Setenv("BROKER_TOPIC", origValue) }()
+	}
+	_ = os.Unsetenv("BROKER_TOPIC")
 
 	yaml := `
 resource_type: clusters
 hyperfleet_api:
   endpoint: http://localhost:8000
-topic_prefix: my-namespace
+topic: my-namespace-clusters
 `
 	configPath := createTempConfigFile(t, yaml)
 
@@ -471,14 +473,18 @@ topic_prefix: my-namespace
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	if cfg.TopicPrefix != "my-namespace" {
-		t.Errorf("Expected topic_prefix 'my-namespace', got '%s'", cfg.TopicPrefix)
+	if cfg.Topic != "my-namespace-clusters" {
+		t.Errorf("Expected topic 'my-namespace-clusters', got '%s'", cfg.Topic)
 	}
 }
 
-func TestLoadConfig_TopicPrefixEmpty(t *testing.T) {
-	// Ensure environment variable is not set
-	os.Unsetenv("BROKER_TOPIC_PREFIX")
+func TestLoadConfig_TopicEmpty(t *testing.T) {
+	// Save and restore original value, then unset for test
+	origValue, wasSet := os.LookupEnv("BROKER_TOPIC")
+	if wasSet {
+		defer func() { _ = os.Setenv("BROKER_TOPIC", origValue) }()
+	}
+	_ = os.Unsetenv("BROKER_TOPIC")
 
 	configPath := filepath.Join("testdata", "minimal.yaml")
 
@@ -487,8 +493,33 @@ func TestLoadConfig_TopicPrefixEmpty(t *testing.T) {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	// TopicPrefix should be empty when not configured
-	if cfg.TopicPrefix != "" {
-		t.Errorf("Expected empty topic_prefix, got '%s'", cfg.TopicPrefix)
+	// Topic should be empty when not configured
+	if cfg.Topic != "" {
+		t.Errorf("Expected empty topic, got '%s'", cfg.Topic)
+	}
+}
+
+func TestLoadConfig_TopicEnvVarEmptyClearsConfig(t *testing.T) {
+	// Set environment variable to empty string (explicitly clears config value)
+	// t.Setenv auto-cleans after test
+	t.Setenv("BROKER_TOPIC", "")
+
+	// Create config with topic set
+	yaml := `
+resource_type: clusters
+hyperfleet_api:
+  endpoint: http://localhost:8000
+topic: config-topic
+`
+	configPath := createTempConfigFile(t, yaml)
+
+	cfg, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+
+	// Empty env var should clear the config value (using os.LookupEnv)
+	if cfg.Topic != "" {
+		t.Errorf("Expected empty topic (cleared by env var), got '%s'", cfg.Topic)
 	}
 }

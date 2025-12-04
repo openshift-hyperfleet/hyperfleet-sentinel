@@ -100,6 +100,7 @@ func TestTrigger_Success(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
+		Topic:          "test-topic",
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 	}
@@ -122,8 +123,8 @@ func TestTrigger_Success(t *testing.T) {
 		t.Errorf("Expected 1 topic, got %d", len(mockPublisher.publishedTopics))
 	}
 
-	if mockPublisher.publishedTopics[0] != "Cluster" {
-		t.Errorf("Expected topic 'Cluster', got '%s'", mockPublisher.publishedTopics[0])
+	if mockPublisher.publishedTopics[0] != "test-topic" {
+		t.Errorf("Expected topic 'test-topic', got '%s'", mockPublisher.publishedTopics[0])
 	}
 
 	// Verify CloudEvent properties
@@ -167,6 +168,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
+		Topic:          "test-topic",
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 	}
@@ -211,6 +213,7 @@ func TestTrigger_FetchError(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
+		Topic:          "test-topic",
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 	}
@@ -259,6 +262,7 @@ func TestTrigger_PublishError(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
+		Topic:          "test-topic",
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 	}
@@ -307,6 +311,7 @@ func TestTrigger_MixedResources(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
+		Topic:          "test-topic",
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 	}
@@ -331,8 +336,8 @@ func TestTrigger_MixedResources(t *testing.T) {
 
 	// Verify topics
 	for _, topic := range mockPublisher.publishedTopics {
-		if topic != "Cluster" {
-			t.Errorf("Expected topic 'Cluster', got '%s'", topic)
+		if topic != "test-topic" {
+			t.Errorf("Expected topic 'test-topic', got '%s'", topic)
 		}
 	}
 }

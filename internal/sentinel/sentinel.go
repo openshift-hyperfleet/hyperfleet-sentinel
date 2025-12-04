@@ -118,11 +118,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				continue
 			}
 
-			// Publish to broker (topic = prefix + resource kind)
-			topic := resource.Kind
-			if s.config.TopicPrefix != "" {
-				topic = s.config.TopicPrefix + "-" + resource.Kind
-			}
+			// Publish to broker using configured topic
+			topic := s.config.Topic
 			if err := s.publisher.Publish(topic, &event); err != nil {
 				// Record broker error
 				metrics.UpdateBrokerErrorsMetric(resourceType, resourceSelector, "publish_error")
@@ -133,8 +130,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Record successful event publication
 			metrics.UpdateEventsPublishedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.Infof(ctx, "Published event resource_id=%s phase=%s reason=%s",
-				resource.ID, resource.Status.Phase, decision.Reason)
+			s.logger.Infof(ctx, "Published event resource_id=%s phase=%s reason=%s topic=%s",
+				resource.ID, resource.Status.Phase, decision.Reason, topic)
 			published++
 		} else {
 			// Record skipped resource
