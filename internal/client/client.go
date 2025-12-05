@@ -254,7 +254,7 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 			CreatedTime: item.CreatedTime,
 			UpdatedTime: item.UpdatedTime,
 			Status: ResourceStatus{
-				Phase:              item.Status.Phase,
+				Phase:              string(item.Status.Phase),
 				LastTransitionTime: item.Status.LastTransitionTime,
 				LastUpdated:        item.Status.LastUpdatedTime,
 				ObservedGeneration: item.Status.ObservedGeneration,
@@ -272,7 +272,7 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 			for _, cond := range item.Status.Conditions {
 				condition := Condition{
 					Type:               cond.Type,
-					Status:             cond.Status,
+					Status:             string(cond.Status),
 					LastTransitionTime: cond.LastTransitionTime,
 				}
 				if cond.Reason != nil {
@@ -355,7 +355,7 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 			CreatedTime: item.CreatedTime,
 			UpdatedTime: item.UpdatedTime,
 			Status: ResourceStatus{
-				Phase:              item.Status.Phase,
+				Phase:              string(item.Status.Phase),
 				LastTransitionTime: item.Status.LastTransitionTime,
 				LastUpdated:        item.Status.LastUpdatedTime,
 				ObservedGeneration: item.Status.ObservedGeneration,
@@ -373,7 +373,7 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 			for _, cond := range item.Status.Conditions {
 				condition := Condition{
 					Type:               cond.Type,
-					Status:             cond.Status,
+					Status:             string(cond.Status),
 					LastTransitionTime: cond.LastTransitionTime,
 				}
 				if cond.Reason != nil {
