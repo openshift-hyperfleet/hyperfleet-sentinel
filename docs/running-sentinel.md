@@ -241,6 +241,21 @@ gcloud container clusters get-credentials hyperfleet-dev --zone=us-central1-a --
 
 ### 3. Building Container Image
 
+#### Option A: Using Makefile Targets (Recommended for Dev)
+
+For pushing to your personal Quay registry:
+
+```bash
+# Build and push to quay.io/${QUAY_USER}/sentinel:dev-<commit>
+QUAY_USER=${USER} make image-dev
+```
+
+This will output the image tag to use in your terraform.tfvars.
+
+#### Option B: Manual Build for GCR
+
+For pushing to Google Container Registry:
+
 ```bash
 # Build for AMD64 (required for GKE)
 podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TAG} .
@@ -249,6 +264,8 @@ podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TA
 > **Note**: If building on ARM64 Mac for AMD64 GKE, you must use `--platform linux/amd64` to avoid architecture mismatch errors.
 
 ### 4. Authentication and Image Push
+
+> **Note**: If you used `make image-dev` (Option A above), authentication and push are handled automatically. Skip to [Helm Deployment](#5-helm-deployment). For Quay.io, ensure you've run `podman login quay.io` first.
 
 #### Configure Authentication with GCR
 
