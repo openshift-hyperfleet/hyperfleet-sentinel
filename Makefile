@@ -19,6 +19,18 @@ LDFLAGS := -X main.version=$(VERSION) \
 # Container tool (docker or podman)
 CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/dev/null)
 
+# =============================================================================
+# Image Configuration
+# =============================================================================
+IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
+IMAGE_NAME ?= sentinel
+IMAGE_TAG ?= $(VERSION)
+
+# Dev image configuration - set QUAY_USER to push to personal registry
+# Usage: QUAY_USER=myuser make image-dev
+QUAY_USER ?=
+DEV_TAG ?= dev-$(COMMIT)
+
 .PHONY: help
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
@@ -138,14 +150,48 @@ tidy: ## Tidy go.mod
 download: ## Download dependencies
 	$(GO) mod download
 
-##@ Docker
+##@ Container Images
+
+.PHONY: image
+image: ## Build container image with configurable registry/tag
+	@echo "Building image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
+	$(CONTAINER_TOOL) build -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
+	@echo "Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
+
+.PHONY: image-push
+image-push: image ## Build and push container image
+	@echo "Pushing image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
+	$(CONTAINER_TOOL) push $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
+	@echo "Image pushed: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
+
+.PHONY: image-dev
+image-dev: ## Build and push to personal Quay registry (requires QUAY_USER)
+ifndef QUAY_USER
+	@echo "Error: QUAY_USER is not set"
+	@echo ""
+	@echo "Usage: QUAY_USER=myuser make image-dev"
+	@echo ""
+	@echo "This will build and push to: quay.io/\$$QUAY_USER/$(IMAGE_NAME):$(DEV_TAG)"
+	@exit 1
+endif
+	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
+	$(CONTAINER_TOOL) build -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+	@echo "Pushing dev image..."
+	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
+	@echo ""
+	@echo "Dev image pushed: quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)"
+	@echo ""
+	@echo "Add to your terraform.tfvars:"
+	@echo "  sentinel_image_tag = \"$(DEV_TAG)\""
+
+##@ Container (Legacy)
 
 .PHONY: docker-build
-docker-build: ## Build docker image
-	docker build -t sentinel:$(VERSION) .
+docker-build: ## Build container image (legacy, prefer 'make image')
+	$(CONTAINER_TOOL) build -t sentinel:$(VERSION) .
 
 .PHONY: docker-run
-docker-run: ## Run docker container
-	docker run -it --rm \
+docker-run: ## Run container (legacy)
+	$(CONTAINER_TOOL) run -it --rm \
 		-v $(PWD)/configs:/app/configs \
 		sentinel:$(VERSION) serve
