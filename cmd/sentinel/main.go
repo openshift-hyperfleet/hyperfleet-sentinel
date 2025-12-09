@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
@@ -36,7 +35,7 @@ func main() {
 
 	// Always log to stderr by default
 	if err := flag.Set("logtostderr", "true"); err != nil {
-		glog.Warningf("Unable to set logtostderr to true: %v", err)
+		panic(fmt.Sprintf("failed to configure logging: %v", err))
 	}
 
 	rootCmd := &cobra.Command{
@@ -83,8 +82,7 @@ func runServe(cfg *config.SentinelConfig) error {
 	ctx := context.Background()
 	log := logger.NewHyperFleetLogger()
 
-	// Use glog directly for startup message to ensure visibility with default verbosity
-	glog.Infof("Starting HyperFleet Sentinel version=%s commit=%s", version, commit)
+	log.Infof(ctx, "Starting HyperFleet Sentinel version=%s commit=%s", version, commit)
 
 	// Initialize Prometheus metrics registry
 	registry := prometheus.NewRegistry()
