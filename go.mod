@@ -7,10 +7,13 @@ require (
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/golang/glog v1.2.5
 	github.com/google/uuid v1.6.0
-	github.com/openshift-hyperfleet/hyperfleet-broker v0.0.1
+	github.com/openshift-hyperfleet/hyperfleet-broker v1.0.0
+	github.com/prometheus/client_golang v1.23.2
 	github.com/segmentio/ksuid v1.0.4
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.21.0
+	github.com/testcontainers/testcontainers-go v0.40.0
+	github.com/testcontainers/testcontainers-go/modules/rabbitmq v0.40.0
 )
 
 require (
@@ -77,7 +80,6 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/power-devops/perfstat v0.0.0-20210106213030-5aafc221ea8c // indirect
-	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.17.0 // indirect
@@ -92,8 +94,6 @@ require (
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/subosito/gotenv v1.6.0 // indirect
-	github.com/testcontainers/testcontainers-go v0.40.0 // indirect
-	github.com/testcontainers/testcontainers-go/modules/rabbitmq v0.40.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
