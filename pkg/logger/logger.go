@@ -30,10 +30,11 @@ type logger struct {
 	extra    extra
 }
 
-// NewHyperFleetLogger creates a new logger instance with a default verbosity of 1
+// NewHyperFleetLogger creates a new logger instance with a default verbosity of 0.
+// V(0) messages are visible by default, while V(1)+ require the -v flag.
 func NewHyperFleetLogger() HyperFleetLogger {
 	logger := &logger{
-		level:     1,
+		level:     0,
 		extra:     make(extra),
 		accountID: "", // Sentinel doesn't have account concept
 	}

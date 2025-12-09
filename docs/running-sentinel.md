@@ -184,13 +184,27 @@ hyperfleet_sentinel_poll_duration_seconds_bucket{...}
 
 Watch console output for startup and broker connection messages.
 
-**For RabbitMQ**, you should see the broker connection log:
+**Startup messages** (always visible):
+
+```log
+I1208 15:30:00.123456   12345 config.go:82] Loading configuration from configs/dev-example.yaml
+I1208 15:30:00.123789   12345 config.go:111] Configuration loaded successfully: resource_type=clusters
+I1208 15:30:00.123800   12345 logger.go:96] Starting HyperFleet Sentinel version=dev commit=abc1234
+```
+
+**For RabbitMQ**, you should also see the broker connection log:
 
 ```log
 [watermill] 2025/12/01 15:28:26.051755 connection.go:99: level=INFO msg="Connected to AMQP"
 ```
 
-**For Google Pub/Sub**, there is no explicit connection log (see [HYPERFLEET-276](https://issues.redhat.com/browse/HYPERFLEET-276)). The publisher initializes silently. You can verify it's working by checking the health endpoint (`curl http://localhost:8080/health`) and metrics.
+**For Google Pub/Sub**, there is no explicit connection log. The Google Pub/Sub SDK does not expose connection events, so the publisher initializes silently. You can verify it's working by checking the health endpoint (`curl http://localhost:8080/health`) and metrics. For debugging, you can enable SDK debug logging with these environment variables:
+
+```bash
+export GOOGLE_SDK_GO_LOGGING_LEVEL=debug
+export GRPC_GO_LOG_VERBOSITY_LEVEL=99
+export GODEBUG=http2debug=1
+```
 
 > **Note**: If the HyperFleet API is not running, Sentinel will still start but API polling will fail silently (visible in metrics as `api_errors_total`). This is expected for local broker validation.
 
@@ -309,7 +323,15 @@ kubectl get pods -n ${NAMESPACE} -l app.kubernetes.io/name=sentinel
 kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=sentinel -f
 ```
 
-> **Note**: Currently, Sentinel does not output logs during normal operation (see [HYPERFLEET-276](https://issues.redhat.com/browse/HYPERFLEET-276)). Use the health endpoint and metrics to verify the service is running correctly.
+You should see the startup messages:
+
+```log
+I1208 15:30:00.123456   1 config.go:82] Loading configuration from /app/configs/sentinel.yaml
+I1208 15:30:00.123789   1 config.go:111] Configuration loaded successfully: resource_type=clusters
+I1208 15:30:00.123800   1 logger.go:96] Starting HyperFleet Sentinel version=0.1.0 commit=abc1234
+```
+
+> **Note**: Sentinel outputs minimal logs during normal operation. Use the health endpoint and metrics to verify the service is running correctly.
 
 #### Verify Health Endpoint
 

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -29,6 +30,14 @@ var (
 )
 
 func main() {
+	// Parse glog flags to avoid "logging before flag.Parse" warnings
+	_ = flag.CommandLine.Parse([]string{})
+
+	// Always log to stderr by default
+	if err := flag.Set("logtostderr", "true"); err != nil {
+		panic(fmt.Sprintf("failed to configure logging: %v", err))
+	}
+
 	rootCmd := &cobra.Command{
 		Use:   "sentinel",
 		Short: "HyperFleet Sentinel - Resource polling and event publishing service",
