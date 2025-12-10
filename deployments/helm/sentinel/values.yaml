@@ -21,9 +21,10 @@ serviceAccount:
   # Specifies whether a service account should be created
   create: true
   # Annotations to add to the service account
+  # Note: For GCP Pub/Sub with Workload Identity Federation, no annotations are
+  # needed. Use `gcloud projects add-iam-policy-binding` with the principal://
+  # format instead. See docs/running-sentinel.md for details.
   annotations: {}
-    # For GCP Pub/Sub with Workload Identity:
-    # iam.gke.io/gcp-service-account: sentinel@your-project.iam.gserviceaccount.com
   # The name of the service account to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
