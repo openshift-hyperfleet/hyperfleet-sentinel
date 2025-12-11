@@ -18,9 +18,10 @@ This guide enables developers to run Sentinel both locally (for development) and
   - [Connect to GKE Cluster](#2-connect-to-gke-cluster)
   - [Building Container Image](#3-building-container-image)
   - [Authentication and Image Push](#4-authentication-and-image-push)
-  - [Helm Deployment](#5-helm-deployment)
-  - [Verification Steps](#6-verification-steps)
-  - [Cleanup](#7-cleanup)
+  - [Configure Workload Identity](#5-configure-workload-identity)
+  - [Helm Deployment](#6-helm-deployment)
+  - [Verification Steps](#7-verification-steps)
+  - [Cleanup](#8-cleanup)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -215,6 +216,8 @@ export GODEBUG=http2debug=1
 ### Prerequisites for GKE
 
 - GKE cluster access (use the shared cluster below or your own)
+- GKE cluster must have Workload Identity enabled (required for Pub/Sub
+  authentication; the shared dev cluster already has this enabled)
 - `gcloud` CLI configured and authenticated
 - `kubectl` configured for the cluster
 - `podman` for building images
@@ -293,10 +296,37 @@ gcloud auth configure-docker gcr.io
 podman push gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TAG}
 ```
 
-### 5. Helm Deployment
+### 5. Configure Workload Identity
+
+When deploying Sentinel on GKE with real Google Pub/Sub, you need to configure
+authentication. **Workload Identity Federation** grants permissions directly
+to the Kubernetes ServiceAccount without needing intermediate GCP service
+accounts or annotations.
+
+First, get your project number:
 
 ```bash
-# Deploy Sentinel with Google Pub/Sub (default topic: {namespace}-{resourceType})
+export GCP_PROJECT_NUMBER=$(gcloud projects describe ${GCP_PROJECT} \
+  --format="value(projectNumber)")
+```
+
+Then grant the Pub/Sub publisher role to the K8s ServiceAccount:
+
+```bash
+gcloud projects add-iam-policy-binding ${GCP_PROJECT} \
+  --role="roles/pubsub.publisher" \
+  --member="principal://iam.googleapis.com/projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/${GCP_PROJECT}.svc.id.goog/subject/ns/${NAMESPACE}/sa/sentinel-test" \
+  --condition=None
+```
+
+> **Note**: The `principal://` format is:
+> `principal://iam.googleapis.com/projects/{PROJECT_NUMBER}/locations/global/workloadIdentityPools/{PROJECT_ID}.svc.id.goog/subject/ns/{NAMESPACE}/sa/{K8S_SA_NAME}`
+
+### 6. Helm Deployment
+
+Deploy Sentinel:
+
+```bash
 helm install sentinel-test ./deployments/helm/sentinel \
   --namespace ${NAMESPACE} \
   --create-namespace \
@@ -307,9 +337,13 @@ helm install sentinel-test ./deployments/helm/sentinel \
   --set monitoring.podMonitoring.enabled=true
 ```
 
-> **Tip**: The default topic is `{namespace}-{resourceType}` (e.g., `hyperfleet-dev-rafael-clusters`). You can override with `--set broker.topic=custom-topic`. See [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) for details.
+> **Tip**: The default topic is `{namespace}-{resourceType}`
+> (e.g., `hyperfleet-dev-rafael-clusters`). Override with
+> `--set broker.topic=custom-topic`. See
+> [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md)
+> for details.
 
-### 6. Verification Steps
+### 7. Verification Steps
 
 #### Check Pod Status
 
@@ -373,7 +407,20 @@ kubectl describe podmonitoring -n ${NAMESPACE} -l app.kubernetes.io/name=sentine
 2. In "Select a metric", search for `hyperfleet_sentinel`
 3. Select **Prometheus Target** > **Hyperfleet** > choose a metric (e.g., `api_errors_total`)
 
-### 7. Cleanup
+#### Verify Workload Identity IAM Binding
+
+If the pod fails to authenticate with Pub/Sub, verify the IAM binding exists:
+
+```bash
+gcloud projects get-iam-policy ${GCP_PROJECT} \
+  --flatten="bindings[].members" \
+  --filter="bindings.members:principal://iam.googleapis.com/projects/${GCP_PROJECT_NUMBER}" \
+  --format="table(bindings.role, bindings.members)"
+```
+
+You should see an entry with `roles/pubsub.publisher` for your namespace/SA.
+
+### 8. Cleanup
 
 Remove the deployment when done:
 
@@ -384,7 +431,17 @@ helm uninstall sentinel-test -n ${NAMESPACE}
 Optionally, delete the image from the registry:
 
 ```bash
-gcloud container images delete gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TAG} --quiet --force-delete-tags
+gcloud container images delete gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TAG} \
+  --quiet --force-delete-tags
+```
+
+If you configured Workload Identity, remove the IAM binding:
+
+```bash
+# Remove the Pub/Sub publisher role from the K8s ServiceAccount
+gcloud projects remove-iam-policy-binding ${GCP_PROJECT} \
+  --role="roles/pubsub.publisher" \
+  --member="principal://iam.googleapis.com/projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/${GCP_PROJECT}.svc.id.goog/subject/ns/${NAMESPACE}/sa/sentinel-test"
 ```
 
 ---
