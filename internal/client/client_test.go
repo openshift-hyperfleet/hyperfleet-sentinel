@@ -474,7 +474,7 @@ func TestLabelSelectorToSearchString(t *testing.T) {
 		{
 			name:     "single label",
 			selector: map[string]string{"region": "us-east"},
-			want:     "region=us-east",
+			want:     "labels.region='us-east'",
 		},
 		{
 			name: "multiple labels (sorted)",
@@ -482,7 +482,7 @@ func TestLabelSelectorToSearchString(t *testing.T) {
 				"region": "us-east",
 				"env":    "production",
 			},
-			want: "env=production,region=us-east",
+			want: "labels.env='production' and labels.region='us-east'",
 		},
 		{
 			name: "three labels (sorted)",
@@ -491,7 +491,27 @@ func TestLabelSelectorToSearchString(t *testing.T) {
 				"region": "us-west",
 				"env":    "staging",
 			},
-			want: "env=staging,region=us-west,tier=frontend",
+			want: "labels.env='staging' and labels.region='us-west' and labels.tier='frontend'",
+		},
+		{
+			name:     "label with hyphen in key",
+			selector: map[string]string{"my-label": "value"},
+			want:     "labels.my-label='value'",
+		},
+		{
+			name:     "label with underscore in key",
+			selector: map[string]string{"my_label": "value"},
+			want:     "labels.my_label='value'",
+		},
+		{
+			name:     "label with hyphen in value",
+			selector: map[string]string{"region": "us-east-1"},
+			want:     "labels.region='us-east-1'",
+		},
+		{
+			name:     "label value with single quote (escaped)",
+			selector: map[string]string{"name": "test'value"},
+			want:     "labels.name='test''value'",
 		},
 	}
 
@@ -610,7 +630,7 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 		t.Fatalf("Expected 1 resource, got %d", len(resources))
 	}
 
-	expectedSearch := "env=production,region=us-east"
+	expectedSearch := "labels.env='production' and labels.region='us-east'"
 	if receivedSearchParam != expectedSearch {
 		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
 	}

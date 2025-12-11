@@ -159,20 +159,26 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 	return resources, nil
 }
 
-// labelSelectorToSearchString converts a label selector map to search parameter string
-// Format: "key1=value1,key2=value2"
+// labelSelectorToSearchString converts a label selector map to TSL (Tree Search Language) search parameter string
+// Format: "labels.key1='value1' and labels.key2='value2'"
+// TSL syntax requires:
+// - Label keys prefixed with "labels."
+// - Values quoted with single quotes (single quotes in values are escaped by doubling)
+// - Multiple conditions joined with " and "
 func labelSelectorToSearchString(labelSelector map[string]string) string {
 	if len(labelSelector) == 0 {
 		return ""
 	}
 
-	var parts []string
+	parts := make([]string, 0, len(labelSelector))
 	for k, v := range labelSelector {
-		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+		// Escape single quotes by doubling them ('' is the TSL escape sequence for a literal ')
+		escapedValue := strings.ReplaceAll(v, "'", "''")
+		parts = append(parts, fmt.Sprintf("labels.%s='%s'", k, escapedValue))
 	}
 	// Sort for deterministic output in tests
 	sort.Strings(parts)
-	return strings.Join(parts, ",")
+	return strings.Join(parts, " and ")
 }
 
 // fetchResourcesOnce performs a single fetch operation without retry logic
