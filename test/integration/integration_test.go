@@ -204,11 +204,11 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		}
 
 		// Server-side filtering: check for search parameter
+		// TSL syntax: labels.key='value' and labels.key2='value2'
 		searchParam := r.URL.Query().Get("search")
 		filteredClusters := allClusters
 
 		if searchParam != "" {
-			// Parse search parameter (format: "key1=value1,key2=value2")
 			filteredClusters = []map[string]interface{}{}
 			for _, cluster := range allClusters {
 				labels, ok := cluster["labels"].(map[string]string)
@@ -216,8 +216,8 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 					continue
 				}
 
-				// Simple matching: if search contains "shard=1", only include clusters with shard=1
-				if searchParam == "shard=1" && labels["shard"] == "1" {
+				// TSL matching: if search contains "labels.shard='1'", only include clusters with shard=1
+				if searchParam == "labels.shard='1'" && labels["shard"] == "1" {
 					filteredClusters = append(filteredClusters, cluster)
 				}
 			}
@@ -269,4 +269,112 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	// Integration test validates label selector filtering works end-to-end
 	// Event verification requires subscriber implementation (future enhancement)
 	t.Log("Label selector filtering test with real RabbitMQ broker completed successfully")
+}
+
+// TestIntegration_TSLSyntaxMultipleLabels validates TSL syntax with multiple label selectors
+func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Get shared RabbitMQ testcontainer from helper
+	helper := NewHelper()
+
+	now := time.Now()
+
+	// Track the search parameter received by the mock server
+	var receivedSearchParam string
+
+	// Create mock server that validates TSL syntax
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedSearchParam = r.URL.Query().Get("search")
+
+		// All available clusters
+		allClusters := []map[string]interface{}{
+			createMockClusterWithLabels(
+				"cluster-region-env-match",
+				2,
+				2,
+				"Ready",
+				now.Add(-31*time.Minute),
+				map[string]string{"region": "us-east", "env": "production"},
+			),
+			createMockClusterWithLabels(
+				"cluster-region-only",
+				2,
+				2,
+				"Ready",
+				now.Add(-31*time.Minute),
+				map[string]string{"region": "us-east", "env": "staging"},
+			),
+		}
+
+		// Server-side filtering using TSL syntax
+		filteredClusters := allClusters
+
+		// Expected TSL format: "labels.env='production' and labels.region='us-east'"
+		expectedTSL := "labels.env='production' and labels.region='us-east'"
+		if receivedSearchParam == expectedTSL {
+			filteredClusters = []map[string]interface{}{}
+			for _, cluster := range allClusters {
+				labels, ok := cluster["labels"].(map[string]string)
+				if !ok {
+					continue
+				}
+				// Match clusters with both labels
+				if labels["region"] == "us-east" && labels["env"] == "production" {
+					filteredClusters = append(filteredClusters, cluster)
+				}
+			}
+		}
+
+		response := createMockClusterList(filteredClusters)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	// Setup components
+	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	log := logger.NewHyperFleetLogger()
+
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry)
+
+	cfg := &config.SentinelConfig{
+		ResourceType:   "clusters",
+		PollInterval:   100 * time.Millisecond,
+		MaxAgeNotReady: 10 * time.Second,
+		MaxAgeReady:    30 * time.Minute,
+		ResourceSelector: []config.LabelSelector{
+			{Label: "region", Value: "us-east"},
+			{Label: "env", Value: "production"},
+		},
+	}
+
+	s := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+
+	// Run sentinel
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- s.Start(ctx)
+	}()
+
+	// Wait for polling
+	time.Sleep(300 * time.Millisecond)
+	cancel()
+
+	// Validate the search parameter format is correct TSL syntax
+	expectedTSL := "labels.env='production' and labels.region='us-east'"
+	if receivedSearchParam != expectedTSL {
+		t.Errorf("Expected TSL search parameter %q, got %q", expectedTSL, receivedSearchParam)
+	}
+
+	// Wait for sentinel to stop
+	startErr := <-errChan
+	if startErr != nil && startErr != context.Canceled {
+		t.Errorf("Expected Start to return nil or context.Canceled, got: %v", startErr)
+	}
+
+	t.Logf("TSL syntax validation completed - received correct format: %s", receivedSearchParam)
 }
