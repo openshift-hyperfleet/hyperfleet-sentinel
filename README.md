@@ -138,6 +138,8 @@ resource_selector:
 
 An empty or omitted `resource_selector` means watch all resources. Multiple selectors use AND logic (all labels must match).
 
+For detailed instructions on deploying multiple Sentinel instances with different resource selectors, see [docs/multi-instance-deployment.md](docs/multi-instance-deployment.md).
+
 #### Message Data Templates
 
 Define custom fields to include in CloudEvents using Go template syntax. Both `.field` and `{{.field}}` formats are supported:
