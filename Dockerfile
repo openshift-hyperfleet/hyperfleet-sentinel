@@ -1,3 +1,26 @@
+FROM openapitools/openapi-generator-cli:v7.16.0 AS openapi-gen
+
+WORKDIR /local
+
+# OpenAPI spec configuration from hyperfleet-api repository
+ARG OPENAPI_SPEC_REF=main
+ARG OPENAPI_SPEC_URL=https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/${OPENAPI_SPEC_REF}/openapi/openapi.yaml
+
+# Fetch OpenAPI spec from hyperfleet-api
+RUN echo "Fetching OpenAPI spec from hyperfleet-api (ref: ${OPENAPI_SPEC_REF})..." && \
+    mkdir -p openapi && \
+    wget -O openapi/openapi.yaml "${OPENAPI_SPEC_URL}" || \
+    (echo "Failed to download OpenAPI spec from ${OPENAPI_SPEC_URL}" && exit 1)
+
+
+# Generate Go client/models from OpenAPI spec
+RUN bash /usr/local/bin/docker-entrypoint.sh generate \
+    -i /local/openapi/openapi.yaml \
+    -g go \
+    -o /local/pkg/api/openapi && \
+    rm -f /local/pkg/api/openapi/go.mod /local/pkg/api/openapi/go.sum && \
+    rm -rf /local/pkg/api/openapi/test
+
 # Build stage
 FROM golang:1.25-alpine AS builder
 
@@ -6,6 +29,9 @@ WORKDIR /build
 # Copy go mod files
 COPY go.mod go.sum ./
 RUN go mod download
+
+# Copy generated OpenAPI client from openapi-gen stage
+COPY --from=openapi-gen /local/pkg/api/openapi ./pkg/api/openapi
 
 # Copy source code
 COPY . .
