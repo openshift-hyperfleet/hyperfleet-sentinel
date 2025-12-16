@@ -1,13 +1,14 @@
 package config
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
 	"text/template"
 	"time"
 
-	"github.com/golang/glog"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"github.com/spf13/viper"
 )
 
@@ -79,7 +80,9 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 		return nil, fmt.Errorf("config file is required")
 	}
 
-	glog.Infof("Loading configuration from %s", configFile)
+	log := logger.NewHyperFleetLogger()
+	ctx := context.Background()
+	log.Infof(ctx, "Loading configuration from %s", configFile)
 
 	v := viper.New()
 	v.SetConfigFile(configFile)
@@ -108,7 +111,7 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 		return nil, fmt.Errorf("invalid message_data templates: %w", err)
 	}
 
-	glog.Infof("Configuration loaded successfully: resource_type=%s", cfg.ResourceType)
+	log.Infof(ctx, "Configuration loaded successfully: resource_type=%s", cfg.ResourceType)
 
 	return cfg, nil
 }
@@ -116,8 +119,11 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 // ValidateTemplates validates Go template syntax in message_data fields
 // Templates are validated at startup to fail-fast on invalid configuration
 func (c *SentinelConfig) ValidateTemplates() error {
+	log := logger.NewHyperFleetLogger()
+	ctx := context.Background()
+
 	if len(c.MessageData) == 0 {
-		glog.Warning("message_data is empty, CloudEvents will have minimal data payload")
+		log.Warning(ctx, "message_data is empty, CloudEvents will have minimal data payload")
 		return nil
 	}
 
@@ -136,7 +142,7 @@ func (c *SentinelConfig) ValidateTemplates() error {
 		}
 	}
 
-	glog.V(2).Infof("Validated %d message_data templates", len(c.MessageData))
+	log.V(2).Infof(ctx, "Validated %d message_data templates", len(c.MessageData))
 	return nil
 }
 
