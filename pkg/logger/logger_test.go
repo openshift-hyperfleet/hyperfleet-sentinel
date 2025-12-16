@@ -704,3 +704,107 @@ func TestLoggerFormattedMethods(t *testing.T) {
 		})
 	}
 }
+
+func TestLoggerErrorWithStackTrace(t *testing.T) {
+	t.Run("JSON format includes error and stack_trace", func(t *testing.T) {
+		var buf bytes.Buffer
+		cfg := &LogConfig{
+			Level:     LevelError,
+			Format:    FormatJSON,
+			Output:    &buf,
+			Component: "test",
+			Version:   "1.0.0",
+			Hostname:  "testhost",
+		}
+		log := NewHyperFleetLoggerWithConfig(cfg)
+		ctx := context.Background()
+
+		log.Error(ctx, "Something went wrong")
+
+		output := buf.String()
+
+		var entry logEntry
+		if err := json.Unmarshal([]byte(output), &entry); err != nil {
+			t.Fatalf("failed to parse JSON output: %v", err)
+		}
+
+		if entry.Error != "Something went wrong" {
+			t.Errorf("expected error field to match message, got %q", entry.Error)
+		}
+		if len(entry.StackTrace) == 0 {
+			t.Error("expected stack_trace to be present for error logs")
+		}
+		// Verify stack trace contains test function
+		found := false
+		for _, frame := range entry.StackTrace {
+			if strings.Contains(frame, "TestLoggerErrorWithStackTrace") {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected stack trace to contain test function, got %v", entry.StackTrace)
+		}
+	})
+
+	t.Run("text format includes indented stack trace", func(t *testing.T) {
+		var buf bytes.Buffer
+		cfg := &LogConfig{
+			Level:     LevelError,
+			Format:    FormatText,
+			Output:    &buf,
+			Component: "test",
+			Version:   "1.0.0",
+			Hostname:  "testhost",
+		}
+		log := NewHyperFleetLoggerWithConfig(cfg)
+		ctx := context.Background()
+
+		log.Error(ctx, "Test error message")
+
+		output := buf.String()
+
+		// Check error field is present
+		if !strings.Contains(output, `error="Test error message"`) {
+			t.Errorf("expected output to contain error field, got %q", output)
+		}
+
+		// Check stack trace is present and indented
+		if !strings.Contains(output, "    ") {
+			t.Error("expected stack trace to be indented with 4 spaces")
+		}
+		if !strings.Contains(output, "TestLoggerErrorWithStackTrace") {
+			t.Errorf("expected stack trace to contain test function, got %q", output)
+		}
+	})
+
+	t.Run("info level does not include stack trace", func(t *testing.T) {
+		var buf bytes.Buffer
+		cfg := &LogConfig{
+			Level:     LevelInfo,
+			Format:    FormatJSON,
+			Output:    &buf,
+			Component: "test",
+			Version:   "1.0.0",
+			Hostname:  "testhost",
+		}
+		log := NewHyperFleetLoggerWithConfig(cfg)
+		ctx := context.Background()
+
+		log.Info(ctx, "Info message")
+
+		output := buf.String()
+
+		var entry logEntry
+		if err := json.Unmarshal([]byte(output), &entry); err != nil {
+			t.Fatalf("failed to parse JSON output: %v", err)
+		}
+
+		if entry.Error != "" {
+			t.Errorf("expected no error field for info logs, got %q", entry.Error)
+		}
+		if len(entry.StackTrace) > 0 {
+			t.Errorf("expected no stack trace for info logs, got %v", entry.StackTrace)
+		}
+	})
+}
