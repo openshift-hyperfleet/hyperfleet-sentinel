@@ -764,9 +764,9 @@ func TestLoggerErrorWithStackTrace(t *testing.T) {
 
 		output := buf.String()
 
-		// Check error field is present
-		if !strings.Contains(output, `error="Test error message"`) {
-			t.Errorf("expected output to contain error field, got %q", output)
+		// Check message is present (error field is omitted when same as message)
+		if !strings.Contains(output, "Test error message") {
+			t.Errorf("expected output to contain message, got %q", output)
 		}
 
 		// Check stack trace is present and indented

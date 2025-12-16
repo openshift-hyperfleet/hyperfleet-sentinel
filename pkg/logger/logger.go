@@ -327,8 +327,8 @@ func (l *logger) formatText(entry *logEntry) string {
 		sb.WriteString(fmt.Sprintf(" %s=%v", k, v))
 	}
 
-	// Add error field if present
-	if entry.Error != "" {
+	// Add error field only if it differs from message (avoid duplication)
+	if entry.Error != "" && entry.Error != entry.Message {
 		sb.WriteString(" error=\"")
 		sb.WriteString(entry.Error)
 		sb.WriteString("\"")
