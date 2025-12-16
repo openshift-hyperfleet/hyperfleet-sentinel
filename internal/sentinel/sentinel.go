@@ -51,7 +51,7 @@ func (s *Sentinel) Start(ctx context.Context) error {
 
 	// Run immediately on start
 	if err := s.trigger(ctx); err != nil {
-		s.logger.Infof(ctx, "Initial trigger failed: %v", err)
+		s.logger.Errorf(ctx, "Initial trigger failed: %v", err)
 	}
 
 	for {
@@ -61,7 +61,7 @@ func (s *Sentinel) Start(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.trigger(ctx); err != nil {
-				s.logger.Infof(ctx, "Trigger failed: %v", err)
+				s.logger.Errorf(ctx, "Trigger failed: %v", err)
 			}
 		}
 	}
