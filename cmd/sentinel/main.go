@@ -40,7 +40,7 @@ reconciliation events to a message broker based on configurable max age interval
 	rootCmd.AddCommand(newServeCommand())
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		// Error is already logged with stack trace, just exit with error code
 		os.Exit(1)
 	}
 }
@@ -54,9 +54,11 @@ func newServeCommand() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "serve",
-		Short: "Start the Sentinel service",
-		Long:  `Start the HyperFleet Sentinel service with the specified configuration.`,
+		Use:           "serve",
+		Short:         "Start the Sentinel service",
+		Long:          `Start the HyperFleet Sentinel service with the specified configuration.`,
+		SilenceUsage:  true, // Don't print usage on error
+		SilenceErrors: true, // Don't print errors - we handle logging ourselves
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Initialize logging configuration
 			// Precedence: flags → environment variables → defaults
@@ -163,6 +165,7 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 	// Configuration is loaded from broker.yaml or BROKER_CONFIG_FILE env var
 	pub, err := broker.NewPublisher()
 	if err != nil {
+		log.Errorf(ctx, "Failed to initialize broker publisher: %v", err)
 		return fmt.Errorf("failed to initialize broker publisher: %w", err)
 	}
 	if pub != nil {
