@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -30,14 +29,6 @@ var (
 )
 
 func main() {
-	// Parse glog flags to avoid "logging before flag.Parse" warnings
-	_ = flag.CommandLine.Parse([]string{})
-
-	// Always log to stderr by default
-	if err := flag.Set("logtostderr", "true"); err != nil {
-		panic(fmt.Sprintf("failed to configure logging: %v", err))
-	}
-
 	rootCmd := &cobra.Command{
 		Use:   "sentinel",
 		Short: "HyperFleet Sentinel - Resource polling and event publishing service",
@@ -55,34 +46,109 @@ reconciliation events to a message broker based on configurable max age interval
 }
 
 func newServeCommand() *cobra.Command {
-	var configFile string
+	var (
+		configFile string
+		logLevel   string
+		logFormat  string
+		logOutput  string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "serve",
 		Short: "Start the Sentinel service",
 		Long:  `Start the HyperFleet Sentinel service with the specified configuration.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Initialize logging configuration
+			// Precedence: flags → environment variables → defaults
+			logCfg, err := initLogging(logLevel, logFormat, logOutput)
+			if err != nil {
+				return fmt.Errorf("failed to initialize logging: %w", err)
+			}
+
 			// Load and validate configuration from YAML and env vars
 			cfg, err := config.LoadConfig(configFile)
 			if err != nil {
 				return err
 			}
-			return runServe(cfg)
+			return runServe(cfg, logCfg)
 		},
 	}
 
 	// Add --config flag for YAML file path
 	cmd.Flags().StringVarP(&configFile, "config", "c", "", "Path to configuration file (YAML)")
 
+	// Add logging flags per HyperFleet logging specification
+	cmd.Flags().StringVar(&logLevel, "log-level", "", "Log level: debug, info, warn, error (default: info)")
+	cmd.Flags().StringVar(&logFormat, "log-format", "", "Log format: text, json (default: text)")
+	cmd.Flags().StringVar(&logOutput, "log-output", "", "Log output: stdout, stderr, or file path (default: stdout)")
+
 	return cmd
 }
 
-func runServe(cfg *config.SentinelConfig) error {
+// initLogging initializes the logging configuration following the precedence:
+// flags → environment variables → defaults
+func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, error) {
+	cfg := logger.DefaultConfig()
+	cfg.Version = version
+	cfg.Component = "sentinel"
+
+	// Get hostname
+	if hostname, err := os.Hostname(); err == nil {
+		cfg.Hostname = hostname
+	}
+
+	// Apply log level (flags → env → default)
+	levelStr := flagLevel
+	if levelStr == "" {
+		levelStr = os.Getenv("LOG_LEVEL")
+	}
+	if levelStr != "" {
+		level, err := logger.ParseLogLevel(levelStr)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Level = level
+	}
+
+	// Apply log format (flags → env → default)
+	formatStr := flagFormat
+	if formatStr == "" {
+		formatStr = os.Getenv("LOG_FORMAT")
+	}
+	if formatStr != "" {
+		format, err := logger.ParseLogFormat(formatStr)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Format = format
+	}
+
+	// Apply log output (flags → env → default)
+	outputStr := flagOutput
+	if outputStr == "" {
+		outputStr = os.Getenv("LOG_OUTPUT")
+	}
+	if outputStr != "" {
+		output, err := logger.ParseLogOutput(outputStr)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Output = output
+	}
+
+	// Set global config so all loggers use the same configuration
+	logger.SetGlobalConfig(cfg)
+
+	return cfg, nil
+}
+
+func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 	// Initialize context and logger
 	ctx := context.Background()
 	log := logger.NewHyperFleetLogger()
 
-	log.Infof(ctx, "Starting HyperFleet Sentinel version=%s commit=%s", version, commit)
+	log.Infof(ctx, "Starting HyperFleet Sentinel version=%s commit=%s log_level=%s log_format=%s",
+		version, commit, logCfg.Level.String(), formatName(logCfg.Format))
 
 	// Initialize Prometheus metrics registry
 	registry := prometheus.NewRegistry()
@@ -102,7 +168,7 @@ func runServe(cfg *config.SentinelConfig) error {
 	if pub != nil {
 		defer func() {
 			if err := pub.Close(); err != nil {
-				log.Infof(ctx, "Error closing publisher: %v", err)
+				log.Errorf(ctx, "Error closing publisher: %v", err)
 			}
 		}()
 	}
@@ -122,7 +188,7 @@ func runServe(cfg *config.SentinelConfig) error {
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte("OK")); err != nil {
-			log.Infof(r.Context(), "Error writing health response: %v", err)
+			log.Errorf(r.Context(), "Error writing health response: %v", err)
 		}
 	})
 
@@ -141,7 +207,7 @@ func runServe(cfg *config.SentinelConfig) error {
 	go func() {
 		log.Info(ctx, "Starting metrics server on :8080")
 		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Infof(ctx, "Metrics server error: %v", err)
+			log.Errorf(ctx, "Metrics server error: %v", err)
 		}
 	}()
 
@@ -157,7 +223,7 @@ func runServe(cfg *config.SentinelConfig) error {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
 		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
-			log.Infof(shutdownCtx, "Metrics server shutdown error: %v", err)
+			log.Errorf(shutdownCtx, "Metrics server shutdown error: %v", err)
 		}
 	}()
 
@@ -169,4 +235,14 @@ func runServe(cfg *config.SentinelConfig) error {
 
 	log.Info(ctx, "Sentinel stopped gracefully")
 	return nil
+}
+
+// formatName returns the string name of the log format
+func formatName(f logger.LogFormat) string {
+	switch f {
+	case logger.FormatJSON:
+		return "json"
+	default:
+		return "text"
+	}
 }
