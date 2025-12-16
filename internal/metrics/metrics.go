@@ -13,8 +13,11 @@ import (
 // Subsystem used to define the metrics
 const metricsSubsystem = "hyperfleet_sentinel"
 
-// Package-level logger to avoid creating new loggers in each function call
-var log = logger.NewHyperFleetLogger()
+// getLogger returns a logger instance with current global config.
+// Called at runtime (not import time) to ensure config is applied.
+func getLogger() logger.HyperFleetLogger {
+	return logger.NewHyperFleetLogger()
+}
 
 // Names of the labels added to metrics
 const (
@@ -217,7 +220,7 @@ func ResetSentinelMetrics() {
 func UpdatePendingResourcesMetric(resourceType, resourceSelector string, count int) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" {
-		log.Warningf(context.Background(), "Attempted to update pending_resources metric with empty parameters: resourceType=%q resourceSelector=%q", resourceType, resourceSelector)
+		getLogger().Warningf(context.Background(), "Attempted to update pending_resources metric with empty parameters: resourceType=%q resourceSelector=%q", resourceType, resourceSelector)
 		return
 	}
 	if count < 0 {
@@ -248,7 +251,7 @@ func UpdatePendingResourcesMetric(resourceType, resourceSelector string, count i
 func UpdateEventsPublishedMetric(resourceType, resourceSelector, reason string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || reason == "" {
-		log.Warningf(context.Background(), "Attempted to update events_published metric with empty parameters: resourceType=%q resourceSelector=%q reason=%q", resourceType, resourceSelector, reason)
+		getLogger().Warningf(context.Background(), "Attempted to update events_published metric with empty parameters: resourceType=%q resourceSelector=%q reason=%q", resourceType, resourceSelector, reason)
 		return
 	}
 
@@ -278,7 +281,7 @@ func UpdateEventsPublishedMetric(resourceType, resourceSelector, reason string) 
 func UpdateResourcesSkippedMetric(resourceType, resourceSelector, reason string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || reason == "" {
-		log.Warningf(context.Background(), "Attempted to update resources_skipped metric with empty parameters: resourceType=%q resourceSelector=%q reason=%q", resourceType, resourceSelector, reason)
+		getLogger().Warningf(context.Background(), "Attempted to update resources_skipped metric with empty parameters: resourceType=%q resourceSelector=%q reason=%q", resourceType, resourceSelector, reason)
 		return
 	}
 
@@ -308,11 +311,11 @@ func UpdateResourcesSkippedMetric(resourceType, resourceSelector, reason string)
 func UpdatePollDurationMetric(resourceType, resourceSelector string, durationSeconds float64) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" {
-		log.Warningf(context.Background(), "Attempted to update poll_duration metric with empty parameters: resourceType=%q resourceSelector=%q", resourceType, resourceSelector)
+		getLogger().Warningf(context.Background(), "Attempted to update poll_duration metric with empty parameters: resourceType=%q resourceSelector=%q", resourceType, resourceSelector)
 		return
 	}
 	if durationSeconds < 0 {
-		log.Warningf(context.Background(), "Attempted to update poll_duration metric with negative duration: %f", durationSeconds)
+		getLogger().Warningf(context.Background(), "Attempted to update poll_duration metric with negative duration: %f", durationSeconds)
 		return
 	}
 
@@ -340,7 +343,7 @@ func UpdatePollDurationMetric(resourceType, resourceSelector string, durationSec
 func UpdateAPIErrorsMetric(resourceType, resourceSelector, errorType string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || errorType == "" {
-		log.Warningf(context.Background(), "Attempted to update api_errors metric with empty parameters: resourceType=%q resourceSelector=%q errorType=%q", resourceType, resourceSelector, errorType)
+		getLogger().Warningf(context.Background(), "Attempted to update api_errors metric with empty parameters: resourceType=%q resourceSelector=%q errorType=%q", resourceType, resourceSelector, errorType)
 		return
 	}
 
@@ -369,7 +372,7 @@ func UpdateAPIErrorsMetric(resourceType, resourceSelector, errorType string) {
 func UpdateBrokerErrorsMetric(resourceType, resourceSelector, errorType string) {
 	// Validate inputs
 	if resourceType == "" || resourceSelector == "" || errorType == "" {
-		log.Warningf(context.Background(), "Attempted to update broker_errors metric with empty parameters: resourceType=%q resourceSelector=%q errorType=%q", resourceType, resourceSelector, errorType)
+		getLogger().Warningf(context.Background(), "Attempted to update broker_errors metric with empty parameters: resourceType=%q resourceSelector=%q errorType=%q", resourceType, resourceSelector, errorType)
 		return
 	}
 
