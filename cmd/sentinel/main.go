@@ -80,7 +80,7 @@ func newServeCommand() *cobra.Command {
 	// Add logging flags per HyperFleet logging specification
 	cmd.Flags().StringVar(&logLevel, "log-level", "", "Log level: debug, info, warn, error (default: info)")
 	cmd.Flags().StringVar(&logFormat, "log-format", "", "Log format: text, json (default: text)")
-	cmd.Flags().StringVar(&logOutput, "log-output", "", "Log output: stdout, stderr, or file path (default: stdout)")
+	cmd.Flags().StringVar(&logOutput, "log-output", "", "Log output: stdout, stderr (default: stdout)")
 
 	return cmd
 }

@@ -148,12 +148,7 @@ func ParseLogOutput(output string) (io.Writer, error) {
 	case "stderr":
 		return os.Stderr, nil
 	default:
-		// Treat as file path
-		file, err := os.OpenFile(output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open log file %s: %w", output, err)
-		}
-		return file, nil
+		return nil, fmt.Errorf("unknown log output: %s (valid: stdout, stderr)", output)
 	}
 }
 
