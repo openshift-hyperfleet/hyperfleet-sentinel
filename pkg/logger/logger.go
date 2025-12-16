@@ -6,9 +6,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	// maxStackFrames limits stack trace depth per HyperFleet logging spec (10-15 frames)
+	maxStackFrames = 15
+	// skipFrames skips internal logger frames to start at caller
+	skipFrames = 4
 )
 
 // LogLevel represents the logging severity level
@@ -195,6 +203,10 @@ type logEntry struct {
 	Version   string `json:"version"`
 	Hostname  string `json:"hostname"`
 
+	// Error fields (for error level logs)
+	Error      string   `json:"error,omitempty"`
+	StackTrace []string `json:"stack_trace,omitempty"`
+
 	// Correlation fields (when available)
 	TraceID string `json:"trace_id,omitempty"`
 	SpanID  string `json:"span_id,omitempty"`
@@ -315,7 +327,24 @@ func (l *logger) formatText(entry *logEntry) string {
 		sb.WriteString(fmt.Sprintf(" %s=%v", k, v))
 	}
 
+	// Add error field if present
+	if entry.Error != "" {
+		sb.WriteString(" error=\"")
+		sb.WriteString(entry.Error)
+		sb.WriteString("\"")
+	}
+
 	sb.WriteString("\n")
+
+	// Add stack trace indented below main log line (per HyperFleet logging spec)
+	if len(entry.StackTrace) > 0 {
+		for _, frame := range entry.StackTrace {
+			sb.WriteString("    ")
+			sb.WriteString(frame)
+			sb.WriteString("\n")
+		}
+	}
+
 	return sb.String()
 }
 
@@ -327,12 +356,73 @@ func (l *logger) formatJSON(entry *logEntry) string {
 	return string(data) + "\n"
 }
 
+// getStackTrace captures a stack trace, limited to maxStackFrames
+// per HyperFleet logging specification (10-15 frames)
+func getStackTrace(skip int) []string {
+	var frames []string
+	pcs := make([]uintptr, maxStackFrames)
+	n := runtime.Callers(skip, pcs)
+	if n == 0 {
+		return nil
+	}
+
+	pcs = pcs[:n]
+	callersFrames := runtime.CallersFrames(pcs)
+
+	for {
+		frame, more := callersFrames.Next()
+		// Skip runtime and testing frames
+		if strings.Contains(frame.Function, "runtime.") ||
+			strings.Contains(frame.Function, "testing.") {
+			if !more {
+				break
+			}
+			continue
+		}
+
+		// Format: "function() file:line"
+		shortFunc := frame.Function
+		if idx := strings.LastIndex(shortFunc, "/"); idx >= 0 {
+			shortFunc = shortFunc[idx+1:]
+		}
+		shortFile := frame.File
+		if idx := strings.LastIndex(shortFile, "/"); idx >= 0 {
+			shortFile = shortFile[idx+1:]
+		}
+		frames = append(frames, fmt.Sprintf("%s() %s:%d", shortFunc, shortFile, frame.Line))
+
+		if !more || len(frames) >= maxStackFrames {
+			break
+		}
+	}
+
+	return frames
+}
+
 func (l *logger) log(ctx context.Context, level LogLevel, message string) {
+	l.logWithError(ctx, level, message, "")
+}
+
+func (l *logger) logWithError(ctx context.Context, level LogLevel, message string, errorMsg string) {
 	if !l.shouldLog(level) {
 		return
 	}
 
 	entry := l.buildEntry(ctx, level, message)
+
+	// For error level, add error field and stack trace
+	// Stack trace is included for errors or when debug level is enabled
+	if level == LevelError {
+		if errorMsg != "" {
+			entry.Error = errorMsg
+		} else {
+			entry.Error = message
+		}
+		// Include stack trace for errors (or always if debug level)
+		if l.config.Level == LevelDebug || level == LevelError {
+			entry.StackTrace = getStackTrace(skipFrames)
+		}
+	}
 
 	var output string
 	switch l.config.Format {
