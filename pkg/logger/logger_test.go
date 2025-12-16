@@ -122,35 +122,14 @@ func TestParseLogOutput(t *testing.T) {
 	}
 }
 
-func TestParseLogOutput_File(t *testing.T) {
-	// Create a temporary file
-	tmpFile, err := os.CreateTemp("", "test-log-*.log")
-	if err != nil {
-		t.Fatalf("failed to create temp file: %v", err)
-	}
-	tmpPath := tmpFile.Name()
-	tmpFile.Close()
-	defer os.Remove(tmpPath)
-
-	output, err := ParseLogOutput(tmpPath)
-	if err != nil {
-		t.Errorf("unexpected error for file path: %v", err)
-	}
-	if output == nil {
-		t.Error("expected non-nil output for file path")
-	}
-
-	// Clean up - close the file if it's a file
-	if f, ok := output.(*os.File); ok {
-		f.Close()
-	}
-}
-
-func TestParseLogOutput_InvalidFile(t *testing.T) {
-	// Try to write to a directory that doesn't exist
-	_, err := ParseLogOutput("/nonexistent/directory/file.log")
+func TestParseLogOutput_Invalid(t *testing.T) {
+	// Try an invalid output value
+	_, err := ParseLogOutput("file.log")
 	if err == nil {
-		t.Error("expected error for invalid file path, got nil")
+		t.Error("expected error for invalid output, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown log output") {
+		t.Errorf("expected 'unknown log output' error, got: %v", err)
 	}
 }
 
