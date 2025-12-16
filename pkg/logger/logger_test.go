@@ -480,6 +480,109 @@ func TestLoggerContextValues(t *testing.T) {
 	}
 }
 
+func TestLoggerSentinelFields(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := &LogConfig{
+		Level:     LevelInfo,
+		Format:    FormatJSON,
+		Output:    &buf,
+		Component: "sentinel",
+		Version:   "1.0.0",
+		Hostname:  "testhost",
+	}
+	log := NewHyperFleetLoggerWithConfig(cfg)
+
+	// Create context with Sentinel-specific fields
+	ctx := WithSentinelFields(context.Background(), "max_age_exceeded", "reconcile-topic", "clusters")
+
+	log.Info(ctx, "Published event")
+
+	output := buf.String()
+
+	var entry logEntry
+	if err := json.Unmarshal([]byte(output), &entry); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+
+	if entry.DecisionReason != "max_age_exceeded" {
+		t.Errorf("expected decision_reason 'max_age_exceeded', got %q", entry.DecisionReason)
+	}
+	if entry.Topic != "reconcile-topic" {
+		t.Errorf("expected topic 'reconcile-topic', got %q", entry.Topic)
+	}
+	if entry.Subset != "clusters" {
+		t.Errorf("expected subset 'clusters', got %q", entry.Subset)
+	}
+}
+
+func TestLoggerCorrelationFields(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := &LogConfig{
+		Level:     LevelInfo,
+		Format:    FormatJSON,
+		Output:    &buf,
+		Component: "test",
+		Version:   "1.0.0",
+		Hostname:  "testhost",
+	}
+	log := NewHyperFleetLoggerWithConfig(cfg)
+
+	// Create context with correlation fields
+	ctx := WithTraceID(context.Background(), "trace-abc123")
+	ctx = WithSpanID(ctx, "span-xyz789")
+
+	log.Info(ctx, "Test with tracing")
+
+	output := buf.String()
+
+	var entry logEntry
+	if err := json.Unmarshal([]byte(output), &entry); err != nil {
+		t.Fatalf("failed to parse JSON output: %v", err)
+	}
+
+	if entry.TraceID != "trace-abc123" {
+		t.Errorf("expected trace_id 'trace-abc123', got %q", entry.TraceID)
+	}
+	if entry.SpanID != "span-xyz789" {
+		t.Errorf("expected span_id 'span-xyz789', got %q", entry.SpanID)
+	}
+}
+
+func TestLoggerSentinelFieldsTextFormat(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := &LogConfig{
+		Level:     LevelInfo,
+		Format:    FormatText,
+		Output:    &buf,
+		Component: "sentinel",
+		Version:   "1.0.0",
+		Hostname:  "testhost",
+	}
+	log := NewHyperFleetLoggerWithConfig(cfg)
+
+	// Create context with Sentinel-specific fields
+	ctx := WithSentinelFields(context.Background(), "generation_changed", "my-topic", "nodepools")
+	ctx = WithTraceID(ctx, "trace-123")
+
+	log.Info(ctx, "Event published")
+
+	output := buf.String()
+
+	// Verify text format includes all fields
+	if !strings.Contains(output, "decision_reason=generation_changed") {
+		t.Error("expected output to contain decision_reason=generation_changed")
+	}
+	if !strings.Contains(output, "topic=my-topic") {
+		t.Error("expected output to contain topic=my-topic")
+	}
+	if !strings.Contains(output, "subset=nodepools") {
+		t.Error("expected output to contain subset=nodepools")
+	}
+	if !strings.Contains(output, "trace_id=trace-123") {
+		t.Error("expected output to contain trace_id=trace-123")
+	}
+}
+
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 

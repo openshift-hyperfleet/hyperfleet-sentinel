@@ -70,11 +70,17 @@ func (s *Sentinel) Start(ctx context.Context) error {
 // trigger checks resources and publishes events to trigger reconciliation
 func (s *Sentinel) trigger(ctx context.Context) error {
 	startTime := time.Now()
-	s.logger.V(2).Info(ctx, "Starting trigger cycle")
 
 	// Get metric labels
 	resourceType := s.config.ResourceType
 	resourceSelector := metrics.GetResourceSelectorLabel(s.config.ResourceSelector)
+	topic := s.config.Topic
+
+	// Add subset to context for structured logging
+	ctx = logger.WithSubset(ctx, resourceType)
+	ctx = logger.WithTopic(ctx, topic)
+
+	s.logger.V(2).Info(ctx, "Starting trigger cycle")
 
 	// Convert label selectors to map for filtering
 	labelSelector := s.config.ResourceSelector.ToMap()
@@ -103,6 +109,9 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 		if decision.ShouldPublish {
 			pending++
 
+			// Add decision reason to context for structured logging
+			eventCtx := logger.WithDecisionReason(ctx, decision.Reason)
+
 			// Create CloudEvent
 			event := cloudevents.NewEvent()
 			event.SetSpecVersion(cloudevents.VersionV1)
@@ -116,31 +125,33 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				"href":       resource.Href,
 				"reason":     decision.Reason,
 			}); err != nil {
-				s.logger.Infof(ctx, "Failed to set event data resource_id=%s error=%v", resource.ID, err)
+				s.logger.Errorf(eventCtx, "Failed to set event data resource_id=%s error=%v", resource.ID, err)
 				continue
 			}
 
 			// Publish to broker using configured topic
-			topic := s.config.Topic
 			if err := s.publisher.Publish(topic, &event); err != nil {
 				// Record broker error
 				metrics.UpdateBrokerErrorsMetric(resourceType, resourceSelector, "publish_error")
-				s.logger.Infof(ctx, "Failed to publish event resource_id=%s error=%v", resource.ID, err)
+				s.logger.Errorf(eventCtx, "Failed to publish event resource_id=%s error=%v", resource.ID, err)
 				continue
 			}
 
 			// Record successful event publication
 			metrics.UpdateEventsPublishedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.Infof(ctx, "Published event resource_id=%s phase=%s reason=%s topic=%s",
-				resource.ID, resource.Status.Phase, decision.Reason, topic)
+			s.logger.Infof(eventCtx, "Published event resource_id=%s phase=%s",
+				resource.ID, resource.Status.Phase)
 			published++
 		} else {
+			// Add decision reason to context for structured logging
+			skipCtx := logger.WithDecisionReason(ctx, decision.Reason)
+
 			// Record skipped resource
 			metrics.UpdateResourcesSkippedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.V(2).Infof(ctx, "Skipped resource resource_id=%s phase=%s reason=%s",
-				resource.ID, resource.Status.Phase, decision.Reason)
+			s.logger.V(2).Infof(skipCtx, "Skipped resource resource_id=%s phase=%s",
+				resource.ID, resource.Status.Phase)
 			skipped++
 		}
 	}

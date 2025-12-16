@@ -187,15 +187,27 @@ func NewHyperFleetLoggerWithConfig(cfg *LogConfig) HyperFleetLogger {
 
 // logEntry represents a structured log entry
 type logEntry struct {
-	Timestamp string                 `json:"timestamp"`
-	Level     string                 `json:"level"`
-	Message   string                 `json:"message"`
-	Component string                 `json:"component"`
-	Version   string                 `json:"version"`
-	Hostname  string                 `json:"hostname"`
-	OpID      string                 `json:"op_id,omitempty"`
-	TxID      int64                  `json:"tx_id,omitempty"`
-	Extra     map[string]interface{} `json:"extra,omitempty"`
+	// Required fields per HyperFleet logging specification
+	Timestamp string `json:"timestamp"`
+	Level     string `json:"level"`
+	Message   string `json:"message"`
+	Component string `json:"component"`
+	Version   string `json:"version"`
+	Hostname  string `json:"hostname"`
+
+	// Correlation fields (when available)
+	TraceID string `json:"trace_id,omitempty"`
+	SpanID  string `json:"span_id,omitempty"`
+	OpID    string `json:"op_id,omitempty"`
+	TxID    int64  `json:"tx_id,omitempty"`
+
+	// Sentinel-specific fields
+	DecisionReason string `json:"decision_reason,omitempty"`
+	Topic          string `json:"topic,omitempty"`
+	Subset         string `json:"subset,omitempty"`
+
+	// Additional fields
+	Extra map[string]interface{} `json:"extra,omitempty"`
 }
 
 func (l *logger) shouldLog(level LogLevel) bool {
@@ -214,11 +226,29 @@ func (l *logger) buildEntry(ctx context.Context, level LogLevel, message string)
 
 	// Add context values
 	if ctx != nil {
+		// Correlation fields
 		if opid, ok := ctx.Value(OpIDKey).(string); ok {
 			entry.OpID = opid
 		}
 		if txid, ok := ctx.Value(TxIDKey).(int64); ok {
 			entry.TxID = txid
+		}
+		if traceID, ok := ctx.Value(TraceIDCtxKey).(string); ok {
+			entry.TraceID = traceID
+		}
+		if spanID, ok := ctx.Value(SpanIDCtxKey).(string); ok {
+			entry.SpanID = spanID
+		}
+
+		// Sentinel-specific fields
+		if reason, ok := ctx.Value(DecisionReasonCtxKey).(string); ok {
+			entry.DecisionReason = reason
+		}
+		if topic, ok := ctx.Value(TopicCtxKey).(string); ok {
+			entry.Topic = topic
+		}
+		if subset, ok := ctx.Value(SubsetCtxKey).(string); ok {
+			entry.Subset = subset
 		}
 	}
 
@@ -249,13 +279,35 @@ func (l *logger) formatText(entry *logEntry) string {
 	sb.WriteString("] ")
 	sb.WriteString(entry.Message)
 
-	// Add context fields
+	// Add correlation fields
+	if entry.TraceID != "" {
+		sb.WriteString(" trace_id=")
+		sb.WriteString(entry.TraceID)
+	}
+	if entry.SpanID != "" {
+		sb.WriteString(" span_id=")
+		sb.WriteString(entry.SpanID)
+	}
 	if entry.OpID != "" {
-		sb.WriteString(" opid=")
+		sb.WriteString(" op_id=")
 		sb.WriteString(entry.OpID)
 	}
 	if entry.TxID != 0 {
 		sb.WriteString(fmt.Sprintf(" tx_id=%d", entry.TxID))
+	}
+
+	// Add Sentinel-specific fields
+	if entry.DecisionReason != "" {
+		sb.WriteString(" decision_reason=")
+		sb.WriteString(entry.DecisionReason)
+	}
+	if entry.Topic != "" {
+		sb.WriteString(" topic=")
+		sb.WriteString(entry.Topic)
+	}
+	if entry.Subset != "" {
+		sb.WriteString(" subset=")
+		sb.WriteString(entry.Subset)
 	}
 
 	// Add extra fields
@@ -386,16 +438,16 @@ func (l *logger) WithField(key string, value interface{}) HyperFleetLogger {
 // noopLogger is a logger that does nothing (used for verbosity filtering)
 type noopLogger struct{}
 
-func (n *noopLogger) Debug(ctx context.Context, message string)                         {}
-func (n *noopLogger) Debugf(ctx context.Context, format string, args ...interface{})    {}
-func (n *noopLogger) Info(ctx context.Context, message string)                          {}
-func (n *noopLogger) Infof(ctx context.Context, format string, args ...interface{})     {}
-func (n *noopLogger) Warning(ctx context.Context, message string)                       {}
-func (n *noopLogger) Warningf(ctx context.Context, format string, args ...interface{})  {}
-func (n *noopLogger) Error(ctx context.Context, message string)                         {}
-func (n *noopLogger) Errorf(ctx context.Context, format string, args ...interface{})    {}
-func (n *noopLogger) Fatal(ctx context.Context, message string)                         { os.Exit(1) }
-func (n *noopLogger) Fatalf(ctx context.Context, format string, args ...interface{})    { os.Exit(1) }
-func (n *noopLogger) V(level int32) HyperFleetLogger                                    { return n }
-func (n *noopLogger) Extra(key string, value interface{}) HyperFleetLogger              { return n }
-func (n *noopLogger) WithField(key string, value interface{}) HyperFleetLogger          { return n }
+func (n *noopLogger) Debug(ctx context.Context, message string)                        {}
+func (n *noopLogger) Debugf(ctx context.Context, format string, args ...interface{})   {}
+func (n *noopLogger) Info(ctx context.Context, message string)                         {}
+func (n *noopLogger) Infof(ctx context.Context, format string, args ...interface{})    {}
+func (n *noopLogger) Warning(ctx context.Context, message string)                      {}
+func (n *noopLogger) Warningf(ctx context.Context, format string, args ...interface{}) {}
+func (n *noopLogger) Error(ctx context.Context, message string)                        {}
+func (n *noopLogger) Errorf(ctx context.Context, format string, args ...interface{})   {}
+func (n *noopLogger) Fatal(ctx context.Context, message string)                        { os.Exit(1) }
+func (n *noopLogger) Fatalf(ctx context.Context, format string, args ...interface{})   { os.Exit(1) }
+func (n *noopLogger) V(level int32) HyperFleetLogger                                   { return n }
+func (n *noopLogger) Extra(key string, value interface{}) HyperFleetLogger             { return n }
+func (n *noopLogger) WithField(key string, value interface{}) HyperFleetLogger         { return n }
