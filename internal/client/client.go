@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
-	"github.com/golang/glog"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/api/openapi"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
 // Retry configuration constants
@@ -129,16 +129,17 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 	b.RandomizationFactor = DefaultRandomizationFactor
 
 	// Retry operation with backoff (v5 API)
+	log := logger.NewHyperFleetLogger()
 	operation := func() ([]Resource, error) {
 		resources, err := c.fetchResourcesOnce(ctx, resourceType, labelSelector)
 		if err != nil {
 			// Check if error is retriable
 			if isRetriable(err) {
-				glog.V(2).Infof("Retriable error fetching %s: %v (will retry)", resourceType, err)
+				log.V(2).Infof(ctx, "Retriable error fetching %s: %v (will retry)", resourceType, err)
 				return nil, err // Retry
 			}
 			// Non-retriable error - stop retrying
-			glog.V(2).Infof("Non-retriable error fetching %s: %v (will not retry)", resourceType, err)
+			log.V(2).Infof(ctx, "Non-retriable error fetching %s: %v (will not retry)", resourceType, err)
 			return nil, backoff.Permanent(err)
 		}
 		return resources, nil
