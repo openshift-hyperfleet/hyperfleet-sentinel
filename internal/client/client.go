@@ -43,6 +43,7 @@ const (
 // HyperFleetClient wraps the OpenAPI-generated client
 type HyperFleetClient struct {
 	apiClient *openapi.APIClient
+	log       logger.HyperFleetLogger
 }
 
 // NewHyperFleetClient creates a new HyperFleet API client using OpenAPI-generated client
@@ -60,6 +61,7 @@ func NewHyperFleetClient(endpoint string, timeout time.Duration) *HyperFleetClie
 
 	return &HyperFleetClient{
 		apiClient: openapi.NewAPIClient(cfg),
+		log:       logger.NewHyperFleetLogger(),
 	}
 }
 
@@ -129,17 +131,16 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 	b.RandomizationFactor = DefaultRandomizationFactor
 
 	// Retry operation with backoff (v5 API)
-	log := logger.NewHyperFleetLogger()
 	operation := func() ([]Resource, error) {
 		resources, err := c.fetchResourcesOnce(ctx, resourceType, labelSelector)
 		if err != nil {
 			// Check if error is retriable
 			if isRetriable(err) {
-				log.V(2).Infof(ctx, "Retriable error fetching %s: %v (will retry)", resourceType, err)
+				c.log.V(2).Infof(ctx, "Retriable error fetching %s: %v (will retry)", resourceType, err)
 				return nil, err // Retry
 			}
 			// Non-retriable error - stop retrying
-			log.V(2).Infof(ctx, "Non-retriable error fetching %s: %v (will not retry)", resourceType, err)
+			c.log.V(2).Infof(ctx, "Non-retriable error fetching %s: %v (will not retry)", resourceType, err)
 			return nil, backoff.Permanent(err)
 		}
 		return resources, nil
