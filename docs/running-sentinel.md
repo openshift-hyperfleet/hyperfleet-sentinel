@@ -136,6 +136,9 @@ make build
 
 # Run Sentinel (uses broker.yaml from current directory)
 ./sentinel serve --config=configs/dev-example.yaml
+
+# With custom log settings
+./sentinel serve --config=configs/dev-example.yaml --log-level=debug --log-format=json
 ```
 
 #### Option B: Run Directly with Go
@@ -143,7 +146,20 @@ make build
 ```bash
 # Run with explicit broker config path
 BROKER_CONFIG_FILE=broker.yaml go run ./cmd/sentinel serve --config=configs/dev-example.yaml
+
+# With environment variables for logging
+LOG_LEVEL=debug LOG_FORMAT=json go run ./cmd/sentinel serve --config=configs/dev-example.yaml
 ```
+
+#### Logging Configuration
+
+| Flag | Environment Variable | Values | Default |
+|------|---------------------|--------|---------|
+| `--log-level` | `LOG_LEVEL` | debug, info, warn, error | info |
+| `--log-format` | `LOG_FORMAT` | text, json | text |
+| `--log-output` | `LOG_OUTPUT` | stdout, stderr | stdout |
+
+**Precedence**: flags → environment variables → defaults
 
 ### 4. Verification Steps
 
@@ -188,10 +204,12 @@ Watch console output for startup and broker connection messages.
 **Startup messages** (always visible):
 
 ```log
-I1208 15:30:00.123456   12345 config.go:82] Loading configuration from configs/dev-example.yaml
-I1208 15:30:00.123789   12345 config.go:111] Configuration loaded successfully: resource_type=clusters
-I1208 15:30:00.123800   12345 logger.go:96] Starting HyperFleet Sentinel version=dev commit=abc1234
+2025-12-17T14:07:30.136547Z INFO [sentinel] [dev] [hostname] Loading configuration from configs/dev-example.yaml
+2025-12-17T14:07:30.137373Z INFO [sentinel] [dev] [hostname] Configuration loaded successfully: resource_type=clusters
+2025-12-17T14:07:30.137382Z INFO [sentinel] [dev] [hostname] Starting HyperFleet Sentinel
 ```
+
+> **Note**: Log format can be configured via `--log-format` flag or `LOG_FORMAT` environment variable. Use `json` for production (structured logging) and `text` for development (human-readable).
 
 **For RabbitMQ**, you should also see the broker connection log:
 
@@ -360,12 +378,12 @@ kubectl logs -n ${NAMESPACE} -l app.kubernetes.io/name=sentinel -f
 You should see the startup messages:
 
 ```log
-I1208 15:30:00.123456   1 config.go:82] Loading configuration from /app/configs/sentinel.yaml
-I1208 15:30:00.123789   1 config.go:111] Configuration loaded successfully: resource_type=clusters
-I1208 15:30:00.123800   1 logger.go:96] Starting HyperFleet Sentinel version=0.1.0 commit=abc1234
+2025-12-17T14:07:30.136547Z INFO [sentinel] [0.1.0] [pod-name] Loading configuration from /app/configs/sentinel.yaml
+2025-12-17T14:07:30.137373Z INFO [sentinel] [0.1.0] [pod-name] Configuration loaded successfully: resource_type=clusters
+2025-12-17T14:07:30.137382Z INFO [sentinel] [0.1.0] [pod-name] Starting HyperFleet Sentinel
 ```
 
-> **Note**: Sentinel outputs minimal logs during normal operation. Use the health endpoint and metrics to verify the service is running correctly.
+> **Note**: Sentinel outputs minimal logs during normal operation. Use the health endpoint and metrics to verify the service is running correctly. Configure `--log-format=json` for production deployments.
 
 #### Verify Health Endpoint
 
