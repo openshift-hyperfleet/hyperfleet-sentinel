@@ -375,7 +375,7 @@ func TestFetchResources_InvalidResourceType(t *testing.T) {
 //
 // Purpose: When the API returns resources without status (e.g., during provisioning
 // or deletion), the client should:
-// 1. Log a warning (via glog.Warningf) for observability
+// 1. Log a warning for observability
 // 2. Skip the resource (graceful degradation)
 // 3. Continue processing remaining resources
 // 4. NOT fail the entire fetch operation
@@ -399,7 +399,7 @@ func TestFetchResources_NilStatus(t *testing.T) {
 
 	client := NewHyperFleetClient(server.URL, 10*time.Second)
 
-	// Note: glog.Warningf will be called for cluster-1, but we can't easily
+	// Note: A warning will be logged for cluster-1, but we can't easily
 	// verify log output in tests. In production, logs are captured for monitoring.
 	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 

@@ -5,7 +5,6 @@ package integration
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/glog"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
@@ -25,8 +23,9 @@ import (
 
 // TestMain provides centralized setup/teardown for integration tests
 func TestMain(m *testing.M) {
-	flag.Parse()
-	glog.Infof("Starting integration test using go version %s", runtime.Version())
+	log := logger.NewHyperFleetLogger()
+	ctx := context.Background()
+	log.Infof(ctx, "Starting integration test using go version %s", runtime.Version())
 
 	// Initialize shared test helper (creates RabbitMQ container once)
 	helper := NewHelper()
@@ -37,7 +36,7 @@ func TestMain(m *testing.M) {
 	// Cleanup shared resources
 	helper.Teardown()
 
-	glog.Infof("Integration tests completed with exit code %d", exitCode)
+	log.Infof(ctx, "Integration tests completed with exit code %d", exitCode)
 	os.Exit(exitCode)
 }
 
