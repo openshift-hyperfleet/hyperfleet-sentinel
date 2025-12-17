@@ -40,7 +40,8 @@ reconciliation events to a message broker based on configurable max age interval
 	rootCmd.AddCommand(newServeCommand())
 
 	if err := rootCmd.Execute(); err != nil {
-		// Error is already logged with stack trace, just exit with error code
+		// Print error to stderr since SilenceErrors is true and logging may not be initialized
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
