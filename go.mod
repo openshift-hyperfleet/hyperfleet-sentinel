@@ -5,7 +5,6 @@ go 1.25.0
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cloudevents/sdk-go/v2 v2.16.2
-	github.com/golang/glog v1.2.5
 	github.com/google/uuid v1.6.0
 	github.com/openshift-hyperfleet/hyperfleet-broker v1.0.0
 	github.com/prometheus/client_golang v1.23.2

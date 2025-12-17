@@ -101,7 +101,7 @@ type Condition struct {
 //   - Does NOT retry on client errors (4xx) as they are not retriable
 //
 // Graceful degradation:
-//   - Resources with nil status are logged (glog.Warningf) and skipped
+//   - Resources with nil status are logged and skipped
 //   - This maintains service availability during resource provisioning/deletion
 //   - Only resources with valid status are returned
 //
