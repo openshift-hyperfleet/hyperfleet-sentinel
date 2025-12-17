@@ -149,8 +149,10 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 	ctx := context.Background()
 	log := logger.NewHyperFleetLogger()
 
-	log.Infof(ctx, "Starting HyperFleet Sentinel version=%s commit=%s log_level=%s log_format=%s",
-		version, commit, logCfg.Level.String(), formatName(logCfg.Format))
+	log.Extra("commit", commit).
+		Extra("log_level", logCfg.Level.String()).
+		Extra("log_format", formatName(logCfg.Format)).
+		Info(ctx, "Starting HyperFleet Sentinel")
 
 	// Initialize Prometheus metrics registry
 	registry := prometheus.NewRegistry()
