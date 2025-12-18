@@ -176,6 +176,16 @@ func (l LogLevel) String() string {
 	}
 }
 
+// String returns the string representation of LogFormat
+func (f LogFormat) String() string {
+	switch f {
+	case FormatJSON:
+		return "json"
+	default:
+		return "text"
+	}
+}
+
 // NewHyperFleetLogger creates a new logger instance using global config
 func NewHyperFleetLogger() HyperFleetLogger {
 	return NewHyperFleetLoggerWithConfig(GetGlobalConfig())
