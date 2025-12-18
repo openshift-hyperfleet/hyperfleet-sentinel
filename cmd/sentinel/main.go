@@ -95,11 +95,6 @@ func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, e
 	cfg.Version = version
 	cfg.Component = "sentinel"
 
-	// Get hostname
-	if hostname, err := os.Hostname(); err == nil {
-		cfg.Hostname = hostname
-	}
-
 	// Apply log level (flags → env → default)
 	levelStr := flagLevel
 	if levelStr == "" {
@@ -152,7 +147,7 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 
 	log.Extra("commit", commit).
 		Extra("log_level", logCfg.Level.String()).
-		Extra("log_format", formatName(logCfg.Format)).
+		Extra("log_format", logCfg.Format.String()).
 		Info(ctx, "Starting HyperFleet Sentinel")
 
 	// Initialize Prometheus metrics registry
@@ -241,14 +236,4 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 
 	log.Info(ctx, "Sentinel stopped gracefully")
 	return nil
-}
-
-// formatName returns the string name of the log format
-func formatName(f logger.LogFormat) string {
-	switch f {
-	case logger.FormatJSON:
-		return "json"
-	default:
-		return "text"
-	}
 }
