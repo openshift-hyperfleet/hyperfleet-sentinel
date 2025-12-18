@@ -42,8 +42,8 @@ hyperfleet_api:
 # Minimal set for development.
 # Uses Go template syntax - both .field and {{.field}} formats are supported.
 message_data:
-  resource_id: .id
-  resource_type: .kind
+  id: .id
+  kind: .kind
   href: .href
   generation: .generation
 
