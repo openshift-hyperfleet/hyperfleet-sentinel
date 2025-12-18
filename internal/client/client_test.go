@@ -546,6 +546,7 @@ func TestFetchResources_NodePools(t *testing.T) {
 					"href":         "/api/hyperfleet/v1/nodepools/nodepool-1",
 					"kind":         "NodePool",
 					"name":         "workers",
+					"generation":   3,
 					"created_time": "2025-01-01T09:00:00Z",
 					"updated_time": "2025-01-01T10:00:00Z",
 					"created_by":   "test-user@example.com",
@@ -589,8 +590,8 @@ func TestFetchResources_NodePools(t *testing.T) {
 	if resources[0].Kind != "NodePool" {
 		t.Errorf("Expected kind NodePool, got %s", resources[0].Kind)
 	}
-	if resources[0].Generation != 0 {
-		t.Errorf("Expected generation 0 for nodepool, got %d", resources[0].Generation)
+	if resources[0].Generation != 3 {
+		t.Errorf("Expected generation 3 for nodepool, got %d", resources[0].Generation)
 	}
 	if resources[0].Status.ObservedGeneration != 3 {
 		t.Errorf("Expected observed generation 3, got %d", resources[0].Status.ObservedGeneration)

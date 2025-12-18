@@ -357,7 +357,7 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 			ID:          id,
 			Href:        href,
 			Kind:        kind,
-			Generation:  0, // NodePool doesn't have a generation field
+			Generation:  item.Generation,
 			CreatedTime: item.CreatedTime,
 			UpdatedTime: item.UpdatedTime,
 			Status: ResourceStatus{

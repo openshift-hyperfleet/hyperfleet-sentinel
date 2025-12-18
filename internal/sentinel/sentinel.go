@@ -110,9 +110,11 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			event.SetSource("hyperfleet-sentinel")
 			event.SetID(uuid.New().String())
 			if err := event.SetData(cloudevents.ApplicationJSON, map[string]interface{}{
-				"resourceType": resource.Kind,
-				"resourceId":   resource.ID,
-				"reason":       decision.Reason,
+				"kind":       resource.Kind,
+				"id":         resource.ID,
+				"generation": resource.Generation,
+				"href":       resource.Href,
+				"reason":     decision.Reason,
 			}); err != nil {
 				s.logger.Infof(ctx, "Failed to set event data resource_id=%s error=%v", resource.ID, err)
 				continue
