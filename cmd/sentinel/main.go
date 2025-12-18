@@ -148,7 +148,7 @@ func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, e
 func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 	// Initialize context and logger
 	ctx := context.Background()
-	log := logger.NewHyperFleetLogger()
+	log := logger.NewHyperFleetLoggerWithConfig(logCfg)
 
 	log.Extra("commit", commit).
 		Extra("log_level", logCfg.Level.String()).
