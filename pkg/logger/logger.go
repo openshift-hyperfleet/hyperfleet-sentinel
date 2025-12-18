@@ -420,18 +420,14 @@ func (l *logger) logWithError(ctx context.Context, level LogLevel, message strin
 
 	entry := l.buildEntry(ctx, level, message)
 
-	// For error level, add error field and stack trace
-	// Stack trace is included for errors or when debug level is enabled
+	// For error level, add error field and stack trace per HyperFleet logging spec
 	if level == LevelError {
 		if errorMsg != "" {
 			entry.Error = errorMsg
 		} else {
 			entry.Error = message
 		}
-		// Include stack trace for errors (or always if debug level)
-		if l.config.Level == LevelDebug || level == LevelError {
-			entry.StackTrace = getStackTrace(skipFrames)
-		}
+		entry.StackTrace = getStackTrace(skipFrames)
 	}
 
 	var output string
@@ -445,11 +441,6 @@ func (l *logger) logWithError(ctx context.Context, level LogLevel, message strin
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	_, _ = l.config.Output.Write([]byte(output))
-
-	// For Fatal level, exit the program
-	if level == LevelError && strings.HasPrefix(message, "FATAL:") {
-		os.Exit(1)
-	}
 }
 
 func (l *logger) Debug(ctx context.Context, message string) {
@@ -546,8 +537,14 @@ func (n *noopLogger) Warning(ctx context.Context, message string)               
 func (n *noopLogger) Warningf(ctx context.Context, format string, args ...interface{}) {}
 func (n *noopLogger) Error(ctx context.Context, message string)                        {}
 func (n *noopLogger) Errorf(ctx context.Context, format string, args ...interface{})   {}
-func (n *noopLogger) Fatal(ctx context.Context, message string)                        { os.Exit(1) }
-func (n *noopLogger) Fatalf(ctx context.Context, format string, args ...interface{})   { os.Exit(1) }
+func (n *noopLogger) Fatal(ctx context.Context, message string) {
+	fmt.Fprintf(os.Stderr, "FATAL: %s\n", message)
+	os.Exit(1)
+}
+func (n *noopLogger) Fatalf(ctx context.Context, format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, "FATAL: %s\n", fmt.Sprintf(format, args...))
+	os.Exit(1)
+}
 func (n *noopLogger) V(level int32) HyperFleetLogger                                   { return n }
 func (n *noopLogger) Extra(key string, value interface{}) HyperFleetLogger             { return n }
 func (n *noopLogger) WithField(key string, value interface{}) HyperFleetLogger         { return n }

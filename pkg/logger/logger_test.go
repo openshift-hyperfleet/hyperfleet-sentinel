@@ -154,6 +154,25 @@ func TestLogLevelString(t *testing.T) {
 	}
 }
 
+func TestLogFormatString(t *testing.T) {
+	tests := []struct {
+		format   LogFormat
+		expected string
+	}{
+		{FormatText, "text"},
+		{FormatJSON, "json"},
+		{LogFormat(99), "text"}, // unknown defaults to text
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			if got := tt.format.String(); got != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, got)
+			}
+		})
+	}
+}
+
 func TestLoggerLevelFiltering(t *testing.T) {
 	tests := []struct {
 		name          string
