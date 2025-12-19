@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -41,7 +42,11 @@ reconciliation events to a message broker based on configurable max age interval
 
 	if err := rootCmd.Execute(); err != nil {
 		// Print error to stderr since SilenceErrors is true and logging may not be initialized
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		cmd := strings.Join(os.Args[1:], " ")
+		if cmd == "" {
+			cmd = "(no command)"
+		}
+		fmt.Fprintf(os.Stderr, "Error executing command 'sentinel %s': %v\n", cmd, err)
 		os.Exit(1)
 	}
 }
@@ -88,6 +93,15 @@ func newServeCommand() *cobra.Command {
 	return cmd
 }
 
+// getConfigValue returns the flag value if set, otherwise falls back to the environment variable.
+// This implements the precedence: flags → environment variables → defaults
+func getConfigValue(flag, envVar string) string {
+	if flag != "" {
+		return flag
+	}
+	return os.Getenv(envVar)
+}
+
 // initLogging initializes the logging configuration following the precedence:
 // flags → environment variables → defaults
 func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, error) {
@@ -95,12 +109,8 @@ func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, e
 	cfg.Version = version
 	cfg.Component = "sentinel"
 
-	// Apply log level (flags → env → default)
-	levelStr := flagLevel
-	if levelStr == "" {
-		levelStr = os.Getenv("LOG_LEVEL")
-	}
-	if levelStr != "" {
+	// Apply log level
+	if levelStr := getConfigValue(flagLevel, "LOG_LEVEL"); levelStr != "" {
 		level, err := logger.ParseLogLevel(levelStr)
 		if err != nil {
 			return nil, err
@@ -108,12 +118,8 @@ func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, e
 		cfg.Level = level
 	}
 
-	// Apply log format (flags → env → default)
-	formatStr := flagFormat
-	if formatStr == "" {
-		formatStr = os.Getenv("LOG_FORMAT")
-	}
-	if formatStr != "" {
+	// Apply log format
+	if formatStr := getConfigValue(flagFormat, "LOG_FORMAT"); formatStr != "" {
 		format, err := logger.ParseLogFormat(formatStr)
 		if err != nil {
 			return nil, err
@@ -121,12 +127,8 @@ func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, e
 		cfg.Format = format
 	}
 
-	// Apply log output (flags → env → default)
-	outputStr := flagOutput
-	if outputStr == "" {
-		outputStr = os.Getenv("LOG_OUTPUT")
-	}
-	if outputStr != "" {
+	// Apply log output
+	if outputStr := getConfigValue(flagOutput, "LOG_OUTPUT"); outputStr != "" {
 		output, err := logger.ParseLogOutput(outputStr)
 		if err != nil {
 			return nil, err

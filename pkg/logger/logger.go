@@ -491,6 +491,11 @@ func (l *logger) Fatalf(ctx context.Context, format string, args ...interface{})
 // - V(1) = log if debug enabled
 // - V(2+) = log if debug enabled (detailed debug)
 func (l *logger) V(level int32) HyperFleetLogger {
+	// Early return to avoid unnecessary allocation
+	if level > 0 && l.config.Level > LevelDebug {
+		return &noopLogger{}
+	}
+
 	newLogger := &logger{
 		config:    l.config,
 		extra:     make(extra),
@@ -498,12 +503,6 @@ func (l *logger) V(level int32) HyperFleetLogger {
 	}
 	for k, v := range l.extra {
 		newLogger.extra[k] = v
-	}
-
-	// If verbosity > 0, only log if debug level is enabled
-	if level > 0 && l.config.Level > LevelDebug {
-		// Return a no-op logger
-		return &noopLogger{}
 	}
 
 	return newLogger
