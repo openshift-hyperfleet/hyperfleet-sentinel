@@ -70,8 +70,6 @@ type HyperFleetLogger interface {
 	V(level int32) HyperFleetLogger
 	// Extra adds additional key-value pairs to the log entry
 	Extra(key string, value interface{}) HyperFleetLogger
-	// WithField returns a new logger with the given field added
-	WithField(key string, value interface{}) HyperFleetLogger
 }
 
 var _ HyperFleetLogger = &logger{}
@@ -521,10 +519,6 @@ func (l *logger) Extra(key string, value interface{}) HyperFleetLogger {
 	return newLogger
 }
 
-func (l *logger) WithField(key string, value interface{}) HyperFleetLogger {
-	return l.Extra(key, value)
-}
-
 // noopLogger is a logger that does nothing (used for verbosity filtering)
 type noopLogger struct{}
 
@@ -544,6 +538,5 @@ func (n *noopLogger) Fatalf(ctx context.Context, format string, args ...interfac
 	fmt.Fprintf(os.Stderr, "FATAL: %s\n", fmt.Sprintf(format, args...))
 	os.Exit(1)
 }
-func (n *noopLogger) V(level int32) HyperFleetLogger                                   { return n }
-func (n *noopLogger) Extra(key string, value interface{}) HyperFleetLogger             { return n }
-func (n *noopLogger) WithField(key string, value interface{}) HyperFleetLogger         { return n }
+func (n *noopLogger) V(level int32) HyperFleetLogger                       { return n }
+func (n *noopLogger) Extra(key string, value interface{}) HyperFleetLogger { return n }
