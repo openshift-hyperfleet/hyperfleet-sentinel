@@ -357,33 +357,6 @@ func TestLoggerExtraFields(t *testing.T) {
 	}
 }
 
-func TestLoggerWithField(t *testing.T) {
-	var buf bytes.Buffer
-	cfg := &LogConfig{
-		Level:     LevelInfo,
-		Format:    FormatJSON,
-		Output:    &buf,
-		Component: "test",
-		Version:   "1.0.0",
-		Hostname:  "testhost",
-	}
-	log := NewHyperFleetLoggerWithConfig(cfg)
-	ctx := context.Background()
-
-	log.WithField("key", "value").Info(ctx, "Test message")
-
-	output := buf.String()
-
-	var entry logEntry
-	if err := json.Unmarshal([]byte(output), &entry); err != nil {
-		t.Fatalf("failed to parse JSON output: %v", err)
-	}
-
-	if entry.Extra == nil || entry.Extra["key"] != "value" {
-		t.Errorf("expected extra field 'key'='value', got %v", entry.Extra)
-	}
-}
-
 func TestLoggerVerbosity(t *testing.T) {
 	t.Run("V(0) logs at info level", func(t *testing.T) {
 		var buf bytes.Buffer
@@ -681,11 +654,6 @@ func TestNoopLogger(t *testing.T) {
 	// Extra should return itself
 	if noop.Extra("key", "value") != noop {
 		t.Error("expected Extra() to return the same noopLogger")
-	}
-
-	// WithField should return itself
-	if noop.WithField("key", "value") != noop {
-		t.Error("expected WithField() to return the same noopLogger")
 	}
 }
 
