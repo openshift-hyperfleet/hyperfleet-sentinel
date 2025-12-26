@@ -3,8 +3,9 @@
 GO ?= go
 GOFMT ?= gofmt
 
-# Binary name
-BINARY_NAME := sentinel
+# Binary output directory and name
+BIN_DIR := bin
+BINARY_NAME := $(BIN_DIR)/sentinel
 
 # Version information
 VERSION ?= dev
@@ -59,24 +60,22 @@ generate: ## Generate OpenAPI client from HyperFleet API spec
 
 ##@ Development
 
-.PHONY: binary
-binary: ## Build the sentinel binary
-	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/sentinel
-
 .PHONY: build
-build: binary ## Alias for binary
+build: generate ## Build the sentinel binary
+	@mkdir -p $(BIN_DIR)
+	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/sentinel
 
 .PHONY: install
 install: ## Build and install binary to GOPATH/bin
 	$(GO) install -ldflags "$(LDFLAGS)" ./cmd/sentinel
 
 .PHONY: run
-run: binary ## Run the sentinel service
+run: build ## Run the sentinel service
 	./$(BINARY_NAME) serve
 
 .PHONY: clean
 clean: ## Remove build artifacts
-	rm -f $(BINARY_NAME)
+	rm -rf $(BIN_DIR)
 	rm -rf pkg/api/openapi
 	rm -f coverage.out
 
@@ -184,14 +183,3 @@ endif
 	@echo "Add to your terraform.tfvars:"
 	@echo "  sentinel_image_tag = \"$(DEV_TAG)\""
 
-##@ Container (Legacy)
-
-.PHONY: docker-build
-docker-build: ## Build container image (legacy, prefer 'make image')
-	$(CONTAINER_TOOL) build -t sentinel:$(VERSION) .
-
-.PHONY: docker-run
-docker-run: ## Run container (legacy)
-	$(CONTAINER_TOOL) run -it --rm \
-		-v $(PWD)/configs:/app/configs \
-		sentinel:$(VERSION) serve

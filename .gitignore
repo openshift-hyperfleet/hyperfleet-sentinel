@@ -1,5 +1,5 @@
-# Binaries (in root only, not in subdirectories)
-/sentinel
+# Binaries
+bin/
 *.exe
 *.exe~
 *.dll

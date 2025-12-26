@@ -135,10 +135,10 @@ This sets the full topic name where events will be published (e.g., `hyperfleet-
 make build
 
 # Run Sentinel (uses broker.yaml from current directory)
-./sentinel serve --config=configs/dev-example.yaml
+./bin/sentinel serve --config=configs/dev-example.yaml
 
 # With custom log settings
-./sentinel serve --config=configs/dev-example.yaml --log-level=debug --log-format=json
+./bin/sentinel serve --config=configs/dev-example.yaml --log-level=debug --log-format=json
 ```
 
 #### Option B: Run Directly with Go
