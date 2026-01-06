@@ -1,0 +1,21 @@
+# Ignore generated OpenAPI client - it's regenerated fresh during build
+# from the hyperfleet-api repository
+pkg/api/openapi/
+
+# Build artifacts
+bin/
+coverage.out
+coverage.html
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Local config files
+*.local.yaml
