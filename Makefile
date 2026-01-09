@@ -1,3 +1,5 @@
+include .bingo/Variables.mk
+
 .DEFAULT_GOAL := help
 
 GO ?= go
@@ -130,8 +132,8 @@ vet: ## Run go vet
 	$(GO) vet ./...
 
 .PHONY: lint
-lint: ## Run golangci-lint (requires golangci-lint to be installed)
-	golangci-lint run
+lint: $(GOLANGCI_LINT)
+	$(GOLANGCI_LINT) run
 
 .PHONY: verify
 verify: fmt-check vet ## Run all verification checks
