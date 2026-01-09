@@ -20,8 +20,8 @@ func createMockCluster(id string) map[string]interface{} {
 		"generation":   5,
 		"created_time": "2025-01-01T09:00:00Z",
 		"updated_time": "2025-01-01T10:00:00Z",
-		"created_by":   "test-user",
-		"updated_by":   "test-user",
+		"created_by":   "test-user@example.com",
+		"updated_by":   "test-user@example.com",
 		"spec":         map[string]interface{}{},
 		"status": map[string]interface{}{
 			"phase":                "Ready",

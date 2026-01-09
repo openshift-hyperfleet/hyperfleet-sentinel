@@ -1,3 +1,5 @@
+include .bingo/Variables.mk
+
 .DEFAULT_GOAL := help
 
 GO ?= go
@@ -6,6 +8,7 @@ GOFMT ?= gofmt
 # Binary output directory and name
 BIN_DIR := bin
 BINARY_NAME := $(BIN_DIR)/sentinel
+
 
 # Version information
 VERSION ?= dev
@@ -42,22 +45,13 @@ help: ## Display this help
 OPENAPI_SPEC_REF ?= main
 OPENAPI_SPEC_URL = https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/$(OPENAPI_SPEC_REF)/openapi/openapi.yaml
 
-.PHONY: generate
-generate: ## Generate OpenAPI client from HyperFleet API spec
-	@echo "Fetching OpenAPI spec from hyperfleet-api (ref: $(OPENAPI_SPEC_REF))..."
-	@mkdir -p openapi
-	@curl -sSL -o openapi/openapi.yaml "$(OPENAPI_SPEC_URL)" || \
-		(echo "Failed to download OpenAPI spec from $(OPENAPI_SPEC_URL)" && exit 1)
-	@echo "OpenAPI spec downloaded successfully"
-	@echo "Generating OpenAPI client..."
-	@rm -rf pkg/api/openapi
-	@mkdir -p pkg/api
-	$(CONTAINER_TOOL) build -t hyperfleet-sentinel-openapi -f Dockerfile.openapi .
-	@OPENAPI_IMAGE_ID=$$($(CONTAINER_TOOL) create hyperfleet-sentinel-openapi) && \
-		$(CONTAINER_TOOL) cp $$OPENAPI_IMAGE_ID:/local/pkg/api/openapi ./pkg/api/openapi && \
-		$(CONTAINER_TOOL) rm $$OPENAPI_IMAGE_ID
-	@echo "OpenAPI client generated successfully"
 
+# Regenerate openapi types using oapi-codegen
+generate:
+	rm -rf pkg/api/openapi
+	mkdir -p pkg/api/openapi
+	$(OAPI_CODEGEN) --config oapi-codegen.yaml openapi/openapi.yaml
+.PHONY: generate
 ##@ Development
 
 .PHONY: build
@@ -130,8 +124,8 @@ vet: ## Run go vet
 	$(GO) vet ./...
 
 .PHONY: lint
-lint: ## Run golangci-lint (requires golangci-lint to be installed)
-	golangci-lint run
+lint: $(GOLANGCI_LINT)
+	$(GOLANGCI_LINT) run
 
 .PHONY: verify
 verify: fmt-check vet ## Run all verification checks
