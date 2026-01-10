@@ -6,6 +6,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/google/uuid v1.6.0
+	github.com/oapi-codegen/runtime v1.1.2
 	github.com/openshift-hyperfleet/hyperfleet-broker v1.0.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/segmentio/ksuid v1.0.4
@@ -28,6 +29,7 @@ require (
 	github.com/ThreeDotsLabs/watermill v1.5.1 // indirect
 	github.com/ThreeDotsLabs/watermill-amqp/v3 v3.0.2 // indirect
 	github.com/ThreeDotsLabs/watermill-googlecloud/v2 v2.0.0 // indirect
+	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v3 v3.2.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
