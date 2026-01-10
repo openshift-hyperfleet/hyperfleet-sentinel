@@ -43,11 +43,15 @@ help: ## Display this help
 
 # OpenAPI spec configuration from hyperfleet-api repository
 OPENAPI_SPEC_REF ?= main
-OPENAPI_SPEC_URL = https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/$(OPENAPI_SPEC_REF)/openapi/openapi.yaml
+OPENAPI_SPEC_URL ?= https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/$(OPENAPI_SPEC_REF)/openapi/openapi.yaml
 
 
 # Regenerate openapi types using oapi-codegen
-generate:
+generate: $(OAPI_CODEGEN)
+	@echo "Fetching OpenAPI spec from hyperfleet-api (ref: $(OPENAPI_SPEC_REF))..."
+	@mkdir -p openapi
+	curl -sSfL -o openapi/openapi.yaml "$(OPENAPI_SPEC_URL)" || \
+		(echo "Failed to download OpenAPI spec from $(OPENAPI_SPEC_URL)" && exit 1)
 	rm -rf pkg/api/openapi
 	mkdir -p pkg/api/openapi
 	$(OAPI_CODEGEN) --config oapi-codegen.yaml openapi/openapi.yaml
@@ -148,7 +152,7 @@ download: ## Download dependencies
 .PHONY: image
 image: ## Build container image with configurable registry/tag
 	@echo "Building image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
-	$(CONTAINER_TOOL) build -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
+	$(CONTAINER_TOOL) build --build-arg OPENAPI_SPEC_URL=$(OPENAPI_SPEC_URL) -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 	@echo "Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
 .PHONY: image-push
@@ -168,7 +172,7 @@ ifndef QUAY_USER
 	@exit 1
 endif
 	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
-	$(CONTAINER_TOOL) build -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+	$(CONTAINER_TOOL) build --build-arg OPENAPI_SPEC_URL=$(OPENAPI_SPEC_URL) -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
 	@echo ""

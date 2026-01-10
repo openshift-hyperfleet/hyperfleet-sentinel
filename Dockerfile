@@ -1,43 +1,24 @@
-FROM openapitools/openapi-generator-cli:v7.16.0 AS openapi-gen
-
-WORKDIR /local
-
-# OpenAPI spec configuration from hyperfleet-api repository
-ARG OPENAPI_SPEC_REF=main
-ARG OPENAPI_SPEC_URL=https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/${OPENAPI_SPEC_REF}/openapi/openapi.yaml
-
-# Fetch OpenAPI spec from hyperfleet-api
-RUN echo "Fetching OpenAPI spec from hyperfleet-api (ref: ${OPENAPI_SPEC_REF})..." && \
-    mkdir -p openapi && \
-    wget -O openapi/openapi.yaml "${OPENAPI_SPEC_URL}" || \
-    (echo "Failed to download OpenAPI spec from ${OPENAPI_SPEC_URL}" && exit 1)
-
-
-# Generate Go client/models from OpenAPI spec
-RUN bash /usr/local/bin/docker-entrypoint.sh generate \
-    -i /local/openapi/openapi.yaml \
-    -g go \
-    -o /local/pkg/api/openapi && \
-    rm -f /local/pkg/api/openapi/go.mod /local/pkg/api/openapi/go.sum && \
-    rm -rf /local/pkg/api/openapi/test
-
 # Build stage
 FROM golang:1.25-alpine AS builder
 
+# Install build dependencies (make, curl for downloading OpenAPI spec, git for version info)
+RUN apk add --no-cache make curl git
+
 WORKDIR /build
 
-# Copy go mod files
+# OpenAPI spec configuration from hyperfleet-api repository
+ARG OPENAPI_SPEC_URL=https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/main/openapi/openapi.yaml
+ENV OPENAPI_SPEC_URL=${OPENAPI_SPEC_URL}
+
+# Copy go mod files first for caching
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy generated OpenAPI client from openapi-gen stage
-COPY --from=openapi-gen /local/pkg/api/openapi ./pkg/api/openapi
-
-# Copy source code
+# Copy source code and build configuration
 COPY . .
 
-# Build binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o sentinel ./cmd/sentinel
+# Build binary using Makefile (includes make generate for OpenAPI client generation)
+RUN CGO_ENABLED=0 GOOS=linux make build
 
 # Runtime stage
 FROM gcr.io/distroless/static-debian12:nonroot
@@ -45,7 +26,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /build/sentinel /app/sentinel
+COPY --from=builder /build/bin/sentinel /app/sentinel
 
 # Config will be provided via Helm ConfigMap mount
 # COPY configs/sentinel.yaml /app/configs/sentinel.yaml
