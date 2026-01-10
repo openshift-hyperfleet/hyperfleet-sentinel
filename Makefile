@@ -9,6 +9,7 @@ GOFMT ?= gofmt
 BIN_DIR := bin
 BINARY_NAME := $(BIN_DIR)/sentinel
 
+
 # Version information
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -42,24 +43,19 @@ help: ## Display this help
 
 # OpenAPI spec configuration from hyperfleet-api repository
 OPENAPI_SPEC_REF ?= main
-OPENAPI_SPEC_URL = https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/$(OPENAPI_SPEC_REF)/openapi/openapi.yaml
+OPENAPI_SPEC_URL ?= https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/$(OPENAPI_SPEC_REF)/openapi/openapi.yaml
 
-.PHONY: generate
-generate: ## Generate OpenAPI client from HyperFleet API spec
+
+# Regenerate openapi types using oapi-codegen
+generate: $(OAPI_CODEGEN)
 	@echo "Fetching OpenAPI spec from hyperfleet-api (ref: $(OPENAPI_SPEC_REF))..."
 	@mkdir -p openapi
-	@curl -sSL -o openapi/openapi.yaml "$(OPENAPI_SPEC_URL)" || \
+	curl -sSfL -o openapi/openapi.yaml "$(OPENAPI_SPEC_URL)" || \
 		(echo "Failed to download OpenAPI spec from $(OPENAPI_SPEC_URL)" && exit 1)
-	@echo "OpenAPI spec downloaded successfully"
-	@echo "Generating OpenAPI client..."
-	@rm -rf pkg/api/openapi
-	@mkdir -p pkg/api
-	$(CONTAINER_TOOL) build -t hyperfleet-sentinel-openapi -f Dockerfile.openapi .
-	@OPENAPI_IMAGE_ID=$$($(CONTAINER_TOOL) create hyperfleet-sentinel-openapi) && \
-		$(CONTAINER_TOOL) cp $$OPENAPI_IMAGE_ID:/local/pkg/api/openapi ./pkg/api/openapi && \
-		$(CONTAINER_TOOL) rm $$OPENAPI_IMAGE_ID
-	@echo "OpenAPI client generated successfully"
-
+	rm -rf pkg/api/openapi
+	mkdir -p pkg/api/openapi
+	$(OAPI_CODEGEN) --config oapi-codegen.yaml openapi/openapi.yaml
+.PHONY: generate
 ##@ Development
 
 .PHONY: build
@@ -156,7 +152,7 @@ download: ## Download dependencies
 .PHONY: image
 image: ## Build container image with configurable registry/tag
 	@echo "Building image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
-	$(CONTAINER_TOOL) build -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
+	$(CONTAINER_TOOL) build --build-arg OPENAPI_SPEC_URL=$(OPENAPI_SPEC_URL) -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 	@echo "Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
 .PHONY: image-push
@@ -176,7 +172,7 @@ ifndef QUAY_USER
 	@exit 1
 endif
 	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
-	$(CONTAINER_TOOL) build -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+	$(CONTAINER_TOOL) build --build-arg OPENAPI_SPEC_URL=$(OPENAPI_SPEC_URL) -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
 	@echo ""
