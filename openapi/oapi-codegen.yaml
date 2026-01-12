@@ -1,0 +1,12 @@
+# oapi-codegen configuration
+# See: https://github.com/oapi-codegen/oapi-codegen
+
+package: openapi
+output: pkg/api/openapi/openapi.gen.go
+generate:
+  models: true
+  chi-server: false
+  client: true
+  embedded-spec: false
+output-options:
+  skip-prune: false

@@ -28,8 +28,8 @@ func createMockCluster(id string, generation int, observedGeneration int, phase 
 		"generation":   generation,
 		"created_time": "2025-01-01T09:00:00Z",
 		"updated_time": "2025-01-01T10:00:00Z",
-		"created_by":   "test-user",
-		"updated_by":   "test-user",
+		"created_by":   "test-user@example.com",
+		"updated_by":   "test-user@example.com",
 		"spec":         map[string]interface{}{},
 		"status": map[string]interface{}{
 			"phase":                phase,
@@ -89,7 +89,7 @@ func TestTrigger_Success(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -109,7 +109,6 @@ func TestTrigger_Success(t *testing.T) {
 
 	// Execute
 	err := s.trigger(ctx)
-
 	// Verify
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
@@ -157,7 +156,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -177,7 +176,6 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 
 	// Execute
 	err := s.trigger(ctx)
-
 	// Verify
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
@@ -202,7 +200,7 @@ func TestTrigger_FetchError(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient := client.NewHyperFleetClient(server.URL, 1*time.Second) // Short timeout
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 1*time.Second) // Short timeout
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -249,7 +247,7 @@ func TestTrigger_PublishError(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{
 		publishError: errors.New("broker connection failed"),
@@ -271,7 +269,6 @@ func TestTrigger_PublishError(t *testing.T) {
 
 	// Execute
 	err := s.trigger(ctx)
-
 	// Verify - trigger should succeed even if publish fails (graceful degradation)
 	if err != nil {
 		t.Errorf("Expected no error (graceful degradation), got %v", err)
@@ -300,7 +297,7 @@ func TestTrigger_MixedResources(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -320,7 +317,6 @@ func TestTrigger_MixedResources(t *testing.T) {
 
 	// Execute
 	err := s.trigger(ctx)
-
 	// Verify
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)

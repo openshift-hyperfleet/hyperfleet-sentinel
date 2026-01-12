@@ -55,8 +55,8 @@ func createMockClusterWithLabels(id string, generation int, observedGeneration i
 		"generation": generation,
 		"created_at": "2025-01-01T09:00:00Z",
 		"updated_at": "2025-01-01T10:00:00Z",
-		"created_by": "test-user",
-		"updated_by": "test-user",
+		"created_by": "test-user@example.com",
+		"updated_by": "test-user@example.com",
 		"spec":       map[string]interface{}{},
 		"status": map[string]interface{}{
 			"phase":                phase,
@@ -120,7 +120,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	defer server.Close()
 
 	// Setup components with real RabbitMQ broker
-	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	log := logger.NewHyperFleetLogger()
 
@@ -229,7 +229,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	defer server.Close()
 
 	// Setup components with real RabbitMQ broker
-	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	log := logger.NewHyperFleetLogger()
 
@@ -333,7 +333,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	log := logger.NewHyperFleetLogger()
 

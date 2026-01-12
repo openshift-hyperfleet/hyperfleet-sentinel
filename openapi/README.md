@@ -50,10 +50,10 @@ make generate
 
 ## Generator Details
 
-- **Tool**: OpenAPI Generator CLI v7.16.0
+- **Tool**: OAPI Codegen https://github.com/oapi-codegen/oapi-codegen
 - **Language**: Go
 - **Output**: `pkg/api/openapi/` (not committed to git)
-- **Docker-based**: Uses `Dockerfile.openapi` for consistent generation across environments
+- **Go-based**: Uses oapi-codegen to generate go types
 - **Wrapper**: `internal/client/client.go` provides a simplified interface to the generated client
 
 The generator configuration follows the same pattern as [rh-trex](https://github.com/openshift-online/rh-trex).

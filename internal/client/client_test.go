@@ -20,8 +20,8 @@ func createMockCluster(id string) map[string]interface{} {
 		"generation":   5,
 		"created_time": "2025-01-01T09:00:00Z",
 		"updated_time": "2025-01-01T10:00:00Z",
-		"created_by":   "test-user",
-		"updated_by":   "test-user",
+		"created_by":   "test-user@example.com",
+		"updated_by":   "test-user@example.com",
 		"spec":         map[string]interface{}{},
 		"status": map[string]interface{}{
 			"phase":                "Ready",
@@ -69,12 +69,11 @@ func TestFetchResources_Success(t *testing.T) {
 	defer server.Close()
 
 	// Create client
-	client := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
 
 	// Fetch resources
 	ctx := context.Background()
 	resources, err := client.FetchResources(ctx, ResourceTypeClusters, nil)
-
 	// Verify
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -105,10 +104,9 @@ func TestFetchResources_EmptyList(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
 
 	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
-
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -127,7 +125,7 @@ func TestFetchResources_404NotFound(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
 
 	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 
@@ -157,7 +155,7 @@ func TestFetchResources_500ServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -202,10 +200,9 @@ func TestFetchResources_503ServiceUnavailable_ThenSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
 
 	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
-
 	if err != nil {
 		t.Fatalf("Expected no error after retry, got %v", err)
 	}
@@ -241,10 +238,9 @@ func TestFetchResources_429RateLimited(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
 
 	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
-
 	if err != nil {
 		t.Fatalf("Expected no error after retry, got %v", err)
 	}
@@ -263,7 +259,7 @@ func TestFetchResources_Timeout(t *testing.T) {
 	defer server.Close()
 
 	// Create client with very short timeout
-	client := NewHyperFleetClient(server.URL, 100*time.Millisecond)
+	client, _ := NewHyperFleetClient(server.URL, 100*time.Millisecond)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -286,7 +282,7 @@ func TestFetchResources_ContextCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -315,7 +311,7 @@ func TestFetchResources_MalformedJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
 
 	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 
@@ -328,7 +324,7 @@ func TestFetchResources_MalformedJSON(t *testing.T) {
 
 // TestFetchResources_NilContext tests handling of nil context
 func TestFetchResources_NilContext(t *testing.T) {
-	client := NewHyperFleetClient("http://localhost", 10*time.Second)
+	client, _ := NewHyperFleetClient("http://localhost", 10*time.Second)
 
 	// Intentionally pass nil context to test validation
 	// nolint:staticcheck // Testing nil context validation
@@ -345,7 +341,7 @@ func TestFetchResources_NilContext(t *testing.T) {
 
 // TestFetchResources_InvalidResourceType tests handling of invalid resource type
 func TestFetchResources_InvalidResourceType(t *testing.T) {
-	client := NewHyperFleetClient("http://localhost", 10*time.Second)
+	client, _ := NewHyperFleetClient("http://localhost", 10*time.Second)
 
 	testCases := []struct {
 		name         string
@@ -397,12 +393,11 @@ func TestFetchResources_NilStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
 
 	// Note: A warning will be logged for cluster-1, but we can't easily
 	// verify log output in tests. In production, logs are captured for monitoring.
 	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
-
 	// Verify graceful degradation behavior:
 	if err != nil {
 		t.Fatalf("Expected no error (graceful degradation), got %v", err)
@@ -575,9 +570,8 @@ func TestFetchResources_NodePools(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
 	resources, err := client.FetchResources(context.Background(), ResourceTypeNodePools, nil)
-
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -615,7 +609,7 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
 
 	labelSelector := map[string]string{
 		"region": "us-east",
@@ -623,7 +617,6 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 	}
 
 	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, labelSelector)
-
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
