@@ -158,7 +158,12 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 	metrics.NewSentinelMetrics(registry)
 
 	// Initialize components
-	hyperfleetClient := client.NewHyperFleetClient(cfg.HyperFleetAPI.Endpoint, cfg.HyperFleetAPI.Timeout)
+	hyperfleetClient, err := client.NewHyperFleetClient(cfg.HyperFleetAPI.Endpoint, cfg.HyperFleetAPI.Timeout)
+	if err != nil {
+		log.Errorf(ctx, "Failed to initialize OpenAPI client: %v", err)
+		return fmt.Errorf("failed to initialize OpenAPI client: %w", err)
+
+	}
 	decisionEngine := engine.NewDecisionEngine(cfg.MaxAgeNotReady, cfg.MaxAgeReady)
 
 	// Initialize publisher using hyperfleet-broker library

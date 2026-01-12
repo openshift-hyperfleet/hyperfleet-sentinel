@@ -42,27 +42,25 @@ const (
 
 // HyperFleetClient wraps the OpenAPI-generated client
 type HyperFleetClient struct {
-	apiClient *openapi.APIClient
+	apiClient *openapi.ClientWithResponses
 	log       logger.HyperFleetLogger
 }
 
 // NewHyperFleetClient creates a new HyperFleet API client using OpenAPI-generated client
-func NewHyperFleetClient(endpoint string, timeout time.Duration) *HyperFleetClient {
-	cfg := openapi.NewConfiguration()
-	cfg.Servers = openapi.ServerConfigurations{
-		{
-			URL:         endpoint,
-			Description: "HyperFleet API",
-		},
-	}
-	cfg.HTTPClient = &http.Client{
+func NewHyperFleetClient(endpoint string, timeout time.Duration) (*HyperFleetClient, error) {
+	httpClient := &http.Client{
 		Timeout: timeout,
 	}
 
-	return &HyperFleetClient{
-		apiClient: openapi.NewAPIClient(cfg),
-		log:       logger.NewHyperFleetLogger(),
+	client, err := openapi.NewClientWithResponses(endpoint, openapi.WithHTTPClient(httpClient))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OpenAPI client: %v", err) // This should only fail if the endpoint URL is invalid
 	}
+
+	return &HyperFleetClient{
+		apiClient: client,
+		log:       logger.NewHyperFleetLogger(),
+	}, nil
 }
 
 // Resource represents a HyperFleet resource (cluster, nodepool, etc.)
@@ -201,21 +199,14 @@ func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, resourceType 
 
 // fetchClusters fetches cluster resources from the API
 func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string) ([]Resource, error) {
-	req := c.apiClient.DefaultAPI.GetClusters(ctx)
+	params := &openapi.GetClustersParams{}
 	if searchParam != "" {
-		req = req.Search(searchParam)
+		search := searchParam
+		params.Search = &search
 	}
 
-	resourceList, resp, err := req.Execute()
+	response, err := c.apiClient.GetClustersWithResponse(ctx, params)
 	if err != nil {
-		if resp != nil {
-			// Enhanced error with status code
-			return nil, &APIError{
-				StatusCode: resp.StatusCode,
-				Message:    fmt.Sprintf("API request failed: %v", err),
-				Retriable:  isHTTPStatusRetriable(resp.StatusCode),
-			}
-		}
 		// Network/timeout error - use errors.As for proper error unwrapping
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) && urlErr.Timeout() {
@@ -232,14 +223,25 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 		}
 	}
 
-	// Nil check for response
-	if resourceList == nil {
+	// Check HTTP response status
+	if response.HTTPResponse != nil && response.HTTPResponse.StatusCode >= 400 {
+		return nil, &APIError{
+			StatusCode: response.HTTPResponse.StatusCode,
+			Message:    fmt.Sprintf("API request failed with status %d", response.HTTPResponse.StatusCode),
+			Retriable:  isHTTPStatusRetriable(response.HTTPResponse.StatusCode),
+		}
+	}
+
+	// Nil check for response body
+	if response.JSON200 == nil {
 		return nil, &APIError{
 			StatusCode: 0,
 			Message:    "received nil response from API",
 			Retriable:  false,
 		}
 	}
+
+	resourceList := response.JSON200
 
 	// Convert OpenAPI models to internal models
 	resources := make([]Resource, 0, len(resourceList.Items))
@@ -253,11 +255,15 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 		if item.Href != nil {
 			href = *item.Href
 		}
+		kind := ""
+		if item.Kind != nil {
+			kind = *item.Kind
+		}
 
 		resource := Resource{
 			ID:          id,
 			Href:        href,
-			Kind:        item.Kind,
+			Kind:        kind,
 			Generation:  item.Generation,
 			CreatedTime: item.CreatedTime,
 			UpdatedTime: item.UpdatedTime,
@@ -301,20 +307,14 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 
 // fetchNodePools fetches nodepool resources from the API
 func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam string) ([]Resource, error) {
-	req := c.apiClient.DefaultAPI.GetNodePools(ctx)
+	params := &openapi.GetNodePoolsParams{}
 	if searchParam != "" {
-		req = req.Search(searchParam)
+		search := searchParam
+		params.Search = &search
 	}
 
-	resourceList, resp, err := req.Execute()
+	response, err := c.apiClient.GetNodePoolsWithResponse(ctx, params)
 	if err != nil {
-		if resp != nil {
-			return nil, &APIError{
-				StatusCode: resp.StatusCode,
-				Message:    fmt.Sprintf("API request failed: %v", err),
-				Retriable:  isHTTPStatusRetriable(resp.StatusCode),
-			}
-		}
 		var urlErr *url.Error
 		if errors.As(err, &urlErr) && urlErr.Timeout() {
 			return nil, &APIError{
@@ -330,13 +330,24 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 		}
 	}
 
-	if resourceList == nil {
+	// Check HTTP response status
+	if response.HTTPResponse != nil && response.HTTPResponse.StatusCode >= 400 {
+		return nil, &APIError{
+			StatusCode: response.HTTPResponse.StatusCode,
+			Message:    fmt.Sprintf("API request failed with status %d", response.HTTPResponse.StatusCode),
+			Retriable:  isHTTPStatusRetriable(response.HTTPResponse.StatusCode),
+		}
+	}
+
+	if response.JSON200 == nil {
 		return nil, &APIError{
 			StatusCode: 0,
 			Message:    "received nil response from API",
 			Retriable:  false,
 		}
 	}
+
+	resourceList := response.JSON200
 
 	// Convert OpenAPI models to internal models
 	resources := make([]Resource, 0, len(resourceList.Items))
