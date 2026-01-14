@@ -48,6 +48,11 @@ OPENAPI_SPEC_URL = https://raw.githubusercontent.com/openshift-hyperfleet/hyperf
 
 # Regenerate openapi types using oapi-codegen
 generate: $(OAPI_CODEGEN) 
+	@echo "Fetching OpenAPI spec from hyperfleet-api (ref: $(OPENAPI_SPEC_REF))..."
+	@mkdir -p openapi
+	@curl -sSL -o openapi/openapi.yaml "$(OPENAPI_SPEC_URL)" || \
+		(echo "Failed to download OpenAPI spec from $(OPENAPI_SPEC_URL)" && exit 1)
+	@echo "OpenAPI spec downloaded successfully"
 	rm -rf pkg/api/openapi
 	mkdir -p pkg/api/openapi
 	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
