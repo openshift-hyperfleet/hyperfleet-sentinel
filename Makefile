@@ -82,11 +82,11 @@ clean: ## Remove build artifacts
 ##@ Testing
 
 .PHONY: test
-test: ## Run unit tests (default)
+test: generate ## Run unit tests (default)
 	$(GO) test -v -race -coverprofile=coverage.out ./...
 
 .PHONY: test-unit
-test-unit: ## Run unit tests only
+test-unit: generate ## Run unit tests only
 	$(GO) test -v -race -cover ./internal/config/
 	$(GO) test -v -race -cover ./internal/client/
 	$(GO) test -v -race -cover ./internal/engine/
@@ -95,7 +95,7 @@ test-unit: ## Run unit tests only
 	$(GO) test -v -race -cover ./pkg/...
 
 .PHONY: test-integration
-test-integration: ## Run integration tests only
+test-integration: generate ## Run integration tests only
 	@echo "Running integration tests..."
 	TESTCONTAINERS_RYUK_DISABLED=true $(GO) test -v -race -tags=integration ./test/integration/... -timeout 30m
 
