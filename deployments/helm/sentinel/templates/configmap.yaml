@@ -23,7 +23,7 @@ data:
 
     # HyperFleet API configuration
     hyperfleet_api:
-      endpoint: {{ .Values.config.hyperfleetApi.endpoint }}
+      endpoint: {{ .Values.config.hyperfleetApi.baseUrl }}
       timeout: {{ .Values.config.hyperfleetApi.timeout }}
 
     {{- if .Values.config.messageData }}
