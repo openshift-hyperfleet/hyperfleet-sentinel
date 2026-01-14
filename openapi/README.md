@@ -50,7 +50,7 @@ make generate
 
 ## Generator Details
 
-- **Tool**: OAPI Codegen https://github.com/oapi-codegen/oapi-codegen
+- **Tool**: [OAPI Codegen](https://github.com/oapi-codegen/oapi-codegen)
 - **Language**: Go
 - **Output**: `pkg/api/openapi/` (not committed to git)
 - **Go-based**: Uses oapi-codegen to generate go types

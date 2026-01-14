@@ -11,13 +11,14 @@ BINARY_NAME := $(BIN_DIR)/sentinel
 
 
 # Version information
-VERSION ?= dev
-COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+GIT_DIRTY ?= $(shell git diff --quiet 2>/dev/null || echo "-modified")
+VERSION:=$(GIT_SHA)$(GIT_DIRTY)
 
 # Go build flags
 LDFLAGS := -X main.version=$(VERSION) \
-           -X main.commit=$(COMMIT) \
+           -X main.commit=$(GIT_SHA) \
            -X main.date=$(BUILD_DATE)
 
 # Container tool (docker or podman)
@@ -33,7 +34,7 @@ IMAGE_TAG ?= $(VERSION)
 # Dev image configuration - set QUAY_USER to push to personal registry
 # Usage: QUAY_USER=myuser make image-dev
 QUAY_USER ?=
-DEV_TAG ?= dev-$(COMMIT)
+DEV_TAG ?= dev-$(GIT_SHA)
 
 .PHONY: help
 help: ## Display this help
@@ -152,13 +153,17 @@ download: ## Download dependencies
 
 .PHONY: image
 image: ## Build container image with configurable registry/tag
-	@echo "Building image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
-	$(CONTAINER_TOOL) build -t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
+	@echo "Building image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) ..."
+	$(CONTAINER_TOOL) build \
+  	--platform linux/amd64 \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
+		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 	@echo "Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
 .PHONY: image-push
 image-push: image ## Build and push container image
-	@echo "Pushing image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)..."
+	@echo "Pushing image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) ..."
 	$(CONTAINER_TOOL) push $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)
 	@echo "Image pushed: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
@@ -172,8 +177,13 @@ ifndef QUAY_USER
 	@echo "This will build and push to: quay.io/\$$QUAY_USER/$(IMAGE_NAME):$(DEV_TAG)"
 	@exit 1
 endif
-	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)..."
-	$(CONTAINER_TOOL) build -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) ..."
+	$(CONTAINER_TOOL) build \
+		--platform linux/amd64 \
+		--build-arg BASE_IMAGE=alpine:3.21 \
+		--build-arg GIT_SHA=$(GIT_SHA) \
+		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
+    -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
 	@echo ""
