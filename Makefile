@@ -47,7 +47,7 @@ OPENAPI_SPEC_URL = https://raw.githubusercontent.com/openshift-hyperfleet/hyperf
 
 
 # Regenerate openapi types using oapi-codegen
-generate:
+generate: $(OAPI_CODEGEN) 
 	rm -rf pkg/api/openapi
 	mkdir -p pkg/api/openapi
 	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
