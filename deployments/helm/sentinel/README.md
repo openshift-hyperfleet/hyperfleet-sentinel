@@ -136,11 +136,6 @@ broker:
     projectId: my-gcp-project
     maxOutstandingMessages: 1000
     numGoroutines: 10
-
-serviceAccount:
-  annotations:
-    # For Workload Identity
-    iam.gke.io/gcp-service-account: sentinel@my-gcp-project.iam.gserviceaccount.com
 ```
 
 ```bash
@@ -204,6 +199,7 @@ helm install sentinel-shard-2 ./deployments/helm/sentinel \
 Use one of these approaches for production:
 
 1. **External Secrets Operator**:
+
    ```yaml
    apiVersion: external-secrets.io/v1beta1
    kind: ExternalSecret
@@ -224,6 +220,7 @@ Use one of these approaches for production:
    ```
 
 2. **Sealed Secrets**:
+
    ```bash
    kubectl create secret generic sentinel-broker-credentials \
      --dry-run=client -o yaml \
@@ -233,6 +230,7 @@ Use one of these approaches for production:
    ```
 
 3. **HashiCorp Vault**:
+
    ```yaml
    serviceAccount:
      annotations:
