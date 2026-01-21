@@ -24,11 +24,24 @@ func createMockCluster(id string) map[string]interface{} {
 		"updated_by":   "test-user@example.com",
 		"spec":         map[string]interface{}{},
 		"status": map[string]interface{}{
-			"phase":                "Ready",
-			"last_transition_time": "2025-01-01T10:00:00Z",
-			"last_updated_time":    "2025-01-01T12:00:00Z",
-			"observed_generation":  5,
-			"conditions":           []interface{}{},
+			"conditions": []map[string]interface{}{
+				{
+					"type":                 "Ready",
+					"status":               "True",
+					"created_time":         "2025-01-01T09:00:00Z",
+					"last_transition_time": "2025-01-01T10:00:00Z",
+					"last_updated_time":    "2025-01-01T12:00:00Z",
+					"observed_generation":  5,
+				},
+				{
+					"type":                 "Available",
+					"status":               "True",
+					"created_time":         "2025-01-01T09:00:00Z",
+					"last_transition_time": "2025-01-01T10:00:00Z",
+					"last_updated_time":    "2025-01-01T12:00:00Z",
+					"observed_generation":  5,
+				},
+			},
 		},
 	}
 }
@@ -87,8 +100,8 @@ func TestFetchResources_Success(t *testing.T) {
 	if resources[0].Generation != 5 {
 		t.Errorf("Expected generation 5, got %d", resources[0].Generation)
 	}
-	if resources[0].Status.Phase != "Ready" {
-		t.Errorf("Expected phase Ready, got %s", resources[0].Status.Phase)
+	if !resources[0].Status.Ready {
+		t.Errorf("Expected Ready=true, got %t", resources[0].Status.Ready)
 	}
 }
 
@@ -412,8 +425,8 @@ func TestFetchResources_NilStatus(t *testing.T) {
 		t.Errorf("Expected cluster-2 (valid status), got %s", resources[0].ID)
 	}
 
-	if resources[0].Status.Phase != "Ready" {
-		t.Errorf("Expected Ready phase, got %s", resources[0].Status.Phase)
+	if !resources[0].Status.Ready {
+		t.Errorf("Expected Ready=true, got %t", resources[0].Status.Ready)
 	}
 }
 
@@ -553,11 +566,24 @@ func TestFetchResources_NodePools(t *testing.T) {
 					},
 					"spec": map[string]interface{}{},
 					"status": map[string]interface{}{
-						"phase":                "Ready",
-						"last_transition_time": "2025-01-01T10:00:00Z",
-						"last_updated_time":    "2025-01-01T12:00:00Z",
-						"observed_generation":  3,
-						"conditions":           []interface{}{},
+						"conditions": []map[string]interface{}{
+							{
+								"type":                 "Ready",
+								"status":               "True",
+								"created_time":         "2025-01-01T09:00:00Z",
+								"last_transition_time": "2025-01-01T10:00:00Z",
+								"last_updated_time":    "2025-01-01T12:00:00Z",
+								"observed_generation":  3,
+							},
+							{
+								"type":                 "Available",
+								"status":               "True",
+								"created_time":         "2025-01-01T09:00:00Z",
+								"last_transition_time": "2025-01-01T10:00:00Z",
+								"last_updated_time":    "2025-01-01T12:00:00Z",
+								"observed_generation":  3,
+							},
+						},
 					},
 				},
 			},

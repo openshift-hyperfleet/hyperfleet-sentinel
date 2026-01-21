@@ -2,7 +2,6 @@ package engine
 
 import (
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
@@ -14,11 +13,6 @@ const (
 	ReasonGenerationChanged = "generation changed"
 	ReasonNilResource       = "resource is nil"
 	ReasonZeroNow           = "now time is zero"
-)
-
-// Phase values
-const (
-	PhaseReady = "Ready"
 )
 
 // DecisionEngine evaluates whether a resource needs an event published
@@ -53,8 +47,8 @@ type Decision struct {
 //     - If LastUpdated is zero (never processed), falls back to created_time
 //
 // Max Age Intervals:
-//   - Resources with Phase="Ready": maxAgeReady (default 30m)
-//   - Resources with Phase≠"Ready": maxAgeNotReady (default 10s)
+//   - Resources with Ready=true: maxAgeReady (default 30m)
+//   - Resources with Ready=false: maxAgeNotReady (default 10s)
 //
 // Adapter Contract:
 //   - Adapters MUST update status.LastUpdated on EVERY evaluation
@@ -96,10 +90,9 @@ func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Deci
 		referenceTime = resource.CreatedTime
 	}
 
-	// Determine the appropriate max age based on resource status
-	// Use case-insensitive comparison for robustness
+	// Determine the appropriate max age based on resource ready status
 	var maxAge time.Duration
-	if strings.EqualFold(resource.Status.Phase, PhaseReady) {
+	if resource.Status.Ready {
 		maxAge = e.maxAgeReady
 	} else {
 		maxAge = e.maxAgeNotReady
