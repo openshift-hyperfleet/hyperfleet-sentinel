@@ -100,7 +100,7 @@ func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Deci
 
 	// Calculate the next event time based on reference timestamp
 	// Adapters update LastUpdated on every check, enabling proper max age
-	// calculation even when resources stay in the same phase
+	// calculation even when resources stay in the same status
 	nextEventTime := referenceTime.Add(maxAge)
 
 	// Check if enough time has passed

@@ -277,7 +277,7 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 			resource.Labels = *item.Labels
 		}
 
-		// Convert conditions from OpenAPI model and extract Ready condition for phase
+		// Convert conditions from OpenAPI model and extract Ready condition for ready status
 		if len(item.Status.Conditions) > 0 {
 			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
 			for _, cond := range item.Status.Conditions {
@@ -388,7 +388,7 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 			resource.Labels = *item.Labels
 		}
 
-		// Convert conditions from OpenAPI model and extract Ready condition for phase
+		// Convert conditions from OpenAPI model and extract Ready condition for ready status
 		if len(item.Status.Conditions) > 0 {
 			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
 			for _, cond := range item.Status.Conditions {
