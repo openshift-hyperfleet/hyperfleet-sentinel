@@ -140,8 +140,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Record successful event publication
 			metrics.UpdateEventsPublishedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.Infof(eventCtx, "Published event resource_id=%s phase=%s",
-				resource.ID, resource.Status.Phase)
+			s.logger.Infof(eventCtx, "Published event resource_id=%s ready=%t",
+				resource.ID, resource.Status.Ready)
 			published++
 		} else {
 			// Add decision reason to context for structured logging
@@ -150,8 +150,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Record skipped resource
 			metrics.UpdateResourcesSkippedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.V(2).Infof(skipCtx, "Skipped resource resource_id=%s phase=%s",
-				resource.ID, resource.Status.Phase)
+			s.logger.V(2).Infof(skipCtx, "Skipped resource resource_id=%s ready=%t",
+				resource.ID, resource.Status.Ready)
 			skipped++
 		}
 	}

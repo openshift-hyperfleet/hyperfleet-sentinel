@@ -44,7 +44,7 @@ help: ## Display this help
 
 # OpenAPI spec configuration from hyperfleet-api repository
 OPENAPI_SPEC_REF ?= main
-OPENAPI_SPEC_URL = https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/$(OPENAPI_SPEC_REF)/openapi/openapi.yaml
+OPENAPI_SPEC_URL ?= https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/$(OPENAPI_SPEC_REF)/openapi/openapi.yaml
 
 
 # Regenerate openapi types using oapi-codegen

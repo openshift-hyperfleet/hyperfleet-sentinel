@@ -336,7 +336,7 @@ func TestLoggerExtraFields(t *testing.T) {
 	log := NewHyperFleetLoggerWithConfig(cfg)
 	ctx := context.Background()
 
-	log.Extra("resource_id", "cluster-123").Extra("phase", "Ready").Info(ctx, "Resource processed")
+	log.Extra("resource_id", "cluster-123").Extra("ready", true).Info(ctx, "Resource processed")
 
 	output := buf.String()
 
@@ -352,8 +352,8 @@ func TestLoggerExtraFields(t *testing.T) {
 	if entry.Extra["resource_id"] != "cluster-123" {
 		t.Errorf("expected resource_id 'cluster-123', got %v", entry.Extra["resource_id"])
 	}
-	if entry.Extra["phase"] != "Ready" {
-		t.Errorf("expected phase 'Ready', got %v", entry.Extra["phase"])
+	if entry.Extra["ready"] != true {
+		t.Errorf("expected ready true, got %v", entry.Extra["ready"])
 	}
 }
 

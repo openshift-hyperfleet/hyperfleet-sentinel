@@ -18,8 +18,24 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-// createMockCluster creates a mock cluster response matching main branch spec
-func createMockCluster(id string, generation int, observedGeneration int, phase string, lastUpdated time.Time) map[string]interface{} {
+// createMockCluster creates a mock cluster response matching the new API spec.
+// Ready status is determined by the ready bool parameter.
+func createMockCluster(id string, generation int, observedGeneration int, ready bool, lastUpdated time.Time) map[string]interface{} {
+	// Map ready bool to condition status
+	readyStatus := "False"
+	if ready {
+		readyStatus = "True"
+	}
+
+	readyCondition := map[string]interface{}{
+		"type":                 "Ready",
+		"status":               readyStatus,
+		"created_time":         "2025-01-01T09:00:00Z",
+		"last_transition_time": "2025-01-01T10:00:00Z",
+		"last_updated_time":    lastUpdated.Format(time.RFC3339),
+		"observed_generation":  observedGeneration,
+	}
+
 	return map[string]interface{}{
 		"id":           id,
 		"href":         "/api/hyperfleet/v1/clusters/" + id,
@@ -32,11 +48,17 @@ func createMockCluster(id string, generation int, observedGeneration int, phase 
 		"updated_by":   "test-user@example.com",
 		"spec":         map[string]interface{}{},
 		"status": map[string]interface{}{
-			"phase":                phase,
-			"last_transition_time": "2025-01-01T10:00:00Z",
-			"last_updated_time":    lastUpdated.Format(time.RFC3339),
-			"observed_generation":  observedGeneration,
-			"conditions":           []interface{}{},
+			"conditions": []map[string]interface{}{
+				readyCondition,
+				{
+					"type":                 "Available",
+					"status":               readyStatus,
+					"created_time":         "2025-01-01T09:00:00Z",
+					"last_transition_time": "2025-01-01T10:00:00Z",
+					"last_updated_time":    lastUpdated.Format(time.RFC3339),
+					"observed_generation":  observedGeneration,
+				},
+			},
 		},
 	}
 }
@@ -79,7 +101,7 @@ func TestTrigger_Success(t *testing.T) {
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Cluster exceeds max age (31 minutes ago)
-		cluster := createMockCluster("cluster-1", 2, 2, "Ready", time.Now().Add(-31*time.Minute))
+		cluster := createMockCluster("cluster-1", 2, 2, true, time.Now().Add(-31*time.Minute))
 		response := createMockClusterList([]map[string]interface{}{cluster})
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -146,7 +168,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Cluster within max age and generation in sync - should NOT publish
-		cluster := createMockCluster("cluster-1", 1, 1, "Ready", time.Now().Add(-5*time.Minute))
+		cluster := createMockCluster("cluster-1", 1, 1, true, time.Now().Add(-5*time.Minute))
 		response := createMockClusterList([]map[string]interface{}{cluster})
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -237,7 +259,7 @@ func TestTrigger_PublishError(t *testing.T) {
 
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cluster := createMockCluster("cluster-1", 2, 2, "Ready", time.Now().Add(-31*time.Minute))
+		cluster := createMockCluster("cluster-1", 2, 2, true, time.Now().Add(-31*time.Minute))
 		response := createMockClusterList([]map[string]interface{}{cluster})
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -283,10 +305,10 @@ func TestTrigger_MixedResources(t *testing.T) {
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clusters := []map[string]interface{}{
-			createMockCluster("cluster-1", 2, 2, "Ready", now.Add(-31*time.Minute)),   // Should publish (max age exceeded)
-			createMockCluster("cluster-2", 1, 1, "Ready", now.Add(-5*time.Minute)),    // Should skip (within max age)
-			createMockCluster("cluster-3", 3, 3, "NotReady", now.Add(-1*time.Minute)), // Should skip (NotReady within max age)
-			createMockCluster("cluster-4", 5, 4, "Ready", now.Add(-5*time.Minute)),    // Should publish (generation changed)
+			createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)),  // Should publish (max age exceeded)
+			createMockCluster("cluster-2", 1, 1, true, now.Add(-5*time.Minute)),   // Should skip (within max age)
+			createMockCluster("cluster-3", 3, 3, false, now.Add(-1*time.Minute)),  // Should publish (not ready max age exceeded: 1min > 10s)
+			createMockCluster("cluster-4", 5, 4, true, now.Add(-5*time.Minute)),   // Should publish (generation changed)
 		}
 		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")
@@ -323,8 +345,8 @@ func TestTrigger_MixedResources(t *testing.T) {
 	}
 
 	// Should publish for:
-	// - cluster-1 (Ready max age exceeded: 31min > 30min)
-	// - cluster-3 (NotReady max age exceeded: 1min > 10s)
+	// - cluster-1 (ready max age exceeded: 31min > 30min)
+	// - cluster-3 (not ready max age exceeded: 1min > 10s)
 	// - cluster-4 (generation changed: 5 > 4)
 	if len(mockPublisher.publishedEvents) != 3 {
 		t.Errorf("Expected 3 published events, got %d", len(mockPublisher.publishedEvents))

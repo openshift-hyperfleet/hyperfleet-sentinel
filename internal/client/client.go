@@ -78,8 +78,8 @@ type Resource struct {
 
 // ResourceStatus represents the status of a resource
 type ResourceStatus struct {
-	Phase              string      `json:"phase"`
-	LastTransitionTime time.Time   `json:"lastTransitionTime"` // Updates only when status.phase changes
+	Ready              bool        `json:"ready"`              // True if Ready condition status is "True"
+	LastTransitionTime time.Time   `json:"lastTransitionTime"` // Updates only when ready status changes
 	LastUpdated        time.Time   `json:"lastUpdated"`        // Updates every time an adapter checks the resource
 	ObservedGeneration int32       `json:"observedGeneration"` // The generation last processed by the adapter
 	Conditions         []Condition `json:"conditions,omitempty"`
@@ -90,6 +90,8 @@ type Condition struct {
 	Type               string    `json:"type"`
 	Status             string    `json:"status"`
 	LastTransitionTime time.Time `json:"lastTransitionTime"`
+	LastUpdatedTime    time.Time `json:"lastUpdatedTime"`
+	ObservedGeneration int32     `json:"observedGeneration"`
 	Reason             string    `json:"reason,omitempty"`
 	Message            string    `json:"message,omitempty"`
 }
@@ -267,12 +269,7 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 			Generation:  item.Generation,
 			CreatedTime: item.CreatedTime,
 			UpdatedTime: item.UpdatedTime,
-			Status: ResourceStatus{
-				Phase:              string(item.Status.Phase),
-				LastTransitionTime: item.Status.LastTransitionTime,
-				LastUpdated:        item.Status.LastUpdatedTime,
-				ObservedGeneration: item.Status.ObservedGeneration,
-			},
+			Status:      ResourceStatus{},
 		}
 
 		// Handle optional labels
@@ -280,7 +277,7 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 			resource.Labels = *item.Labels
 		}
 
-		// Convert conditions from OpenAPI model
+		// Convert conditions from OpenAPI model and extract Ready condition for ready status
 		if len(item.Status.Conditions) > 0 {
 			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
 			for _, cond := range item.Status.Conditions {
@@ -288,6 +285,8 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 					Type:               cond.Type,
 					Status:             string(cond.Status),
 					LastTransitionTime: cond.LastTransitionTime,
+					LastUpdatedTime:    cond.LastUpdatedTime,
+					ObservedGeneration: cond.ObservedGeneration,
 				}
 				if cond.Reason != nil {
 					condition.Reason = *cond.Reason
@@ -296,6 +295,14 @@ func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string
 					condition.Message = *cond.Message
 				}
 				resource.Status.Conditions = append(resource.Status.Conditions, condition)
+
+				// Extract ready status and timing from the Ready condition
+				if cond.Type == "Ready" {
+					resource.Status.Ready = cond.Status == "True"
+					resource.Status.LastTransitionTime = cond.LastTransitionTime
+					resource.Status.LastUpdated = cond.LastUpdatedTime
+					resource.Status.ObservedGeneration = cond.ObservedGeneration
+				}
 			}
 		}
 
@@ -373,12 +380,7 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 			Generation:  item.Generation,
 			CreatedTime: item.CreatedTime,
 			UpdatedTime: item.UpdatedTime,
-			Status: ResourceStatus{
-				Phase:              string(item.Status.Phase),
-				LastTransitionTime: item.Status.LastTransitionTime,
-				LastUpdated:        item.Status.LastUpdatedTime,
-				ObservedGeneration: item.Status.ObservedGeneration,
-			},
+			Status:      ResourceStatus{},
 		}
 
 		// Handle optional labels
@@ -386,7 +388,7 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 			resource.Labels = *item.Labels
 		}
 
-		// Convert conditions from OpenAPI model
+		// Convert conditions from OpenAPI model and extract Ready condition for ready status
 		if len(item.Status.Conditions) > 0 {
 			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
 			for _, cond := range item.Status.Conditions {
@@ -394,6 +396,8 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 					Type:               cond.Type,
 					Status:             string(cond.Status),
 					LastTransitionTime: cond.LastTransitionTime,
+					LastUpdatedTime:    cond.LastUpdatedTime,
+					ObservedGeneration: cond.ObservedGeneration,
 				}
 				if cond.Reason != nil {
 					condition.Reason = *cond.Reason
@@ -402,6 +406,14 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 					condition.Message = *cond.Message
 				}
 				resource.Status.Conditions = append(resource.Status.Conditions, condition)
+
+				// Extract ready status and timing from the Ready condition
+				if cond.Type == "Ready" {
+					resource.Status.Ready = cond.Status == "True"
+					resource.Status.LastTransitionTime = cond.LastTransitionTime
+					resource.Status.LastUpdated = cond.LastUpdatedTime
+					resource.Status.ObservedGeneration = cond.ObservedGeneration
+				}
 			}
 		}
 

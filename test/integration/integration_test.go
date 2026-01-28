@@ -41,12 +41,27 @@ func TestMain(m *testing.M) {
 }
 
 // createMockCluster creates a mock cluster response
-func createMockCluster(id string, generation int, observedGeneration int, phase string, lastUpdated time.Time) map[string]interface{} {
-	return createMockClusterWithLabels(id, generation, observedGeneration, phase, lastUpdated, nil)
+func createMockCluster(id string, generation int, observedGeneration int, ready bool, lastUpdated time.Time) map[string]interface{} {
+	return createMockClusterWithLabels(id, generation, observedGeneration, ready, lastUpdated, nil)
 }
 
 // createMockClusterWithLabels creates a mock cluster response with labels
-func createMockClusterWithLabels(id string, generation int, observedGeneration int, phase string, lastUpdated time.Time, labels map[string]string) map[string]interface{} {
+func createMockClusterWithLabels(id string, generation int, observedGeneration int, ready bool, lastUpdated time.Time, labels map[string]string) map[string]interface{} {
+	// Map ready bool to condition status
+	readyStatus := "False"
+	if ready {
+		readyStatus = "True"
+	}
+
+	readyCondition := map[string]interface{}{
+		"type":                 "Ready",
+		"status":               readyStatus,
+		"created_time":         "2025-01-01T09:00:00Z",
+		"last_transition_time": "2025-01-01T10:00:00Z",
+		"last_updated_time":    lastUpdated.Format(time.RFC3339),
+		"observed_generation":  observedGeneration,
+	}
+
 	cluster := map[string]interface{}{
 		"id":         id,
 		"href":       "/api/hyperfleet/v1/clusters/" + id,
@@ -59,11 +74,17 @@ func createMockClusterWithLabels(id string, generation int, observedGeneration i
 		"updated_by": "test-user@example.com",
 		"spec":       map[string]interface{}{},
 		"status": map[string]interface{}{
-			"phase":                phase,
-			"last_transition_time": "2025-01-01T10:00:00Z",
-			"updated_at":           lastUpdated.Format(time.RFC3339),
-			"observed_generation":  observedGeneration,
-			"adapters":             []interface{}{},
+			"conditions": []map[string]interface{}{
+				readyCondition,
+				{
+					"type":                 "Available",
+					"status":               readyStatus,
+					"created_time":         "2025-01-01T09:00:00Z",
+					"last_transition_time": "2025-01-01T10:00:00Z",
+					"last_updated_time":    lastUpdated.Format(time.RFC3339),
+					"observed_generation":  observedGeneration,
+				},
+			},
 		},
 	}
 
@@ -103,8 +124,8 @@ func TestIntegration_EndToEnd(t *testing.T) {
 		// First call: Return clusters with one needing reconciliation
 		if callCount == 1 {
 			clusters := []map[string]interface{}{
-				createMockCluster("cluster-1", 2, 2, "Ready", now.Add(-31*time.Minute)), // Max age exceeded
-				createMockCluster("cluster-2", 1, 1, "Ready", now.Add(-5*time.Minute)),  // Within max age
+				createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)), // Max age exceeded
+				createMockCluster("cluster-2", 1, 1, true, now.Add(-5*time.Minute)),  // Within max age
 			}
 			response := createMockClusterList(clusters)
 			w.Header().Set("Content-Type", "application/json")
@@ -187,7 +208,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 				"cluster-shard-1",
 				2,
 				2,
-				"Ready",
+				true,
 				now.Add(-31*time.Minute), // Exceeds max_age_ready (30m)
 				map[string]string{"shard": "1"},
 			),
@@ -196,7 +217,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 				"cluster-shard-2",
 				2,
 				2,
-				"Ready",
+				true,
 				now.Add(-31*time.Minute), // Also exceeds max_age, but should be filtered
 				map[string]string{"shard": "2"},
 			),
@@ -293,7 +314,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 				"cluster-region-env-match",
 				2,
 				2,
-				"Ready",
+				true,
 				now.Add(-31*time.Minute),
 				map[string]string{"region": "us-east", "env": "production"},
 			),
@@ -301,7 +322,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 				"cluster-region-only",
 				2,
 				2,
-				"Ready",
+				true,
 				now.Add(-31*time.Minute),
 				map[string]string{"region": "us-east", "env": "staging"},
 			),
