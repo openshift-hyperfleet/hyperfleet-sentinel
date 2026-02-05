@@ -65,6 +65,9 @@ data:
         {{- if .Values.broker.googlepubsub.numGoroutines }}
         num_goroutines: {{ .Values.broker.googlepubsub.numGoroutines }}
         {{- end }}
+        {{- if hasKey .Values.broker.googlepubsub "createTopicIfMissing" }}
+        create_topic_if_missing: {{ .Values.broker.googlepubsub.createTopicIfMissing }}
+        {{- end }}
       {{- end }}
 
     {{- if .Values.subscriber }}

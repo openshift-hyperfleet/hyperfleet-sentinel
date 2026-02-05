@@ -93,11 +93,13 @@ The following table lists the configurable parameters of the Sentinel chart and 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `broker.type` | Broker type (`rabbitmq` or `googlepubsub`) | `rabbitmq` |
+| `broker.topic` | Topic name for broker publishing (supports Helm templates) | `{{ .Release.Namespace }}-{{ .Values.config.resourceType }}` |
 | `broker.rabbitmq.url` | RabbitMQ connection URL (format: `amqp://user:pass@host:port/vhost`) | `amqp://sentinel-user:change-me-in-production@rabbitmq.hyperfleet-system.svc.cluster.local:5672/hyperfleet` |
 | `broker.rabbitmq.exchangeType` | RabbitMQ exchange type | `topic` |
-| `broker.googlepubsub.projectId` | GCP project ID (for Pub/Sub) | `""` |
+| `broker.googlepubsub.projectId` | GCP project ID (for Pub/Sub) | `your-gcp-project-id` |
 | `broker.googlepubsub.maxOutstandingMessages` | Max outstanding messages (for Pub/Sub) | `1000` |
 | `broker.googlepubsub.numGoroutines` | Number of goroutines (for Pub/Sub) | `10` |
+| `broker.googlepubsub.createTopicIfMissing` | Auto-create topic if it doesn't exist (for Pub/Sub) | `false` |
 | `subscriber.parallelism` | Number of parallel workers for message processing | `1` |
 | `existingSecret` | Use existing secret for broker credentials | `""` |
 
