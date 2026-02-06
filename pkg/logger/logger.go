@@ -59,8 +59,8 @@ type HyperFleetLogger interface {
 	Debugf(ctx context.Context, format string, args ...interface{})
 	Info(ctx context.Context, message string)
 	Infof(ctx context.Context, format string, args ...interface{})
-	Warning(ctx context.Context, message string)
-	Warningf(ctx context.Context, format string, args ...interface{})
+	Warn(ctx context.Context, message string)
+	Warnf(ctx context.Context, format string, args ...interface{})
 	Error(ctx context.Context, message string)
 	Errorf(ctx context.Context, format string, args ...interface{})
 	Fatal(ctx context.Context, message string)
@@ -457,11 +457,11 @@ func (l *logger) Infof(ctx context.Context, format string, args ...interface{}) 
 	l.log(ctx, LevelInfo, fmt.Sprintf(format, args...))
 }
 
-func (l *logger) Warning(ctx context.Context, message string) {
+func (l *logger) Warn(ctx context.Context, message string) {
 	l.log(ctx, LevelWarn, message)
 }
 
-func (l *logger) Warningf(ctx context.Context, format string, args ...interface{}) {
+func (l *logger) Warnf(ctx context.Context, format string, args ...interface{}) {
 	l.log(ctx, LevelWarn, fmt.Sprintf(format, args...))
 }
 
@@ -522,14 +522,14 @@ func (l *logger) Extra(key string, value interface{}) HyperFleetLogger {
 // noopLogger is a logger that does nothing (used for verbosity filtering)
 type noopLogger struct{}
 
-func (n *noopLogger) Debug(ctx context.Context, message string)                        {}
-func (n *noopLogger) Debugf(ctx context.Context, format string, args ...interface{})   {}
-func (n *noopLogger) Info(ctx context.Context, message string)                         {}
-func (n *noopLogger) Infof(ctx context.Context, format string, args ...interface{})    {}
-func (n *noopLogger) Warning(ctx context.Context, message string)                      {}
-func (n *noopLogger) Warningf(ctx context.Context, format string, args ...interface{}) {}
-func (n *noopLogger) Error(ctx context.Context, message string)                        {}
-func (n *noopLogger) Errorf(ctx context.Context, format string, args ...interface{})   {}
+func (n *noopLogger) Debug(ctx context.Context, message string)                      {}
+func (n *noopLogger) Debugf(ctx context.Context, format string, args ...interface{}) {}
+func (n *noopLogger) Info(ctx context.Context, message string)                       {}
+func (n *noopLogger) Infof(ctx context.Context, format string, args ...interface{})  {}
+func (n *noopLogger) Warn(ctx context.Context, message string)                       {}
+func (n *noopLogger) Warnf(ctx context.Context, format string, args ...interface{})  {}
+func (n *noopLogger) Error(ctx context.Context, message string)                      {}
+func (n *noopLogger) Errorf(ctx context.Context, format string, args ...interface{}) {}
 func (n *noopLogger) Fatal(ctx context.Context, message string) {
 	fmt.Fprintf(os.Stderr, "FATAL: %s\n", message)
 	os.Exit(1)
@@ -540,3 +540,62 @@ func (n *noopLogger) Fatalf(ctx context.Context, format string, args ...interfac
 }
 func (n *noopLogger) V(level int32) HyperFleetLogger                       { return n }
 func (n *noopLogger) Extra(key string, value interface{}) HyperFleetLogger { return n }
+
+type MockLoggerWithContext struct {
+	CapturedLogs     *[]string
+	CapturedContexts *[]context.Context
+}
+
+func (m *MockLoggerWithContext) Debug(ctx context.Context, message string) {
+	*m.CapturedLogs = append(*m.CapturedLogs, message)
+	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+}
+
+func (m *MockLoggerWithContext) Debugf(ctx context.Context, format string, args ...interface{}) {
+	*m.CapturedLogs = append(*m.CapturedLogs, fmt.Sprintf(format, args...))
+	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+}
+
+func (m *MockLoggerWithContext) Info(ctx context.Context, message string) {
+	*m.CapturedLogs = append(*m.CapturedLogs, message)
+	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+}
+
+func (m *MockLoggerWithContext) Infof(ctx context.Context, format string, args ...interface{}) {
+	*m.CapturedLogs = append(*m.CapturedLogs, fmt.Sprintf(format, args...))
+	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+}
+
+func (m *MockLoggerWithContext) Warn(ctx context.Context, message string) {
+	*m.CapturedLogs = append(*m.CapturedLogs, message)
+	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+}
+
+func (m *MockLoggerWithContext) Warnf(ctx context.Context, format string, args ...interface{}) {
+	*m.CapturedLogs = append(*m.CapturedLogs, fmt.Sprintf(format, args...))
+	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+}
+
+func (m *MockLoggerWithContext) Error(ctx context.Context, message string) {
+	*m.CapturedLogs = append(*m.CapturedLogs, message)
+	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+}
+
+func (m *MockLoggerWithContext) Errorf(ctx context.Context, format string, args ...interface{}) {
+	*m.CapturedLogs = append(*m.CapturedLogs, fmt.Sprintf(format, args...))
+	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+}
+
+func (m *MockLoggerWithContext) Fatal(ctx context.Context, message string) {
+	*m.CapturedLogs = append(*m.CapturedLogs, message)
+	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+	fmt.Fprintf(os.Stderr, "FATAL: %s\n", message)
+	os.Exit(1)
+}
+
+func (m *MockLoggerWithContext) Fatalf(ctx context.Context, format string, args ...interface{}) {
+	*m.CapturedLogs = append(*m.CapturedLogs, fmt.Sprintf(format, args...))
+	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+	fmt.Fprintf(os.Stderr, "FATAL: %s\n", fmt.Sprintf(format, args...))
+	os.Exit(1)
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -81,7 +82,7 @@ type MockPublisher struct {
 	publishError    error
 }
 
-func (m *MockPublisher) Publish(topic string, event *cloudevents.Event) error {
+func (m *MockPublisher) Publish(ctx context.Context, topic string, event *cloudevents.Event) error {
 	if m.publishError != nil {
 		return m.publishError
 	}
@@ -93,6 +94,18 @@ func (m *MockPublisher) Publish(topic string, event *cloudevents.Event) error {
 func (m *MockPublisher) Close() error {
 	return nil
 }
+
+type MockPublisherWithLogger struct {
+	mockLogger *logger.MockLoggerWithContext
+}
+
+func (m *MockPublisherWithLogger) Publish(ctx context.Context, topic string, event *cloudevents.Event) error {
+	// Simulate what broker does - log with the provided context
+	m.mockLogger.Info(ctx, fmt.Sprintf("broker publishing event to topic %s", topic))
+	return nil
+}
+
+func (m *MockPublisherWithLogger) Close() error { return nil }
 
 // TestTrigger_Success tests successful event publishing
 func TestTrigger_Success(t *testing.T) {
@@ -305,10 +318,10 @@ func TestTrigger_MixedResources(t *testing.T) {
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clusters := []map[string]interface{}{
-			createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)),  // Should publish (max age exceeded)
-			createMockCluster("cluster-2", 1, 1, true, now.Add(-5*time.Minute)),   // Should skip (within max age)
-			createMockCluster("cluster-3", 3, 3, false, now.Add(-1*time.Minute)),  // Should publish (not ready max age exceeded: 1min > 10s)
-			createMockCluster("cluster-4", 5, 4, true, now.Add(-5*time.Minute)),   // Should publish (generation changed)
+			createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)), // Should publish (max age exceeded)
+			createMockCluster("cluster-2", 1, 1, true, now.Add(-5*time.Minute)),  // Should skip (within max age)
+			createMockCluster("cluster-3", 3, 3, false, now.Add(-1*time.Minute)), // Should publish (not ready max age exceeded: 1min > 10s)
+			createMockCluster("cluster-4", 5, 4, true, now.Add(-5*time.Minute)),  // Should publish (generation changed)
 		}
 		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")
@@ -357,5 +370,57 @@ func TestTrigger_MixedResources(t *testing.T) {
 		if topic != "test-topic" {
 			t.Errorf("Expected topic 'test-topic', got '%s'", topic)
 		}
+	}
+}
+
+func TestTrigger_ContextPropagationToBroker(t *testing.T) {
+	var capturedLogs []string
+	var capturedContexts []context.Context
+
+	mockLogger := &logger.MockLoggerWithContext{
+		CapturedLogs:     &capturedLogs,
+		CapturedContexts: &capturedContexts,
+	}
+
+	// Create mock publisher that uses our mock logger
+	mockPublisherWithLogger := &MockPublisherWithLogger{
+		mockLogger: mockLogger,
+	}
+
+	ctx := context.Background()
+	ctx = logger.WithDecisionReason(ctx, "max_age_exceeded")
+	ctx = logger.WithTopic(ctx, "test-topic")
+	ctx = logger.WithSubset(ctx, "clusters")
+	ctx = logger.WithTraceID(ctx, "trace-123")
+	ctx = logger.WithSpanID(ctx, "span-456")
+
+	event := cloudevents.NewEvent()
+	event.SetSpecVersion(cloudevents.VersionV1)
+	event.SetType("com.redhat.hyperfleet.cluster.reconcile")
+	event.SetSource("hyperfleet-sentinel")
+	event.SetID("test-id")
+
+	err := mockPublisherWithLogger.Publish(ctx, "test-topic", &event)
+	if err != nil {
+		t.Fatalf("publish failed: %v", err)
+	}
+
+	if len(capturedContexts) == 0 {
+		t.Fatal("no context captured by broker logger")
+	}
+
+	brokerCtx := capturedContexts[0]
+
+	// Test context values propagated to broker
+	if reason, ok := brokerCtx.Value(logger.DecisionReasonCtxKey).(string); !ok || reason != "max_age_exceeded" {
+		t.Errorf("decision_reason not propagated: got %v", reason)
+	}
+
+	if topic, ok := brokerCtx.Value(logger.TopicCtxKey).(string); !ok || topic != "test-topic" {
+		t.Errorf("topic not propagated: got %v", topic)
+	}
+
+	if traceID, ok := brokerCtx.Value(logger.TraceIDCtxKey).(string); !ok || traceID != "trace-123" {
+		t.Errorf("trace_id not propagated: got %v", traceID)
 	}
 }

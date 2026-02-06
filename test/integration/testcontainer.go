@@ -58,7 +58,7 @@ func NewRabbitMQTestContainer(ctx context.Context) (*RabbitMQTestContainer, erro
 		"broker.rabbitmq.url": amqpURL,
 	}
 
-	publisher, err := broker.NewPublisher(configMap)
+	publisher, err := broker.NewPublisher(log, configMap)
 	if err != nil {
 		container.Terminate(ctx)
 		return nil, fmt.Errorf("failed to create broker publisher: %w", err)

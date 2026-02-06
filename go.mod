@@ -7,7 +7,7 @@ require (
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.1.2
-	github.com/openshift-hyperfleet/hyperfleet-broker v1.0.0
+	github.com/openshift-hyperfleet/hyperfleet-broker v1.0.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/segmentio/ksuid v1.0.4
 	github.com/spf13/cobra v1.8.0

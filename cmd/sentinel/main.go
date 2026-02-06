@@ -168,7 +168,7 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 
 	// Initialize publisher using hyperfleet-broker library
 	// Configuration is loaded from broker.yaml or BROKER_CONFIG_FILE env var
-	pub, err := broker.NewPublisher()
+	pub, err := broker.NewPublisher(log)
 	if err != nil {
 		log.Errorf(ctx, "Failed to initialize broker publisher: %v", err)
 		return fmt.Errorf("failed to initialize broker publisher: %w", err)
