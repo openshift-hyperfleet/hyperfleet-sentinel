@@ -546,56 +546,57 @@ type MockLoggerWithContext struct {
 	CapturedContexts *[]context.Context
 }
 
-func (m *MockLoggerWithContext) Debug(ctx context.Context, message string) {
-	*m.CapturedLogs = append(*m.CapturedLogs, message)
+func (m *MockLoggerWithContext) capture(ctx context.Context, msg string) {
+	if m.CapturedLogs == nil {
+		m.CapturedLogs = &[]string{}
+	}
+	if m.CapturedContexts == nil {
+		m.CapturedContexts = &[]context.Context{}
+	}
+	*m.CapturedLogs = append(*m.CapturedLogs, msg)
 	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+}
+
+func (m *MockLoggerWithContext) Debug(ctx context.Context, message string) {
+	m.capture(ctx, message)
 }
 
 func (m *MockLoggerWithContext) Debugf(ctx context.Context, format string, args ...interface{}) {
-	*m.CapturedLogs = append(*m.CapturedLogs, fmt.Sprintf(format, args...))
-	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+	m.capture(ctx, fmt.Sprintf(format, args...))
 }
 
 func (m *MockLoggerWithContext) Info(ctx context.Context, message string) {
-	*m.CapturedLogs = append(*m.CapturedLogs, message)
-	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+	m.capture(ctx, message)
 }
 
 func (m *MockLoggerWithContext) Infof(ctx context.Context, format string, args ...interface{}) {
-	*m.CapturedLogs = append(*m.CapturedLogs, fmt.Sprintf(format, args...))
-	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+	m.capture(ctx, fmt.Sprintf(format, args...))
 }
 
 func (m *MockLoggerWithContext) Warn(ctx context.Context, message string) {
-	*m.CapturedLogs = append(*m.CapturedLogs, message)
-	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+	m.capture(ctx, message)
 }
 
 func (m *MockLoggerWithContext) Warnf(ctx context.Context, format string, args ...interface{}) {
-	*m.CapturedLogs = append(*m.CapturedLogs, fmt.Sprintf(format, args...))
-	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+	m.capture(ctx, fmt.Sprintf(format, args...))
 }
 
 func (m *MockLoggerWithContext) Error(ctx context.Context, message string) {
-	*m.CapturedLogs = append(*m.CapturedLogs, message)
-	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+	m.capture(ctx, message)
 }
 
 func (m *MockLoggerWithContext) Errorf(ctx context.Context, format string, args ...interface{}) {
-	*m.CapturedLogs = append(*m.CapturedLogs, fmt.Sprintf(format, args...))
-	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+	m.capture(ctx, fmt.Sprintf(format, args...))
 }
 
 func (m *MockLoggerWithContext) Fatal(ctx context.Context, message string) {
-	*m.CapturedLogs = append(*m.CapturedLogs, message)
-	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+	m.capture(ctx, message)
 	fmt.Fprintf(os.Stderr, "FATAL: %s\n", message)
 	os.Exit(1)
 }
 
 func (m *MockLoggerWithContext) Fatalf(ctx context.Context, format string, args ...interface{}) {
-	*m.CapturedLogs = append(*m.CapturedLogs, fmt.Sprintf(format, args...))
-	*m.CapturedContexts = append(*m.CapturedContexts, ctx)
+	m.capture(ctx, fmt.Sprintf(format, args...))
 	fmt.Fprintf(os.Stderr, "FATAL: %s\n", fmt.Sprintf(format, args...))
 	os.Exit(1)
 }

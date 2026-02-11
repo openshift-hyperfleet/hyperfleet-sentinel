@@ -402,7 +402,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	t.Logf("TSL syntax validation completed - received correct format: %s", receivedSearchParam)
 }
 
-func TextIntegration_BrokerLoggerContext(t *testing.T) {
+func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	// Buffer to observe logs
 	var logBuffer bytes.Buffer
 	now := time.Now()
@@ -520,7 +520,7 @@ func TextIntegration_BrokerLoggerContext(t *testing.T) {
 				t.Errorf("Sentinel event log missing span_id: %v", entry)
 			}
 
-			t.Logf("Found Sentinel event log with context: decision_reason=%v topic=%v subset=%v tr",
+			t.Logf("Found Sentinel event log with context: decision_reason=%v topic=%v subset=%v",
 				entry["decision_reason"], entry["topic"], entry["subset"])
 		}
 
