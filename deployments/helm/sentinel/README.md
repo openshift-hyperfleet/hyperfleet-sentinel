@@ -49,7 +49,8 @@ The following table lists the configurable parameters of the Sentinel chart and 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `replicaCount` | Number of Sentinel replicas | `1` |
-| `image.repository` | Container image repository | `quay.io/hyperfleet/sentinel` |
+| `image.registry` | Container image registry | `CHANGE_ME` |
+| `image.repository` | Container image repository | `hyperfleet-sentinel` |
 | `image.tag` | Container image tag | `latest` |
 | `image.pullPolicy` | Image pull policy | `Always` |
 | `imagePullSecrets` | Image pull secrets | `[]` |

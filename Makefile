@@ -28,7 +28,7 @@ CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/
 # Image Configuration
 # =============================================================================
 IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
-IMAGE_NAME ?= sentinel
+IMAGE_NAME ?= hyperfleet-sentinel
 IMAGE_TAG ?= $(VERSION)
 
 # Dev image configuration - set QUAY_USER to push to personal registry
