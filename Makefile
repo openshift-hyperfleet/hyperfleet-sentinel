@@ -90,6 +90,7 @@ test-unit: generate ## Run unit tests only
 	$(GO) test -v -race -cover ./internal/config/
 	$(GO) test -v -race -cover ./internal/client/
 	$(GO) test -v -race -cover ./internal/engine/
+	$(GO) test -v -race -cover ./internal/health/
 	$(GO) test -v -race -cover ./internal/publisher/
 	$(GO) test -v -race -cover ./internal/sentinel/
 	$(GO) test -v -race -cover ./pkg/...
