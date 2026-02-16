@@ -18,6 +18,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/health"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/sentinel"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
@@ -53,10 +54,12 @@ reconciliation events to a message broker based on configurable max age interval
 
 func newServeCommand() *cobra.Command {
 	var (
-		configFile string
-		logLevel   string
-		logFormat  string
-		logOutput  string
+		configFile         string
+		logLevel           string
+		logFormat          string
+		logOutput          string
+		healthBindAddress  string
+		metricsBindAddress string
 	)
 
 	cmd := &cobra.Command{
@@ -78,7 +81,7 @@ func newServeCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runServe(cfg, logCfg)
+			return runServe(cfg, logCfg, healthBindAddress, metricsBindAddress)
 		},
 	}
 
@@ -89,6 +92,10 @@ func newServeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&logLevel, "log-level", "", "Log level: debug, info, warn, error (default: info)")
 	cmd.Flags().StringVar(&logFormat, "log-format", "", "Log format: text, json (default: text)")
 	cmd.Flags().StringVar(&logOutput, "log-output", "", "Log output: stdout, stderr (default: stdout)")
+
+	// Server bind address flags (consistent with hyperfleet-api)
+	cmd.Flags().StringVar(&healthBindAddress, "health-server-bindaddress", ":8080", "Health server bind address")
+	cmd.Flags().StringVar(&metricsBindAddress, "metrics-server-bindaddress", ":9090", "Metrics server bind address")
 
 	return cmd
 }
@@ -142,7 +149,7 @@ func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, e
 	return cfg, nil
 }
 
-func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
+func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAddress, metricsBindAddress string) error {
 	// Initialize context and logger
 	ctx := context.Background()
 	log := logger.NewHyperFleetLoggerWithConfig(logCfg)
@@ -182,6 +189,17 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 	}
 	log.Info(ctx, "Initialized broker publisher")
 
+	// Initialize readiness checker with dependency checks.
+	// Checks are evaluated on each /readyz request.
+	readiness := health.NewReadinessChecker(log)
+	readiness.AddCheck("broker", func() error {
+		if pub == nil {
+			return fmt.Errorf("broker publisher not initialized")
+		}
+		return pub.Health(ctx)
+	})
+	readiness.SetReady(true)
+
 	// Setup graceful shutdown
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -189,31 +207,41 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 	// Initialize sentinel
 	s := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, pub, log)
 
-	// Start metrics and health HTTP server
-	mux := http.NewServeMux()
+	// Health server on port 8080 (/healthz, /readyz)
+	healthMux := http.NewServeMux()
+	healthMux.HandleFunc("/healthz", readiness.HealthzHandler())
+	healthMux.HandleFunc("/readyz", readiness.ReadyzHandler())
 
-	// Health endpoint
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte("OK")); err != nil {
-			log.Errorf(r.Context(), "Error writing health response: %v", err)
-		}
-	})
-
-	// Metrics endpoint
-	mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
-
-	metricsServer := &http.Server{
-		Addr:         ":8080",
-		Handler:      mux,
+	healthServer := &http.Server{
+		Addr:         healthBindAddress,
+		Handler:      healthMux,
 		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
 
-	// Start HTTP server in background
+	// Metrics server on port 9090 (/metrics)
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+
+	metricsServer := &http.Server{
+		Addr:         metricsBindAddress,
+		Handler:      metricsMux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+
+	// Start HTTP servers in background
 	go func() {
-		log.Info(ctx, "Starting metrics server on :8080")
+		log.Infof(ctx, "Starting health server on %s", healthBindAddress)
+		if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Errorf(ctx, "Health server error: %v", err)
+		}
+	}()
+
+	go func() {
+		log.Infof(ctx, "Starting metrics server on %s", metricsBindAddress)
 		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Errorf(ctx, "Metrics server error: %v", err)
 		}
@@ -225,11 +253,16 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 	go func() {
 		<-sigChan
 		log.Info(ctx, "Received shutdown signal")
+		// Set readiness to false so /readyz returns 503 during shutdown
+		readiness.SetReady(false)
 		cancel()
 
-		// Shutdown metrics server
-		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		// Shutdown HTTP servers (20s timeout per graceful-shutdown standard)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer shutdownCancel()
+		if err := healthServer.Shutdown(shutdownCtx); err != nil {
+			log.Errorf(shutdownCtx, "Health server shutdown error: %v", err)
+		}
 		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
 			log.Errorf(shutdownCtx, "Metrics server shutdown error: %v", err)
 		}
