@@ -72,7 +72,7 @@ sudo chmod a+xrw /var/run/podman
 sudo chmod a+xrw /var/run/podman/podman.sock
 ```
 
-**Warn**: This solution grants elevated permissions and should only be used in development environments.
+**Warning**: This solution grants elevated permissions and should only be used in development environments.
 
 ## Supported Brokers
 

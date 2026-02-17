@@ -681,7 +681,7 @@ func TestLoggerFormattedMethods(t *testing.T) {
 	}{
 		{"Debugf", func() { log.Debugf(ctx, "debug %s %d", "test", 123) }, "debug test 123"},
 		{"Infof", func() { log.Infof(ctx, "info %s %d", "test", 456) }, "info test 456"},
-		{"Warningf", func() { log.Warnf(ctx, "warn %s %d", "test", 789) }, "warn test 789"},
+		{"Warnf", func() { log.Warnf(ctx, "warn %s %d", "test", 789) }, "warn test 789"},
 		{"Errorf", func() { log.Errorf(ctx, "error %s %d", "test", 101) }, "error test 101"},
 	}
 

@@ -423,4 +423,8 @@ func TestTrigger_ContextPropagationToBroker(t *testing.T) {
 	if traceID, ok := brokerCtx.Value(logger.TraceIDCtxKey).(string); !ok || traceID != "trace-123" {
 		t.Errorf("trace_id not propagated: got %v", traceID)
 	}
+
+	if spanID, ok := brokerCtx.Value(logger.SpanIDCtxKey).(string); !ok || spanID != "span-456" {
+		t.Errorf("span_id not propagated: got %v", spanID)
+	}
 }

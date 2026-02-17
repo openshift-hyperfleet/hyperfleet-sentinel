@@ -598,5 +598,7 @@ func (m *MockLoggerWithContext) Fatal(ctx context.Context, message string) {
 func (m *MockLoggerWithContext) Fatalf(ctx context.Context, format string, args ...interface{}) {
 	m.capture(ctx, fmt.Sprintf(format, args...))
 	fmt.Fprintf(os.Stderr, "FATAL: %s\n", fmt.Sprintf(format, args...))
-	os.Exit(1)
 }
+
+func (m *MockLoggerWithContext) V(level int32) HyperFleetLogger                       { return m }
+func (m *MockLoggerWithContext) Extra(key string, value interface{}) HyperFleetLogger { return m }

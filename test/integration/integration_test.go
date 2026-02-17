@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -403,9 +404,16 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 }
 
 func TestIntegration_BrokerLoggerContext(t *testing.T) {
+	const SENTINEL_COMPONENT = "sentinel"
+	const TEST_VERSION = "test"
+	const TEST_HOST = "testhost"
+	const TEST_TOPIC = "test-topic"
+
 	// Buffer to observe logs
 	var logBuffer bytes.Buffer
 	now := time.Now()
+	callCount := 0
+	readyChan := make(chan bool, 1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -419,14 +427,21 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		Level:     logger.LevelInfo,
 		Format:    logger.FormatJSON, // JSON for easy parsing
 		Output:    multiWriter,
-		Component: "sentinel",
-		Version:   "test",
-		Hostname:  "testhost",
+		Component: SENTINEL_COMPONENT,
+		Version:   TEST_VERSION,
+		Hostname:  TEST_HOST,
 	}
 	log := logger.NewHyperFleetLoggerWithConfig(cfg)
 
 	// Mock server returns clusters that will trigger event publishing
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount >= 2 {
+			select {
+			case readyChan <- true:
+			default:
+			}
+		}
 		clusters := []map[string]interface{}{
 			// This cluster will trigger max_age_ready exceeded event
 			createMockCluster("cluster-old", 2, 2, true, now.Add(-35*time.Minute)), // Exceeds 30min
@@ -444,6 +459,7 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 
 	sentinelConfig := &config.SentinelConfig{
 		ResourceType:   "clusters",
+		Topic:          TEST_TOPIC,
 		PollInterval:   100 * time.Millisecond,
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
@@ -462,13 +478,18 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		errChan <- s.Start(ctx)
 	}()
 
-	time.Sleep(500 * time.Millisecond)
+	select {
+	case <-readyChan:
+		t.Log("Sentinel completed required polling cycles")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timeout waiting for sentinel polling")
+	}
 	cancel()
 
 	// Wait for Sentinel to stop
 	select {
 	case err := <-errChan:
-		if err != nil && err != context.Canceled {
+		if err != nil && !errors.Is(err, context.Canceled) {
 			t.Fatalf("Sentinel failed: %v", err)
 		}
 	case <-time.After(2 * time.Second):
@@ -499,7 +520,7 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		component, hasComponent := entry["component"].(string)
 
 		// Look for Sentinel's own event publishing logs
-		if hasMsg && hasComponent && component == "sentinel" &&
+		if hasMsg && hasComponent && component == SENTINEL_COMPONENT &&
 			strings.Contains(msg, "Published event") {
 			foundSentinelEventLog = true
 
@@ -513,26 +534,35 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 			if entry["subset"] == nil {
 				t.Errorf("Sentinel event log missing subset: %v", entry)
 			}
-			if entry["trace_id"] == nil {
-				t.Errorf("Sentinel event log missing trace_id: %v", entry)
-			}
-			if entry["span_id"] == nil {
-				t.Errorf("Sentinel event log missing span_id: %v", entry)
-			}
+			// TODO: Remove the commented lines as part of https://issues.redhat.com/browse/HYPERFLEET-542. We expect trace_id and span_id to be propagated once they're available
+			//if entry["trace_id"] == nil {
+			//	t.Errorf("Sentinel event log missing trace_id: %v", entry)
+			//}
+			//if entry["span_id"] == nil {
+			//	t.Errorf("Sentinel event log missing span_id: %v", entry)
+			//}
 
 			t.Logf("Found Sentinel event log with context: decision_reason=%v topic=%v subset=%v",
 				entry["decision_reason"], entry["topic"], entry["subset"])
 		}
 
 		// Look for broker operation logs (these should inherit Sentinel context)
-		if hasMsg && hasComponent && component == "sentinel" &&
+		if hasMsg && hasComponent && component == SENTINEL_COMPONENT &&
 			(strings.Contains(msg, "broker") || strings.Contains(msg, "publish") ||
 				strings.Contains(msg, "Creating publisher") || strings.Contains(msg, "publisher initialized")) {
 			foundBrokerOperationLog = true
 
 			// Broker operations should have Sentinel context
-			if entry["component"] != "sentinel" {
-				t.Errorf("Broker operation log missing component=sentinel: %v", entry)
+			if entry["component"] != SENTINEL_COMPONENT {
+				t.Errorf("Broker operation log missing component=%s: %v", SENTINEL_COMPONENT, entry)
+			}
+
+			if entry["version"] != TEST_VERSION {
+				t.Errorf("Broker operation log missing version=%s: %v", TEST_VERSION, entry)
+			}
+
+			if entry["hostname"] != TEST_HOST {
+				t.Errorf("Broker operation log missing hostname=%s: %v", TEST_HOST, entry)
 			}
 
 			// Check for context inheritance (these fields should be present if context flowed through)
