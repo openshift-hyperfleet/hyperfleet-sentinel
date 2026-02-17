@@ -95,6 +95,8 @@ func (m *MockPublisher) Close() error {
 	return nil
 }
 
+func (m *MockPublisher) Health(ctx context.Context) error { return nil }
+
 type MockPublisherWithLogger struct {
 	mockLogger *logger.MockLoggerWithContext
 }
@@ -106,6 +108,8 @@ func (m *MockPublisherWithLogger) Publish(ctx context.Context, topic string, eve
 }
 
 func (m *MockPublisherWithLogger) Close() error { return nil }
+
+func (m *MockPublisherWithLogger) Health(ctx context.Context) error { return nil }
 
 // TestTrigger_Success tests successful event publishing
 func TestTrigger_Success(t *testing.T) {

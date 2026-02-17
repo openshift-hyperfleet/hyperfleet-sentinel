@@ -1,6 +1,7 @@
 package publisher
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
@@ -27,3 +28,5 @@ func (p *MockPublisher) Publish(topic string, event *cloudevents.Event) error {
 func (p *MockPublisher) Close() error {
 	return nil
 }
+
+func (p *MockPublisher) Health(ctx context.Context) error { return nil }
