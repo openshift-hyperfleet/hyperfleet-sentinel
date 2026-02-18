@@ -222,7 +222,7 @@ func TestLoggerLevelFiltering(t *testing.T) {
 			case "info":
 				log.Info(ctx, testMessage)
 			case "warn":
-				log.Warning(ctx, testMessage)
+				log.Warn(ctx, testMessage)
 			case "error":
 				log.Error(ctx, testMessage)
 			}
@@ -505,6 +505,10 @@ func TestLoggerSentinelFields(t *testing.T) {
 	if entry.Subset != "clusters" {
 		t.Errorf("expected subset 'clusters', got %q", entry.Subset)
 	}
+
+	if entry.Component != "sentinel" {
+		t.Errorf("expected component 'sentinel', got %q", entry.Component)
+	}
 }
 
 func TestLoggerCorrelationFields(t *testing.T) {
@@ -641,8 +645,8 @@ func TestNoopLogger(t *testing.T) {
 	noop.Debugf(ctx, "test %s", "arg")
 	noop.Info(ctx, "test")
 	noop.Infof(ctx, "test %s", "arg")
-	noop.Warning(ctx, "test")
-	noop.Warningf(ctx, "test %s", "arg")
+	noop.Warn(ctx, "test")
+	noop.Warnf(ctx, "test %s", "arg")
 	noop.Error(ctx, "test")
 	noop.Errorf(ctx, "test %s", "arg")
 
@@ -677,7 +681,7 @@ func TestLoggerFormattedMethods(t *testing.T) {
 	}{
 		{"Debugf", func() { log.Debugf(ctx, "debug %s %d", "test", 123) }, "debug test 123"},
 		{"Infof", func() { log.Infof(ctx, "info %s %d", "test", 456) }, "info test 456"},
-		{"Warningf", func() { log.Warningf(ctx, "warn %s %d", "test", 789) }, "warn test 789"},
+		{"Warnf", func() { log.Warnf(ctx, "warn %s %d", "test", 789) }, "warn test 789"},
 		{"Errorf", func() { log.Errorf(ctx, "error %s %d", "test", 101) }, "error test 101"},
 	}
 

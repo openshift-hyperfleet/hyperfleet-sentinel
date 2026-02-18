@@ -3,12 +3,16 @@
 package integration
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -397,4 +401,190 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	}
 
 	t.Logf("TSL syntax validation completed - received correct format: %s", receivedSearchParam)
+}
+
+func TestIntegration_BrokerLoggerContext(t *testing.T) {
+	const SENTINEL_COMPONENT = "sentinel"
+	const TEST_VERSION = "test"
+	const TEST_HOST = "testhost"
+	const TEST_TOPIC = "test-topic"
+
+	// Buffer to observe logs
+	var logBuffer bytes.Buffer
+	now := time.Now()
+	callCount := 0
+	readyChan := make(chan bool, 1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Get globalConfig and assign multiWriter to observe output logs
+	globalConfig := logger.GetGlobalConfig()
+	multiWriter := io.MultiWriter(globalConfig.Output, &logBuffer)
+
+	helper := NewHelper()
+	cfg := &logger.LogConfig{
+		Level:     logger.LevelInfo,
+		Format:    logger.FormatJSON, // JSON for easy parsing
+		Output:    multiWriter,
+		Component: SENTINEL_COMPONENT,
+		Version:   TEST_VERSION,
+		Hostname:  TEST_HOST,
+	}
+	log := logger.NewHyperFleetLoggerWithConfig(cfg)
+
+	// Mock server returns clusters that will trigger event publishing
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount >= 2 {
+			select {
+			case readyChan <- true:
+			default:
+			}
+		}
+		clusters := []map[string]interface{}{
+			// This cluster will trigger max_age_ready exceeded event
+			createMockCluster("cluster-old", 2, 2, true, now.Add(-35*time.Minute)), // Exceeds 30min
+			// This cluster will trigger max_age_not_ready exceeded event
+			createMockCluster("cluster-not-ready", 1, 1, false, now.Add(-15*time.Second)), // Exceeds 10sec
+		}
+		response := createMockClusterList(clusters)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+
+	sentinelConfig := &config.SentinelConfig{
+		ResourceType:   "clusters",
+		Topic:          TEST_TOPIC,
+		PollInterval:   100 * time.Millisecond,
+		MaxAgeNotReady: 10 * time.Second,
+		MaxAgeReady:    30 * time.Minute,
+		ResourceSelector: []config.LabelSelector{
+			{Label: "region", Value: "us-east"},
+			{Label: "env", Value: "production"},
+		},
+	}
+
+	// Create Sentinel with our logger and real RabbitMQ broker
+	s := sentinel.NewSentinel(sentinelConfig, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+
+	// Run Sentinel
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- s.Start(ctx)
+	}()
+
+	select {
+	case <-readyChan:
+		t.Log("Sentinel completed required polling cycles")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timeout waiting for sentinel polling")
+	}
+	cancel()
+
+	// Wait for Sentinel to stop
+	select {
+	case err := <-errChan:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("Sentinel failed: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Sentinel did not stop within timeout")
+	}
+
+	// Analyze logs
+	logOutput := logBuffer.String()
+	t.Logf("Captured log output:\n%s", logOutput)
+
+	logLines := strings.Split(strings.TrimSpace(logOutput), "\n")
+
+	var foundSentinelEventLog bool
+	var foundBrokerOperationLog bool
+
+	for _, line := range logLines {
+		if line == "" {
+			continue
+		}
+
+		var entry map[string]interface{}
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
+			t.Logf("Skipping non-JSON line: %s", line)
+			continue
+		}
+
+		msg, hasMsg := entry["message"].(string)
+		component, hasComponent := entry["component"].(string)
+
+		// Look for Sentinel's own event publishing logs
+		if hasMsg && hasComponent && component == SENTINEL_COMPONENT &&
+			strings.Contains(msg, "Published event") {
+			foundSentinelEventLog = true
+
+			// Verify Sentinel context fields are present
+			if entry["decision_reason"] == nil {
+				t.Errorf("Sentinel event log missing decision_reason: %v", entry)
+			}
+			if entry["topic"] == nil {
+				t.Errorf("Sentinel event log missing topic: %v", entry)
+			}
+			if entry["subset"] == nil {
+				t.Errorf("Sentinel event log missing subset: %v", entry)
+			}
+			// TODO: Remove the commented lines as part of https://issues.redhat.com/browse/HYPERFLEET-542. We expect trace_id and span_id to be propagated once they're available
+			//if entry["trace_id"] == nil {
+			//	t.Errorf("Sentinel event log missing trace_id: %v", entry)
+			//}
+			//if entry["span_id"] == nil {
+			//	t.Errorf("Sentinel event log missing span_id: %v", entry)
+			//}
+
+			t.Logf("Found Sentinel event log with context: decision_reason=%v topic=%v subset=%v",
+				entry["decision_reason"], entry["topic"], entry["subset"])
+		}
+
+		// Look for broker operation logs (these should inherit Sentinel context)
+		if hasMsg && hasComponent && component == SENTINEL_COMPONENT &&
+			(strings.Contains(msg, "broker") || strings.Contains(msg, "publish") ||
+				strings.Contains(msg, "Creating publisher") || strings.Contains(msg, "publisher initialized")) {
+			foundBrokerOperationLog = true
+
+			// Broker operations should have Sentinel context
+			if entry["component"] != SENTINEL_COMPONENT {
+				t.Errorf("Broker operation log missing component=%s: %v", SENTINEL_COMPONENT, entry)
+			}
+
+			if entry["version"] != TEST_VERSION {
+				t.Errorf("Broker operation log missing version=%s: %v", TEST_VERSION, entry)
+			}
+
+			if entry["hostname"] != TEST_HOST {
+				t.Errorf("Broker operation log missing hostname=%s: %v", TEST_HOST, entry)
+			}
+
+			// Check for context inheritance (these fields should be present if context flowed through)
+			if entry["decision_reason"] != nil || entry["topic"] != nil || entry["subset"] != nil {
+				t.Logf("Broker operation inherits Sentinel context: decision_reason=%v topic=%v subset=%v",
+					entry["decision_reason"], entry["topic"], entry["subset"])
+			}
+
+			t.Logf("Found broker operation log with component=sentinel: %s", msg)
+		}
+	}
+
+	if !foundSentinelEventLog {
+		t.Error("No Sentinel event publishing logs found - events may not have been published")
+	}
+
+	if !foundBrokerOperationLog {
+		t.Error("No broker operation logs found - broker may not be logging")
+	}
+
+	// Success criteria: Both Sentinel and broker logs should use component=sentinel
+	if foundSentinelEventLog && foundBrokerOperationLog {
+		t.Log("SUCCESS: Logger context inheritance verified - both Sentinel and broker operations log with component=sentinel")
+	}
 }

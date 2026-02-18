@@ -123,7 +123,7 @@ func (c *SentinelConfig) ValidateTemplates() error {
 	ctx := context.Background()
 
 	if len(c.MessageData) == 0 {
-		log.Warning(ctx, "message_data is empty, CloudEvents will have minimal data payload")
+		log.Warn(ctx, "message_data is empty, CloudEvents will have minimal data payload")
 		return nil
 	}
 

@@ -130,7 +130,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			}
 
 			// Publish to broker using configured topic
-			if err := s.publisher.Publish(topic, &event); err != nil {
+			if err := s.publisher.Publish(eventCtx, topic, &event); err != nil {
 				// Record broker error
 				metrics.UpdateBrokerErrorsMetric(resourceType, resourceSelector, "publish_error")
 				s.logger.Errorf(eventCtx, "Failed to publish event resource_id=%s error=%v", resource.ID, err)
