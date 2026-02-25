@@ -794,7 +794,10 @@ func TestNewHyperFleetClient_HTTPInstrumentation_ErrorCase(t *testing.T) {
 	// Server returns 500
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(`{"error": "internal server error"}`))
+		_, err := w.Write([]byte(`{"error": "internal server error"}`))
+		if err != nil {
+			t.Fatalf("Failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
