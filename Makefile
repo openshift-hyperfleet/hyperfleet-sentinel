@@ -28,7 +28,7 @@ CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/
 # Image Configuration
 # =============================================================================
 IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
-IMAGE_NAME ?= sentinel
+IMAGE_NAME ?= hyperfleet-sentinel
 IMAGE_TAG ?= $(VERSION)
 
 # Dev image configuration - set QUAY_USER to push to personal registry
@@ -90,6 +90,7 @@ test-unit: generate ## Run unit tests only
 	$(GO) test -v -race -cover ./internal/config/
 	$(GO) test -v -race -cover ./internal/client/
 	$(GO) test -v -race -cover ./internal/engine/
+	$(GO) test -v -race -cover ./internal/health/
 	$(GO) test -v -race -cover ./internal/publisher/
 	$(GO) test -v -race -cover ./internal/sentinel/
 	$(GO) test -v -race -cover ./pkg/...

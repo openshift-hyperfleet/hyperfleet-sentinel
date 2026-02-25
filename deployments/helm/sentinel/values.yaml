@@ -7,8 +7,8 @@ replicaCount: 1
 
 # Container image configuration
 image:
-  registry: quay.io/hyperfleet
-  repository: sentinel
+  registry: CHANGE_ME
+  repository: hyperfleet-sentinel
   pullPolicy: Always
   # Overrides the image tag whose default is the chart appVersion.
   tag: "latest"

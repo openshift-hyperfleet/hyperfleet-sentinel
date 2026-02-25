@@ -47,8 +47,7 @@ data:
       type: {{ .Values.broker.type }}
       {{- if eq .Values.broker.type "rabbitmq" }}
       rabbitmq:
-        # URL will be provided via BROKER_RABBITMQ_URL env var from Secret
-        # This is just the exchange type configuration
+        url: {{ .Values.broker.rabbitmq.url | quote }}
         exchange_type: {{ .Values.broker.rabbitmq.exchangeType | default "topic" }}
         {{- if .Values.broker.rabbitmq.prefetchCount }}
         prefetch_count: {{ .Values.broker.rabbitmq.prefetchCount }}
