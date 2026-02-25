@@ -13,6 +13,8 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 // Sentinel polls the HyperFleet API and triggers reconciliation events
@@ -71,6 +73,11 @@ func (s *Sentinel) Start(ctx context.Context) error {
 func (s *Sentinel) trigger(ctx context.Context) error {
 	startTime := time.Now()
 
+	// span: sentinel.poll
+	ctx, pollSpan := telemetry.StartSpan(ctx, "sentinel.poll",
+		attribute.String("hyperfleet.resource_type", s.config.ResourceType))
+	defer pollSpan.End()
+
 	// Get metric labels
 	resourceType := s.config.ResourceType
 	resourceSelector := metrics.GetResourceSelectorLabel(s.config.ResourceSelector)
@@ -103,6 +110,11 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	// Evaluate each resource
 	for i := range resources {
 		resource := &resources[i]
+		// span: sentinel.evaluate
+		evalCtx, evalSpan := telemetry.StartSpan(ctx, "sentinel.evaluate",
+			attribute.String("hyperfleet.resource_type", resource.Kind),
+			attribute.String("hyperfleet.resource_id", resource.ID),
+		)
 
 		decision := s.decisionEngine.Evaluate(resource, now)
 
@@ -110,7 +122,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			pending++
 
 			// Add decision reason to context for structured logging
-			eventCtx := logger.WithDecisionReason(ctx, decision.Reason)
+			eventCtx := logger.WithDecisionReason(evalCtx, decision.Reason)
 
 			// Create CloudEvent
 			event := cloudevents.NewEvent()
@@ -129,13 +141,30 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				continue
 			}
 
+			// span: publish (child of sentinel.evaluate)
+			publishCtx, publishSpan := telemetry.StartSpan(eventCtx, fmt.Sprintf("%s publish", topic),
+				attribute.String("hyperfleet.resource_type", resource.Kind),
+				attribute.String("hyperfleet.resource_id", resource.ID),
+				attribute.String("hyperfleet.decision_reason", decision.Reason),
+				attribute.String("messaging.system", "gcp_pubsub"),
+				attribute.String("messaging.operation.type", "publish"),
+				attribute.String("messaging.destination.name", topic),
+				attribute.String("messaging.message.id", event.ID()),
+			)
+
+			if publishSpan.SpanContext().IsValid() {
+				telemetry.SetTraceContext(&event, publishSpan)
+			}
+
 			// Publish to broker using configured topic
-			if err := s.publisher.Publish(eventCtx, topic, &event); err != nil {
+			if err := s.publisher.Publish(publishCtx, topic, &event); err != nil {
 				// Record broker error
 				metrics.UpdateBrokerErrorsMetric(resourceType, resourceSelector, "publish_error")
 				s.logger.Errorf(eventCtx, "Failed to publish event resource_id=%s error=%v", resource.ID, err)
 				continue
 			}
+
+			publishSpan.End()
 
 			// Record successful event publication
 			metrics.UpdateEventsPublishedMetric(resourceType, resourceSelector, decision.Reason)
@@ -154,6 +183,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				resource.ID, resource.Status.Ready)
 			skipped++
 		}
+
+		evalSpan.End()
 	}
 
 	// Record pending resources count

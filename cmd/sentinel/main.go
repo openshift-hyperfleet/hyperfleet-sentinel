@@ -10,9 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
@@ -24,9 +26,10 @@ import (
 )
 
 var (
-	version = "dev"
-	commit  = "none"
-	date    = "unknown"
+	version     = "dev"
+	commit      = "none"
+	date        = "unknown"
+	serviceName = "sentinel"
 )
 
 func main() {
@@ -147,6 +150,24 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 	ctx := context.Background()
 	log := logger.NewHyperFleetLoggerWithConfig(logCfg)
 
+	// Use OTEL_SERVICE_NAME if set, otherwise default
+	if envServiceName := os.Getenv("OTEL_SERVICE_NAME"); envServiceName != "" {
+		serviceName = envServiceName
+	}
+
+	var tp *trace.TracerProvider
+	if logCfg.OTel.Enabled {
+		traceProvider, err := telemetry.InitTraceProvider(ctx, serviceName, version, logCfg.OTel.SamplingRate)
+		if err != nil {
+			log.Extra("error", err).Warn(ctx, "Failed to initialize OpenTelemetry")
+		} else {
+			tp = traceProvider
+			log.Extra("sampling_rate", logCfg.OTel.SamplingRate).Info(ctx, "OpenTelemetry initialized")
+		}
+	} else {
+		log.Extra("otel_enabled", false).Info(ctx, "OpenTelemetry disabled")
+	}
+
 	log.Extra("commit", commit).
 		Extra("log_level", logCfg.Level.String()).
 		Extra("log_format", logCfg.Format.String()).
@@ -232,6 +253,12 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig) error {
 		defer shutdownCancel()
 		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
 			log.Errorf(shutdownCtx, "Metrics server shutdown error: %v", err)
+		}
+
+		if tp != nil {
+			if err := telemetry.Shutdown(shutdownCtx, tp); err != nil {
+				log.Extra("error", err).Error(ctx, "Failed to shutdown OpenTelemetry")
+			}
 		}
 	}()
 

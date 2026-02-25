@@ -13,6 +13,7 @@ import (
 	"github.com/cenkalti/backoff/v5"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/api/openapi"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Retry configuration constants
@@ -49,7 +50,8 @@ type HyperFleetClient struct {
 // NewHyperFleetClient creates a new HyperFleet API client using OpenAPI-generated client
 func NewHyperFleetClient(endpoint string, timeout time.Duration) (*HyperFleetClient, error) {
 	httpClient := &http.Client{
-		Timeout: timeout,
+		Timeout:   timeout,
+		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
 	client, err := openapi.NewClientWithResponses(endpoint, openapi.WithHTTPClient(httpClient))

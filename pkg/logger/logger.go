@@ -43,6 +43,12 @@ const (
 	FormatJSON
 )
 
+// OTelConfig holds OpenTelemetry configuration
+type OTelConfig struct {
+	Enabled      bool    `json:"enabled"`
+	SamplingRate float64 `json:"sampling_rate"`
+}
+
 // LogConfig holds the logging configuration
 type LogConfig struct {
 	Level     LogLevel
@@ -51,6 +57,7 @@ type LogConfig struct {
 	Component string
 	Version   string
 	Hostname  string
+	OTel      OTelConfig
 }
 
 // HyperFleetLogger interface for structured logging
@@ -98,6 +105,10 @@ func DefaultConfig() *LogConfig {
 		Component: "sentinel",
 		Version:   "dev",
 		Hostname:  hostname,
+		OTel: OTelConfig{
+			Enabled:      false,
+			SamplingRate: 1.0,
+		},
 	}
 }
 
