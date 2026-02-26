@@ -90,7 +90,7 @@ func InitTraceProvider(
 	case samplingRate <= 0.0:
 		sampler = trace.NeverSample() // Sample none
 	default:
-		sampler = trace.TraceIDRatioBased(samplingRate)
+		sampler = trace.ParentBased(trace.TraceIDRatioBased(samplingRate))
 	}
 
 	// Create trace provider

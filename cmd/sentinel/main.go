@@ -31,7 +31,7 @@ var (
 	version     = "dev"
 	commit      = "none"
 	date        = "unknown"
-	serviceName = "sentinel"
+	serviceName = "hyperfleet-sentinel"
 )
 
 func main() {
@@ -147,8 +147,8 @@ func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, e
 		cfg.Output = output
 	}
 
-	// OTEL_ENABLED=true enables tracing
-	if otelEnabled := os.Getenv("OTEL_ENABLED"); otelEnabled != "" {
+	// TRACING_ENABLED=true enables tracing
+	if otelEnabled := os.Getenv("TRACING_ENABLED"); otelEnabled != "" {
 		enabled, err := strconv.ParseBool(otelEnabled)
 		if err == nil {
 			cfg.OTel.Enabled = enabled
@@ -181,7 +181,7 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 			log.Extra("sampling_rate", logCfg.OTel.SamplingRate).Info(ctx, "OpenTelemetry initialized")
 		}
 	} else {
-		log.Extra("otel_enabled", false).Info(ctx, "OpenTelemetry disabled")
+		log.Extra("TRACING_ENABLED", false).Info(ctx, "OpenTelemetry disabled")
 	}
 
 	log.Extra("commit", commit).

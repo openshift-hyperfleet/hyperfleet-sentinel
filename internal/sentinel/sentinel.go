@@ -15,6 +15,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // Sentinel polls the HyperFleet API and triggers reconciliation events
@@ -158,9 +159,13 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 
 			// Publish to broker using configured topic
 			if err := s.publisher.Publish(publishCtx, topic, &event); err != nil {
+				publishSpan.RecordError(err)
+				publishSpan.SetStatus(codes.Error, "publish failed")
 				// Record broker error
 				metrics.UpdateBrokerErrorsMetric(resourceType, resourceSelector, "publish_error")
 				s.logger.Errorf(eventCtx, "Failed to publish event resource_id=%s error=%v", resource.ID, err)
+				publishSpan.End()
+				evalSpan.End()
 				continue
 			}
 
