@@ -19,7 +19,7 @@ import (
 	t2 "go.opentelemetry.io/otel/trace"
 )
 
-var (
+const (
 	SAMPLER_ALWAYS_ON               = "always_on"
 	SAMPLER_ALWAYS_OFF              = "always_off"
 	SAMPLER_TRACE_ID_RATIO          = "traceidratio"
@@ -39,7 +39,7 @@ func InitTraceProvider(
 	log := logger.NewHyperFleetLogger()
 
 	if otlpEndpoint := os.Getenv(ENV_OTEL_EXPORTER_OTLP_ENDPOINT); otlpEndpoint != "" {
-		exporter, err = otlptracehttp.New(ctx, otlptracehttp.WithEndpoint(otlpEndpoint))
+		exporter, err = otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(otlpEndpoint))
 		if err != nil {
 			log.Errorf(ctx, "Failed to create OTLP HTTP exporter: %v", err)
 			return nil, err
@@ -114,7 +114,7 @@ func Shutdown(ctx context.Context, tp *trace.TracerProvider) error {
 	return tp.Shutdown(ctx)
 }
 
-// StartSpan starts a span and enriches conext with trace/span IDs for logging
+// StartSpan starts a span and enriches context with trace/span IDs for logging
 func StartSpan(ctx context.Context, spanName string, attrs ...attribute.KeyValue) (context.Context, t2.Span) {
 	tracer := otel.Tracer("hyperfleet-sentinel")
 	ctx, span := tracer.Start(ctx, spanName)
@@ -138,9 +138,10 @@ func StartSpan(ctx context.Context, spanName string, attrs ...attribute.KeyValue
 // SetTraceContext adds W3C traceParent extension to CloudEvent for distributed tracing
 func SetTraceContext(event *cloudevents.Event, span t2.Span) {
 	if span.SpanContext().IsValid() {
-		traceParent := fmt.Sprintf("00-%s-%s-01",
+		traceParent := fmt.Sprintf("00-%s-%s-%02x",
 			span.SpanContext().TraceID().String(),
-			span.SpanContext().SpanID().String())
+			span.SpanContext().SpanID().String(),
+			uint8(span.SpanContext().TraceFlags()))
 		event.SetExtension("traceparent", traceParent)
 	}
 }

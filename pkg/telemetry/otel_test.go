@@ -2,8 +2,11 @@ package telemetry
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
@@ -11,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	t2 "go.opentelemetry.io/otel/trace"
 )
 
 func TestInitTraceProvider_StdoutExporter(t *testing.T) {
@@ -42,15 +46,30 @@ func TestInitTraceProvider_StdoutExporter(t *testing.T) {
 func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 	ctx := context.Background()
 
+	// Create mock OTLP HTTP server that accepts trace data
+	receivedRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedRequests++
+		// Verify it's an OTLP traces request
+		if r.URL.Path != "/v1/traces" {
+			t.Errorf("Expected path /v1/traces, got %s", r.URL.Path)
+		}
+		if r.Header.Get("Content-Type") != "application/x-protobuf" {
+			t.Errorf("Expected Content-Type application/x-protobuf, got %s", r.Header.Get("Content-Type"))
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
 	// Set OTLP endpoint
-	err := os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318/v1/traces")
+	err := os.Setenv("OTEL_EXPORTER_OTLP_ENDPOINT", server.URL)
 	if err != nil {
 		t.Fatalf("Failed to set OTEL_EXPORTER_OTLP_ENDPOINT: %v", err)
 	}
 	defer func() {
 		err := os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
 		if err != nil {
-			t.Fatalf("Failed to unset OTEL_EXPORTER_OTLP_ENDPOINT: %v", err)
+			t.Errorf("Failed to unset OTEL_EXPORTER_OTLP_ENDPOINT: %v", err)
 		}
 	}()
 
@@ -65,7 +84,7 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 	defer func(ctx context.Context, tp *trace.TracerProvider) {
 		err := Shutdown(ctx, tp)
 		if err != nil {
-			t.Fatal("Failed to shutdown trace provider")
+			t.Error("Failed to shutdown trace provider")
 		}
 	}(ctx, tp)
 
@@ -73,6 +92,15 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 	tracer := otel.Tracer("test")
 	if tracer == nil {
 		t.Error("Expected tracer to be available")
+	}
+
+	// Test shutdown - should now succeed against mock server
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	err = Shutdown(shutdownCtx, tp)
+	if err != nil {
+		t.Errorf("Failed to shutdown trace provider: %v", err)
 	}
 }
 
@@ -125,7 +153,7 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 				defer func() {
 					err := os.Unsetenv("OTEL_TRACES_SAMPLER")
 					if err != nil {
-						t.Fatalf("Failed to unset OTEL_TRACES_SAMPLER: %v", err)
+						t.Errorf("Failed to unset OTEL_TRACES_SAMPLER: %v", err)
 					}
 				}()
 			}
@@ -137,7 +165,7 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 				defer func() {
 					err := os.Unsetenv("OTEL_TRACES_SAMPLER_ARG")
 					if err != nil {
-						t.Fatalf("Failed to unset OTEL_TRACES_SAMPLER_ARG: %v", err)
+						t.Errorf("Failed to unset OTEL_TRACES_SAMPLER_ARG: %v", err)
 					}
 				}()
 			}
@@ -149,7 +177,7 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 			defer func(ctx context.Context, tp *trace.TracerProvider) {
 				err := Shutdown(ctx, tp)
 				if err != nil {
-					t.Fatal("Failed to shutdown trace provider")
+					t.Errorf("Failed to shutdown trace provider")
 				}
 			}(ctx, tp)
 
@@ -180,7 +208,7 @@ func TestStartSpan(t *testing.T) {
 	defer func(ctx context.Context, tp *trace.TracerProvider) {
 		err := Shutdown(ctx, tp)
 		if err != nil {
-			t.Fatalf("Failed to shutdown trace provider : %v", err)
+			t.Errorf("Failed to shutdown trace provider : %v", err)
 		}
 	}(ctx, tp)
 
@@ -261,7 +289,7 @@ func TestSetTraceContext(t *testing.T) {
 	defer func(ctx context.Context, tp *trace.TracerProvider) {
 		err := Shutdown(ctx, tp)
 		if err != nil {
-			t.Fatal("Failed to shutdown trace provider")
+			t.Error("Failed to shutdown trace provider")
 		}
 	}(ctx, tp)
 
@@ -306,22 +334,27 @@ func TestSetTraceContext(t *testing.T) {
 }
 
 func TestSetTraceContext_InvalidSpan(t *testing.T) {
-	// Test with invalid span context
+	// Test with invalid span context using no-op span
 	event := cloudevents.NewEvent()
 	event.SetType("test.event")
+	event.SetSource("test")
+	event.SetID("test-123")
 
-	// Create a mock invalid span
-	tracer := otel.Tracer("test")
-	_, span := tracer.Start(context.Background(), "test")
-	span.End() // End immediately to potentially invalidate
+	// Create a no-op span with invalid span context
+	// trace.SpanFromContext() with background context returns a no-op span
+	span := t2.SpanFromContext(context.Background())
 
-	// This should not panic or error
+	// Verify the span context is actually invalid
+	if span.SpanContext().IsValid() {
+		t.Fatal("Expected invalid span context, but got valid one")
+	}
+
+	// This should not panic or error, and should not set traceparent
 	SetTraceContext(&event, span)
 
-	// Should not have traceparent extension
+	// Should NOT have traceparent extension since span context is invalid
 	extensions := event.Extensions()
 	if _, exists := extensions["traceparent"]; exists {
-		// This might exist if span was still valid, that's ok
-		t.Log("traceparent was set despite span being ended")
+		t.Error("Expected no traceparent extension for invalid span context, but got one")
 	}
 }

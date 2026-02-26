@@ -813,8 +813,13 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		t.Fatal("No sentinel.poll spans found")
 	}
 
+	pollSpansToValidate := pollSpans
+	if len(pollSpansToValidate) > 2 {
+		pollSpansToValidate = pollSpansToValidate[:2]
+	}
+
 	// For each poll span, validate it has the expected children, evaluate only the first two poll spans
-	for _, pollSpan := range pollSpans[:2] {
+	for _, pollSpan := range pollSpansToValidate {
 		pollSpanID := pollSpan.SpanContext.SpanID().String()
 		directChildren := spansByParentID[pollSpanID]
 

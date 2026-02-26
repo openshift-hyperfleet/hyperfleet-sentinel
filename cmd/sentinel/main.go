@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -144,6 +145,14 @@ func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, e
 			return nil, err
 		}
 		cfg.Output = output
+	}
+
+	// OTEL_ENABLED=true enables tracing
+	if otelEnabled := os.Getenv("OTEL_ENABLED"); otelEnabled != "" {
+		enabled, err := strconv.ParseBool(otelEnabled)
+		if err == nil {
+			cfg.OTel.Enabled = enabled
+		}
 	}
 
 	// Set global config so all loggers use the same configuration
@@ -289,7 +298,9 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 		}
 
 		if tp != nil {
-			if err := telemetry.Shutdown(shutdownCtx, tp); err != nil {
+			otelShutdownCtx, otelShutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer otelShutdownCancel()
+			if err := telemetry.Shutdown(otelShutdownCtx, tp); err != nil {
 				log.Extra("error", err).Error(ctx, "Failed to shutdown OpenTelemetry")
 			}
 		}

@@ -26,6 +26,12 @@ poll_interval: 2s
 max_age_not_ready: 5s
 max_age_ready: 2m
 
+# Messaging system type for OpenTelemetry tracing attributes.
+# Should match the actual message broker being used for accurate observability.
+# Valid values: rabbitmq, gcp_pubsub, kafka, activemq, aws_sqs, etc.
+# Can be overridden via MESSAGING_SYSTEM environment variable.
+messaging_system: "rabbitmq"
+
 # No resource selector - watch all resources in development.
 # resource_selector: []
 

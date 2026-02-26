@@ -661,6 +661,9 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 }
 
 func TestNewHyperFleetClient_HTTPInstrumentation(t *testing.T) {
+	// Capture the previous global tracer provider
+	previousProvider := otel.GetTracerProvider()
+
 	// Setup in-memory trace exporter
 	exporter := tracetest.NewInMemoryExporter()
 	tp := trace.NewTracerProvider(
@@ -671,8 +674,10 @@ func TestNewHyperFleetClient_HTTPInstrumentation(t *testing.T) {
 	defer func(tp *trace.TracerProvider, ctx context.Context) {
 		err := tp.Shutdown(ctx)
 		if err != nil {
-			t.Fatalf("Error shutting down tracer: %v", err)
+			t.Errorf("Error shutting down tracer: %v", err)
 		}
+		// Restore the previous global tracer provider
+		otel.SetTracerProvider(previousProvider)
 	}(tp, context.Background())
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -777,6 +782,9 @@ func TestNewHyperFleetClient_HTTPInstrumentation(t *testing.T) {
 }
 
 func TestNewHyperFleetClient_HTTPInstrumentation_ErrorCase(t *testing.T) {
+	// Capture the previous global tracer provider
+	previousProvider := otel.GetTracerProvider()
+
 	// Setup tracing
 	exporter := tracetest.NewInMemoryExporter()
 	tp := trace.NewTracerProvider(
@@ -787,8 +795,10 @@ func TestNewHyperFleetClient_HTTPInstrumentation_ErrorCase(t *testing.T) {
 	defer func(tp *trace.TracerProvider, ctx context.Context) {
 		err := tp.Shutdown(ctx)
 		if err != nil {
-			t.Fatalf("Error shutting down tracer: %v", err)
+			t.Errorf("Error shutting down tracer: %v", err)
 		}
+		// Restore the previous global tracer provider
+		otel.SetTracerProvider(previousProvider)
 	}(tp, context.Background())
 
 	// Server returns 500
@@ -801,10 +811,13 @@ func TestNewHyperFleetClient_HTTPInstrumentation_ErrorCase(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
 
 	ctx := context.Background()
-	_, err := client.FetchResources(ctx, ResourceTypeClusters, nil)
+	_, err = client.FetchResources(ctx, ResourceTypeClusters, nil)
 
 	// Verify error behavior (like existing tests)
 	if err == nil {

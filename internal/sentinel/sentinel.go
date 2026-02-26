@@ -146,7 +146,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				attribute.String("hyperfleet.resource_type", resource.Kind),
 				attribute.String("hyperfleet.resource_id", resource.ID),
 				attribute.String("hyperfleet.decision_reason", decision.Reason),
-				attribute.String("messaging.system", "gcp_pubsub"),
+				attribute.String("messaging.system", s.config.MessagingSystem),
 				attribute.String("messaging.operation.type", "publish"),
 				attribute.String("messaging.destination.name", topic),
 				attribute.String("messaging.message.id", event.ID()),

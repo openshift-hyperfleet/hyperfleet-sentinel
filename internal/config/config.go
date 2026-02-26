@@ -12,6 +12,10 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	DEFAULT_MESSAGING_SYSTEM = "gcp_pubsub"
+)
+
 // LabelSelector represents a label key-value pair for resource filtering
 type LabelSelector struct {
 	Label string `mapstructure:"label"`
@@ -31,6 +35,7 @@ type SentinelConfig struct {
 	HyperFleetAPI    *HyperFleetAPIConfig `mapstructure:"hyperfleet_api"`
 	MessageData      map[string]string    `mapstructure:"message_data"`
 	Topic            string               `mapstructure:"topic"`
+	MessagingSystem  string               `mapstructure:"messaging_system"`
 }
 
 // HyperFleetAPIConfig defines the HyperFleet API client configuration
@@ -66,7 +71,8 @@ func NewSentinelConfig() *SentinelConfig {
 			// Endpoint is required and must be set in config file
 			Timeout: 5 * time.Second,
 		},
-		MessageData: make(map[string]string),
+		MessageData:     make(map[string]string),
+		MessagingSystem: DEFAULT_MESSAGING_SYSTEM,
 	}
 }
 
@@ -99,6 +105,10 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 	// Environment variable takes precedence over config file (including empty value to clear)
 	if topic, ok := os.LookupEnv("BROKER_TOPIC"); ok {
 		cfg.Topic = topic
+	}
+
+	if messagingSystem, ok := os.LookupEnv("MESSAGING_SYSTEM"); ok {
+		cfg.MessagingSystem = messagingSystem
 	}
 
 	// Validate configuration
