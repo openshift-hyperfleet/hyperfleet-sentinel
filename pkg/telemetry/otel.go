@@ -39,7 +39,7 @@ func InitTraceProvider(
 	log := logger.NewHyperFleetLogger()
 
 	if otlpEndpoint := os.Getenv(ENV_OTEL_EXPORTER_OTLP_ENDPOINT); otlpEndpoint != "" {
-		exporter, err = otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(otlpEndpoint))
+		exporter, err = otlptracehttp.New(ctx)
 		if err != nil {
 			log.Errorf(ctx, "Failed to create OTLP HTTP exporter: %v", err)
 			return nil, err
@@ -140,6 +140,9 @@ func StartSpan(ctx context.Context, spanName string, attrs ...attribute.KeyValue
 
 // SetTraceContext adds W3C traceParent extension to CloudEvent for distributed tracing
 func SetTraceContext(event *cloudevents.Event, span t2.Span) {
+	if event == nil || span == nil {
+		return
+	}
 	if span.SpanContext().IsValid() {
 		traceParent := fmt.Sprintf("00-%s-%s-%02x",
 			span.SpanContext().TraceID().String(),
