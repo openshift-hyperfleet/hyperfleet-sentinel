@@ -672,7 +672,9 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		trace.WithSampler(trace.AlwaysSample()),
 		trace.WithBatcher(exporter),
 	)
+	prevTP := otel.GetTracerProvider()
 	otel.SetTracerProvider(tp)
+	defer otel.SetTracerProvider(prevTP)
 	defer func() {
 		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cleanupCancel()
@@ -714,7 +716,10 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	helper := NewHelper()
 
 	// Setup components
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, clientErr := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	if clientErr != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", clientErr)
+	}
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	log := logger.NewHyperFleetLogger()
 

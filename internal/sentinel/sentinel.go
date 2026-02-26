@@ -139,6 +139,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				"reason":     decision.Reason,
 			}); err != nil {
 				s.logger.Errorf(eventCtx, "Failed to set event data resource_id=%s error=%v", resource.ID, err)
+				evalSpan.End()
 				continue
 			}
 

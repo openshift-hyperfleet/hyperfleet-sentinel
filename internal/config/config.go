@@ -107,7 +107,7 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 		cfg.Topic = topic
 	}
 
-	if messagingSystem, ok := os.LookupEnv("MESSAGING_SYSTEM"); ok {
+	if messagingSystem, ok := os.LookupEnv("MESSAGING_SYSTEM"); ok && strings.TrimSpace(messagingSystem) != "" {
 		cfg.MessagingSystem = messagingSystem
 	}
 

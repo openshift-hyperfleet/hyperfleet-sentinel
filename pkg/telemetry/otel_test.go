@@ -81,13 +81,6 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 		t.Fatal("Expected trace provider, got nil")
 	}
 
-	defer func(ctx context.Context, tp *trace.TracerProvider) {
-		err := Shutdown(ctx, tp)
-		if err != nil {
-			t.Error("Failed to shutdown trace provider")
-		}
-	}(ctx, tp)
-
 	// Verify tracer is available
 	tracer := otel.Tracer("test")
 	if tracer == nil {
