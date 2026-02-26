@@ -472,7 +472,7 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 
 	// Create metrics with a test registry
 	registry := prometheus.NewRegistry()
-	metrics.NewSentinelMetrics(registry)
+	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",

@@ -724,7 +724,7 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	log := logger.NewHyperFleetLogger()
 
 	registry := prometheus.NewRegistry()
-	metrics.NewSentinelMetrics(registry)
+	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
