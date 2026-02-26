@@ -64,6 +64,14 @@ tolerations: []
 # Affinity
 affinity: {}
 
+# PodDisruptionBudget configuration
+# See: https://kubernetes.io/docs/tasks/run-application/configure-pdb/#specifying-a-poddisruptionbudget
+podDisruptionBudget:
+  # Enable PDB creation
+  enabled: true
+  # Maximum number of pods that can be unavailable during voluntary disruptions
+  maxUnavailable: 1
+
 # Sentinel configuration
 config:
   # Resource type to watch (clusters, nodepools)
@@ -141,7 +149,7 @@ monitoring:
   # PodMonitoring for Google Cloud Managed Prometheus
   podMonitoring:
     # Enable PodMonitoring creation
-    enabled: true
+    enabled: false
     # Scrape interval
     interval: 30s
     # Additional labels for PodMonitoring

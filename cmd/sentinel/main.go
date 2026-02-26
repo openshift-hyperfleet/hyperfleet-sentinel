@@ -192,7 +192,7 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 	// Initialize Prometheus metrics registry
 	registry := prometheus.NewRegistry()
 	// Register metrics once (uses sync.Once internally)
-	metrics.NewSentinelMetrics(registry)
+	metrics.NewSentinelMetrics(registry, version)
 
 	// Initialize components
 	hyperfleetClient, err := client.NewHyperFleetClient(cfg.HyperFleetAPI.Endpoint, cfg.HyperFleetAPI.Timeout)

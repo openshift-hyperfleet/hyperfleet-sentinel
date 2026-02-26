@@ -26,7 +26,12 @@ const (
 	metricsReasonLabel           = "reason"
 	metricsErrorTypeLabel        = "error_type"
 	metricsStatusLabel           = "status"
+	metricsComponentLabel        = "component"
+	metricsVersionLabel          = "version"
 )
+
+// componentName is the value used for the "component" standard label
+const componentName = "sentinel"
 
 // MetricsLabels - Array of common labels added to most metrics
 var MetricsLabels = []string{
@@ -68,65 +73,14 @@ var MetricsNames = []string{
 	brokerErrorsMetric,
 }
 
-// Description of the pending resources metric
-var pendingResourcesGauge = prometheus.NewGaugeVec(
-	prometheus.GaugeOpts{
-		Subsystem: metricsSubsystem,
-		Name:      pendingResourcesMetric,
-		Help:      "Number of resources pending reconciliation based on max age or generation change",
-	},
-	MetricsLabels,
-)
-
-// Description of the events published metric
-var eventsPublishedCounter = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Subsystem: metricsSubsystem,
-		Name:      eventsPublishedMetric,
-		Help:      "Total number of reconciliation events published to the message broker",
-	},
-	MetricsLabelsWithReason,
-)
-
-// Description of the resources skipped metric
-var resourcesSkippedCounter = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Subsystem: metricsSubsystem,
-		Name:      resourcesSkippedMetric,
-		Help:      "Total number of resources skipped (preconditions not met or already reconciled)",
-	},
-	MetricsLabelsWithReason,
-)
-
-// Description of the poll duration metric
-var pollDurationHistogram = prometheus.NewHistogramVec(
-	prometheus.HistogramOpts{
-		Subsystem: metricsSubsystem,
-		Name:      pollDurationMetric,
-		Help:      "Duration of each polling cycle in seconds",
-		Buckets:   prometheus.DefBuckets,
-	},
-	MetricsLabels,
-)
-
-// Description of the API errors metric
-var apiErrorsCounter = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Subsystem: metricsSubsystem,
-		Name:      apiErrorsMetric,
-		Help:      "Total number of errors when calling the HyperFleet API",
-	},
-	MetricsLabelsWithErrorType,
-)
-
-// Description of the broker errors metric
-var brokerErrorsCounter = prometheus.NewCounterVec(
-	prometheus.CounterOpts{
-		Subsystem: metricsSubsystem,
-		Name:      brokerErrorsMetric,
-		Help:      "Total number of errors when publishing events to the message broker",
-	},
-	MetricsLabelsWithErrorType,
+// Package-level metric collectors, initialized by NewSentinelMetrics with ConstLabels
+var (
+	pendingResourcesGauge  *prometheus.GaugeVec
+	eventsPublishedCounter *prometheus.CounterVec
+	resourcesSkippedCounter *prometheus.CounterVec
+	pollDurationHistogram  *prometheus.HistogramVec
+	apiErrorsCounter       *prometheus.CounterVec
+	brokerErrorsCounter    *prometheus.CounterVec
 )
 
 // SentinelMetrics holds all Prometheus metrics for the Sentinel service
@@ -158,11 +112,83 @@ var (
 // NewSentinelMetrics creates and registers all Sentinel metrics.
 // It uses sync.Once to ensure metrics are only registered once, preventing
 // duplicate registration panics when called multiple times (e.g., in tests).
-func NewSentinelMetrics(registry prometheus.Registerer) *SentinelMetrics {
+//
+// The version parameter is used to set the "version" standard label on all metrics,
+// as required by the HyperFleet Metrics Standard. The "component" label is
+// automatically set to "sentinel".
+func NewSentinelMetrics(registry prometheus.Registerer, version string) *SentinelMetrics {
 	registerOnce.Do(func() {
 		if registry == nil {
 			registry = prometheus.DefaultRegisterer
 		}
+
+		// Standard labels required by HyperFleet Metrics Standard
+		constLabels := prometheus.Labels{
+			metricsComponentLabel: componentName,
+			metricsVersionLabel:   version,
+		}
+
+		// Create metric collectors with standard ConstLabels
+		pendingResourcesGauge = prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Subsystem:   metricsSubsystem,
+				Name:        pendingResourcesMetric,
+				Help:        "Number of resources pending reconciliation based on max age or generation change",
+				ConstLabels: constLabels,
+			},
+			MetricsLabels,
+		)
+
+		eventsPublishedCounter = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Subsystem:   metricsSubsystem,
+				Name:        eventsPublishedMetric,
+				Help:        "Total number of reconciliation events published to the message broker",
+				ConstLabels: constLabels,
+			},
+			MetricsLabelsWithReason,
+		)
+
+		resourcesSkippedCounter = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Subsystem:   metricsSubsystem,
+				Name:        resourcesSkippedMetric,
+				Help:        "Total number of resources skipped (preconditions not met or already reconciled)",
+				ConstLabels: constLabels,
+			},
+			MetricsLabelsWithReason,
+		)
+
+		pollDurationHistogram = prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Subsystem:   metricsSubsystem,
+				Name:        pollDurationMetric,
+				Help:        "Duration of each polling cycle in seconds",
+				Buckets:     prometheus.DefBuckets,
+				ConstLabels: constLabels,
+			},
+			MetricsLabels,
+		)
+
+		apiErrorsCounter = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Subsystem:   metricsSubsystem,
+				Name:        apiErrorsMetric,
+				Help:        "Total number of errors when calling the HyperFleet API",
+				ConstLabels: constLabels,
+			},
+			MetricsLabelsWithErrorType,
+		)
+
+		brokerErrorsCounter = prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Subsystem:   metricsSubsystem,
+				Name:        brokerErrorsMetric,
+				Help:        "Total number of errors when publishing events to the message broker",
+				ConstLabels: constLabels,
+			},
+			MetricsLabelsWithErrorType,
+		)
 
 		// Register all metrics
 		registry.MustRegister(pendingResourcesGauge)
@@ -187,19 +213,34 @@ func NewSentinelMetrics(registry prometheus.Registerer) *SentinelMetrics {
 
 // ResetSentinelMetrics resets all metric collectors to their initial state.
 //
-// This function is intended for testing purposes only. It clears all metric values
-// across all collectors (gauges, counters, histograms) without unregistering them.
+// This function is intended for testing purposes only. It resets the sync.Once
+// so that NewSentinelMetrics can be called again to reinitialize collectors,
+// and clears all metric values if collectors have been initialized.
 //
 // WARNING: Do not use in production code. This will clear operational metrics.
 //
 // Thread-safe: Safe to call concurrently, but should only be called from test code.
 func ResetSentinelMetrics() {
-	pendingResourcesGauge.Reset()
-	eventsPublishedCounter.Reset()
-	resourcesSkippedCounter.Reset()
-	pollDurationHistogram.Reset()
-	apiErrorsCounter.Reset()
-	brokerErrorsCounter.Reset()
+	if pendingResourcesGauge != nil {
+		pendingResourcesGauge.Reset()
+	}
+	if eventsPublishedCounter != nil {
+		eventsPublishedCounter.Reset()
+	}
+	if resourcesSkippedCounter != nil {
+		resourcesSkippedCounter.Reset()
+	}
+	if pollDurationHistogram != nil {
+		pollDurationHistogram.Reset()
+	}
+	if apiErrorsCounter != nil {
+		apiErrorsCounter.Reset()
+	}
+	if brokerErrorsCounter != nil {
+		brokerErrorsCounter.Reset()
+	}
+	registerOnce = sync.Once{}
+	metricsInstance = nil
 }
 
 // UpdatePendingResourcesMetric sets the current number of resources pending reconciliation.
