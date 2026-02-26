@@ -449,7 +449,7 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 	defer func(tp *trace.TracerProvider, ctx context.Context) {
 		err := tp.Shutdown(ctx)
 		if err != nil {
-			t.Fatalf("shutdown of tracer provider: %v", err)
+			t.Errorf("shutdown of tracer provider: %v", err)
 		}
 	}(tp, ctx)
 
@@ -464,7 +464,10 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 	}))
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, err := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 
 	mockPublisher := &MockPublisher{}
@@ -484,7 +487,7 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 
 	// Execute trigger
-	err := s.trigger(ctx)
+	err = s.trigger(ctx)
 	if err != nil {
 		t.Fatalf("trigger failed: %v", err)
 	}

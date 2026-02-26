@@ -118,6 +118,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 		)
 
 		decision := s.decisionEngine.Evaluate(resource, now)
+		evalSpan.SetAttributes(attribute.String("hyperfleet.decision_reason", decision.Reason))
 
 		if decision.ShouldPublish {
 			pending++

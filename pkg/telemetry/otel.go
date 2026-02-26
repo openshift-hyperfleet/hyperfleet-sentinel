@@ -75,11 +75,12 @@ func InitTraceProvider(
 			samplingRate = 0.0
 		case SAMPLER_TRACE_ID_RATIO:
 			if arg := os.Getenv(ENV_OTEL_TRACES_SAMPLER_ARG); arg != "" {
-				if rate, err := strconv.ParseFloat(arg, 64); err == nil {
+				rate, err := strconv.ParseFloat(arg, 64)
+				if err != nil {
+					log.Warnf(ctx, "Invalid %s value=%q, using default samplingRate=%v: %v", ENV_OTEL_TRACES_SAMPLER_ARG, arg, samplingRate, err)
+				} else {
 					samplingRate = rate
 				}
-			} else {
-				log.Warnf(ctx, "Invalid %s value=%q, using default samplingRate=%v", ENV_OTEL_TRACES_SAMPLER_ARG, arg, samplingRate)
 			}
 		}
 	}
