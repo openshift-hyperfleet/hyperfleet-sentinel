@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	DEFAULT_MESSAGING_SYSTEM = "gcp_pubsub"
+	defaultMessagingSystem = "gcp_pubsub"
 )
 
 // LabelSelector represents a label key-value pair for resource filtering
@@ -72,7 +72,7 @@ func NewSentinelConfig() *SentinelConfig {
 			Timeout: 5 * time.Second,
 		},
 		MessageData:     make(map[string]string),
-		MessagingSystem: DEFAULT_MESSAGING_SYSTEM,
+		MessagingSystem: defaultMessagingSystem,
 	}
 }
 

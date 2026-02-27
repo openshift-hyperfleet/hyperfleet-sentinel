@@ -45,8 +45,7 @@ const (
 
 // OTelConfig holds OpenTelemetry configuration
 type OTelConfig struct {
-	Enabled      bool    `json:"enabled"`
-	SamplingRate float64 `json:"sampling_rate"`
+	Enabled bool `json:"enabled"`
 }
 
 // LogConfig holds the logging configuration
@@ -106,8 +105,7 @@ func DefaultConfig() *LogConfig {
 		Version:   "dev",
 		Hostname:  hostname,
 		OTel: OTelConfig{
-			Enabled:      false,
-			SamplingRate: 1.0,
+			Enabled: false,
 		},
 	}
 }

@@ -16,16 +16,16 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
-	t2 "go.opentelemetry.io/otel/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 const (
-	SAMPLER_ALWAYS_ON               = "always_on"
-	SAMPLER_ALWAYS_OFF              = "always_off"
-	SAMPLER_TRACE_ID_RATIO          = "traceidratio"
-	ENV_OTEL_TRACES_SAMPLER         = "OTEL_TRACES_SAMPLER"
-	ENV_OTEL_TRACES_SAMPLER_ARG     = "OTEL_TRACES_SAMPLER_ARG"
-	ENV_OTEL_EXPORTER_OTLP_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	samplerAlwaysOn             = "always_on"
+	samplerAlwaysOff            = "always_off"
+	samplerTraceIdRatio         = "traceidratio"
+	envOtelTracesSampler        = "OTEL_TRACES_SAMPLER"
+	envOtelTracesSamplerArg     = "OTEL_TRACES_SAMPLER_ARG"
+	envOtelExplorerOltpEndpoint = "OTEL_EXPORTER_OTLP_ENDPOINT"
 )
 
 // InitTraceProvider initializes OpenTelemetry trace provider
@@ -38,7 +38,7 @@ func InitTraceProvider(
 
 	log := logger.NewHyperFleetLogger()
 
-	if otlpEndpoint := os.Getenv(ENV_OTEL_EXPORTER_OTLP_ENDPOINT); otlpEndpoint != "" {
+	if otlpEndpoint := os.Getenv(envOtelExplorerOltpEndpoint); otlpEndpoint != "" {
 		exporter, err = otlptracehttp.New(ctx)
 		if err != nil {
 			log.Errorf(ctx, "Failed to create OTLP HTTP exporter: %v", err)
@@ -67,17 +67,17 @@ func InitTraceProvider(
 		return nil, err
 	}
 
-	if samplerType := os.Getenv(ENV_OTEL_TRACES_SAMPLER); samplerType != "" {
+	if samplerType := os.Getenv(envOtelTracesSampler); samplerType != "" {
 		switch strings.ToLower(samplerType) {
-		case SAMPLER_ALWAYS_ON:
+		case samplerAlwaysOn:
 			samplingRate = 1.0
-		case SAMPLER_ALWAYS_OFF:
+		case samplerAlwaysOff:
 			samplingRate = 0.0
-		case SAMPLER_TRACE_ID_RATIO:
-			if arg := os.Getenv(ENV_OTEL_TRACES_SAMPLER_ARG); arg != "" {
+		case samplerTraceIdRatio:
+			if arg := os.Getenv(envOtelTracesSamplerArg); arg != "" {
 				rate, err := strconv.ParseFloat(arg, 64)
 				if err != nil {
-					log.Warnf(ctx, "Invalid %s value=%q, using default samplingRate=%v: %v", ENV_OTEL_TRACES_SAMPLER_ARG, arg, samplingRate, err)
+					log.Warnf(ctx, "Invalid %s value=%q, using default samplingRate=%v: %v", envOtelTracesSamplerArg, arg, samplingRate, err)
 				} else {
 					samplingRate = rate
 				}
@@ -118,7 +118,7 @@ func Shutdown(ctx context.Context, tp *trace.TracerProvider) error {
 }
 
 // StartSpan starts a span and enriches context with trace/span IDs for logging
-func StartSpan(ctx context.Context, spanName string, attrs ...attribute.KeyValue) (context.Context, t2.Span) {
+func StartSpan(ctx context.Context, spanName string, attrs ...attribute.KeyValue) (context.Context, oteltrace.Span) {
 	tracer := otel.Tracer("hyperfleet-sentinel")
 	ctx, span := tracer.Start(ctx, spanName)
 
@@ -139,7 +139,7 @@ func StartSpan(ctx context.Context, spanName string, attrs ...attribute.KeyValue
 }
 
 // SetTraceContext adds W3C traceParent extension to CloudEvent for distributed tracing
-func SetTraceContext(event *cloudevents.Event, span t2.Span) {
+func SetTraceContext(event *cloudevents.Event, span oteltrace.Span) {
 	if event == nil || span == nil {
 		return
 	}

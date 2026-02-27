@@ -807,6 +807,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation_ErrorCase(t *testing.T) {
 		_, err := w.Write([]byte(`{"error": "internal server error"}`))
 		if err != nil {
 			t.Errorf("Failed to write response: %v", err)
+			return
 		}
 	}))
 	defer server.Close()

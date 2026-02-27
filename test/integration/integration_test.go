@@ -476,8 +476,7 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		Version:   TEST_VERSION,
 		Hostname:  TEST_HOST,
 		OTel: logger.OTelConfig{
-			Enabled:      true,
-			SamplingRate: 1.0,
+			Enabled: true,
 		},
 	}
 	log := logger.NewHyperFleetLoggerWithConfig(cfg)
