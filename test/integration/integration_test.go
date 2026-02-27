@@ -456,8 +456,20 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Set OTLP sampler
+	err := os.Setenv("OTEL_TRACES_SAMPLER", "1.0")
+	if err != nil {
+		t.Errorf("Failed to set OTEL_TRACES_SAMPLER: %v", err)
+	}
+	defer func() {
+		err := os.Unsetenv("OTEL_TRACES_SAMPLER")
+		if err != nil {
+			t.Errorf("Failed to unset OTEL_TRACES_SAMPLER: %v", err)
+		}
+	}()
+
 	// Setup OpenTelemetry for integration test
-	tp, err := telemetry.InitTraceProvider(ctx, "sentinel", "test", 1.0)
+	tp, err := telemetry.InitTraceProvider(ctx, "sentinel", "test")
 	if err != nil {
 		t.Fatalf("Failed to initialize OpenTelemetry: %v", err)
 	}

@@ -78,6 +78,8 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 				rate, err := strconv.ParseFloat(arg, 64)
 				if err != nil {
 					log.Warnf(ctx, "Invalid %s value=%q, using default samplingRate=%v: %v", envOtelTracesSamplerArg, arg, samplingRate, err)
+				} else if rate < 0.0 || rate > 1.0 {
+					log.Warnf(ctx, "Out-of-range %s value=%q, expected [0,1], using default samplingRate=%v", envOtelTracesSamplerArg, arg, samplingRate)
 				} else {
 					samplingRate = rate
 				}
