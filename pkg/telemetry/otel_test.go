@@ -21,7 +21,7 @@ func TestInitTraceProvider_StdoutExporter(t *testing.T) {
 	ctx := context.Background()
 
 	// Test stdout exporter (default)
-	tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0", 1.0)
+	tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
 	if err != nil {
 		t.Fatalf("Failed to initialize trace provider: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 		}
 	}()
 
-	tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0", 1.0)
+	tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
 	if err != nil {
 		t.Fatalf("Failed to initialize trace provider with OTLP: %v", err)
 	}
@@ -104,33 +104,28 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 		name           string
 		samplerType    string
 		samplerArg     string
-		baseSampling   float64
 		expectedSample bool
 	}{
 		{
 			name:           "always_on",
 			samplerType:    "always_on",
-			baseSampling:   0.5,
 			expectedSample: true,
 		},
 		{
 			name:           "always_off",
 			samplerType:    "always_off",
-			baseSampling:   0.5,
 			expectedSample: false,
 		},
 		{
 			name:           "traceidratio_high",
 			samplerType:    "traceidratio",
 			samplerArg:     "1.0",
-			baseSampling:   0.5,
 			expectedSample: true,
 		},
 		{
 			name:           "traceidratio_zero",
 			samplerType:    "traceidratio",
 			samplerArg:     "0.0",
-			baseSampling:   0.5,
 			expectedSample: false,
 		},
 	}
@@ -163,7 +158,7 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 				}()
 			}
 
-			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0", tt.baseSampling)
+			tp, err := InitTraceProvider(ctx, "test-service", "v1.0.0")
 			if err != nil {
 				t.Fatalf("Failed to initialize trace provider: %v", err)
 			}

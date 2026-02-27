@@ -25,20 +25,20 @@ const (
 	samplerTraceIdRatio         = "traceidratio"
 	envOtelTracesSampler        = "OTEL_TRACES_SAMPLER"
 	envOtelTracesSamplerArg     = "OTEL_TRACES_SAMPLER_ARG"
-	envOtelExplorerOltpEndpoint = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	envOtelExporterOtlpEndpoint = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	defaultSamplingRate         = 1.0
 )
 
 // InitTraceProvider initializes OpenTelemetry trace provider
-func InitTraceProvider(
-	ctx context.Context, serviceName, serviceVersion string, samplingRate float64,
-) (*trace.TracerProvider, error) {
+func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) (*trace.TracerProvider, error) {
 
 	var exporter trace.SpanExporter
 	var err error
+	var samplingRate = defaultSamplingRate
 
 	log := logger.NewHyperFleetLogger()
 
-	if otlpEndpoint := os.Getenv(envOtelExplorerOltpEndpoint); otlpEndpoint != "" {
+	if otlpEndpoint := os.Getenv(envOtelExporterOtlpEndpoint); otlpEndpoint != "" {
 		exporter, err = otlptracehttp.New(ctx)
 		if err != nil {
 			log.Errorf(ctx, "Failed to create OTLP HTTP exporter: %v", err)

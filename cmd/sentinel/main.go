@@ -174,12 +174,11 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 
 	var tp *trace.TracerProvider
 	if logCfg.OTel.Enabled {
-		traceProvider, err := telemetry.InitTraceProvider(ctx, serviceName, version, logCfg.OTel.SamplingRate)
+		traceProvider, err := telemetry.InitTraceProvider(ctx, serviceName, version)
 		if err != nil {
 			log.Extra("error", err).Warn(ctx, "Failed to initialize OpenTelemetry")
 		} else {
 			tp = traceProvider
-			log.Extra("sampling_rate", logCfg.OTel.SamplingRate).Info(ctx, "OpenTelemetry initialized")
 		}
 	} else {
 		log.Extra("TRACING_ENABLED", false).Info(ctx, "OpenTelemetry disabled")
