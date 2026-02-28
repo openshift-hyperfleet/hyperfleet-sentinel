@@ -13,11 +13,13 @@ BINARY_NAME := $(BIN_DIR)/sentinel
 # Version information
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-GIT_DIRTY ?= $(shell git diff --quiet 2>/dev/null || echo "-modified")
-VERSION:=$(GIT_SHA)$(GIT_DIRTY)
+GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-modified")
+VERSION ?= $(GIT_SHA)$(GIT_DIRTY)
 
 # Go build flags
-LDFLAGS := -X main.version=$(VERSION) \
+GOFLAGS ?= -trimpath
+LDFLAGS := -s -w \
+           -X main.version=$(VERSION) \
            -X main.commit=$(GIT_SHA) \
            -X main.date=$(BUILD_DATE)
 
@@ -27,6 +29,7 @@ CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/
 # =============================================================================
 # Image Configuration
 # =============================================================================
+PLATFORM ?= linux/amd64
 IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
 IMAGE_NAME ?= hyperfleet-sentinel
 IMAGE_TAG ?= $(VERSION)
@@ -34,6 +37,7 @@ IMAGE_TAG ?= $(VERSION)
 # Dev image configuration - set QUAY_USER to push to personal registry
 # Usage: QUAY_USER=myuser make image-dev
 QUAY_USER ?=
+DEV_BASE_IMAGE ?= registry.access.redhat.com/ubi9/ubi-minimal:latest
 DEV_TAG ?= dev-$(GIT_SHA)
 
 .PHONY: help
@@ -46,28 +50,27 @@ help: ## Display this help
 OPENAPI_SPEC_REF ?= main
 OPENAPI_SPEC_URL ?= https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/$(OPENAPI_SPEC_REF)/openapi/openapi.yaml
 
-
-# Regenerate openapi types using oapi-codegen
-generate: $(OAPI_CODEGEN) 
+.PHONY: generate
+generate: $(OAPI_CODEGEN) ## Generate OpenAPI types using oapi-codegen
 	@echo "Fetching OpenAPI spec from hyperfleet-api (ref: $(OPENAPI_SPEC_REF))..."
 	@mkdir -p openapi
 	@curl -sSL -o openapi/openapi.yaml "$(OPENAPI_SPEC_URL)" || \
 		(echo "Failed to download OpenAPI spec from $(OPENAPI_SPEC_URL)" && exit 1)
 	@echo "OpenAPI spec downloaded successfully"
-	rm -rf pkg/api/openapi
-	mkdir -p pkg/api/openapi
-	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
-.PHONY: generate
+	@rm -rf pkg/api/openapi
+	@mkdir -p pkg/api/openapi
+	@$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
+
 ##@ Development
 
 .PHONY: build
 build: generate ## Build the sentinel binary
 	@mkdir -p $(BIN_DIR)
-	$(GO) build -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/sentinel
+	$(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/sentinel
 
 .PHONY: install
 install: ## Build and install binary to GOPATH/bin
-	$(GO) install -ldflags "$(LDFLAGS)" ./cmd/sentinel
+	$(GO) install $(GOFLAGS) -ldflags "$(LDFLAGS)" ./cmd/sentinel
 
 .PHONY: run
 run: build ## Run the sentinel service
@@ -101,11 +104,7 @@ test-integration: generate ## Run integration tests only
 	TESTCONTAINERS_RYUK_DISABLED=true $(GO) test -v -race -tags=integration ./test/integration/... -timeout 30m
 
 .PHONY: test-all
-test-all: ## Run both unit and integration tests
-	@echo "Running unit tests..."
-	$(MAKE) test
-	@echo "Running integration tests..."
-	TESTCONTAINERS_RYUK_DISABLED=true $(MAKE) test-integration
+test-all: test test-integration test-helm lint ## Run unit tests, integration tests, Helm tests, and lint
 
 .PHONY: test-coverage
 test-coverage: test ## Run tests and show coverage
@@ -131,7 +130,7 @@ vet: ## Run go vet
 	$(GO) vet ./...
 
 .PHONY: lint
-lint: $(GOLANGCI_LINT)
+lint: $(GOLANGCI_LINT) ## Run golangci-lint
 	$(GOLANGCI_LINT) run
 
 .PHONY: verify
@@ -227,13 +226,27 @@ test-helm: ## Test Helm charts (lint, template, validate)
 
 ##@ Container Images
 
+.PHONY: check-container-tool
+check-container-tool:
+ifndef CONTAINER_TOOL
+	@echo "Error: No container tool found (podman or docker)"
+	@echo ""
+	@echo "Please install one of:"
+	@echo "  brew install podman   # macOS"
+	@echo "  brew install docker   # macOS"
+	@echo "  dnf install podman    # Fedora/RHEL"
+	@exit 1
+endif
+
 .PHONY: image
-image: ## Build container image with configurable registry/tag
+image: check-container-tool ## Build container image with configurable registry/tag
 	@echo "Building image $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) ..."
 	$(CONTAINER_TOOL) build \
-  	--platform linux/amd64 \
+		--platform $(PLATFORM) \
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--build-arg VERSION=$(VERSION) \
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 	@echo "Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
@@ -244,7 +257,7 @@ image-push: image ## Build and push container image
 	@echo "Image pushed: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
 .PHONY: image-dev
-image-dev: ## Build and push to personal Quay registry (requires QUAY_USER)
+image-dev: check-container-tool ## Build and push to personal Quay registry (requires QUAY_USER)
 ifndef QUAY_USER
 	@echo "Error: QUAY_USER is not set"
 	@echo ""
@@ -255,11 +268,13 @@ ifndef QUAY_USER
 endif
 	@echo "Building dev image quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) ..."
 	$(CONTAINER_TOOL) build \
-		--platform linux/amd64 \
-		--build-arg BASE_IMAGE=alpine:3.21 \
+		--platform $(PLATFORM) \
+		--build-arg BASE_IMAGE=$(DEV_BASE_IMAGE) \
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
-    -t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
+		--build-arg BUILD_DATE=$(BUILD_DATE) \
+		--build-arg VERSION=$(VERSION) \
+		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
 	@echo ""
