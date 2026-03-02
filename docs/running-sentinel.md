@@ -176,10 +176,13 @@ curl http://localhost:8080/readyz
 Expected responses:
 
 ```text
-# /healthz
+# /healthz (healthy, HTTP 200)
 {"status":"ok"}
 
-# /readyz
+# /healthz (stale poll, HTTP 503)
+{"status":"poll stale"}
+
+# /readyz (healthy, HTTP 200)
 {"status":"ok","checks":{...}}
 ```
 
