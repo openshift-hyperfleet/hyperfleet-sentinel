@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
@@ -50,27 +51,48 @@ func TestReadinessChecker_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
-func TestHealthzHandler_AlwaysReturns200(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
-
+func TestHealthzHandler_PollStates(t *testing.T) {
 	tests := []struct {
-		name  string
-		ready bool
+		name           string
+		lastPoll       time.Time
+		expectedCode   int
+		expectedStatus string
 	}{
-		{"when not ready", false},
-		{"when ready", true},
+		{
+			name:           "healthy poll",
+			lastPoll:       time.Now().Add(-1 * time.Second),
+			expectedCode:   http.StatusOK,
+			expectedStatus: "ok",
+		},
+		{
+			name:           "stale poll",
+			lastPoll:       time.Now().Add(-20 * time.Second),
+			expectedCode:   http.StatusServiceUnavailable,
+			expectedStatus: "poll stale",
+		},
+		{
+			name:           "pre-first poll",
+			lastPoll:       time.Time{},
+			expectedCode:   http.StatusOK,
+			expectedStatus: "ok",
+		},
 	}
+
+	// 3 * poll_interval (default 5s) = 15s;
+	threshold := 15 * time.Second
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rc.SetReady(tt.ready)
+			rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+			lastPollFn := func() time.Time { return tt.lastPoll }
+
 			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 			w := httptest.NewRecorder()
 
-			rc.HealthzHandler().ServeHTTP(w, req)
+			rc.HealthzHandler(lastPollFn, threshold).ServeHTTP(w, req)
 
-			if w.Code != http.StatusOK {
-				t.Errorf("Expected status 200, got %d", w.Code)
+			if w.Code != tt.expectedCode {
+				t.Errorf("Expected status %d, got %d", tt.expectedCode, w.Code)
 			}
 
 			if ct := w.Header().Get("Content-Type"); ct != "application/json" {
@@ -81,10 +103,40 @@ func TestHealthzHandler_AlwaysReturns200(t *testing.T) {
 			if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 				t.Fatalf("Failed to decode response: %v", err)
 			}
-			if resp.Status != "ok" {
-				t.Errorf("Expected status 'ok', got '%s'", resp.Status)
+			if resp.Status != tt.expectedStatus {
+				t.Errorf("Expected status %s, got '%s'", tt.expectedStatus, resp.Status)
 			}
 		})
+	}
+}
+
+func TestReadyzHandler_PreFirstPollNotReady(t *testing.T) {
+	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	rc.AddCheck("broker", func() error { return nil })
+	rc.AddCheck("sentinel_poll", func() error {
+		return fmt.Errorf("no successful poll completed yet")
+	})
+
+	rc.SetReady(true)
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	w := httptest.NewRecorder()
+
+	rc.ReadyzHandler().ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Errorf("Expected status 503, got %d", w.Code)
+	}
+
+	var resp readyResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode response: %v", err)
+	}
+	if resp.Checks["sentinel_poll"] == "ok" {
+		t.Errorf("Expected sentinel_poll check to fail before first poll")
+	}
+	if resp.Checks["broker"] != "ok" {
+		t.Errorf("Expected broker 'ok', got %s", resp.Checks["broker"])
 	}
 }
 
