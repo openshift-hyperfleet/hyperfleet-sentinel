@@ -205,7 +205,10 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 	defer cancel()
 
 	// Initialize sentinel
-	s := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, pub, log)
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, pub, log)
+	if err != nil {
+		return fmt.Errorf("failed to initialize sentinel: %w", err)
+	}
 
 	// Health server on port 8080 (/healthz, /readyz)
 	healthMux := http.NewServeMux()

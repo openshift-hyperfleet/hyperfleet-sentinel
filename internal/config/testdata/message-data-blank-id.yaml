@@ -1,0 +1,12 @@
+# this is an invalid config for tests
+# it has a nil in the message_data.id property
+resource_type: clusters
+poll_interval: 2s
+max_age_not_ready: 5s
+max_age_ready: 2m
+hyperfleet_api:
+  endpoint: http://localhost:8000
+  timeout: 10s
+message_data:
+  id:
+  kind: "resource.kind"

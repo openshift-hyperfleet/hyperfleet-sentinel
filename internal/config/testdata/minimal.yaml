@@ -1,3 +1,5 @@
 resource_type: clusters
 hyperfleet_api:
   endpoint: http://api.example.com
+message_data:
+  id: resource.id

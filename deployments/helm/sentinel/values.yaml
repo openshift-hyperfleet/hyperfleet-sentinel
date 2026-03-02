@@ -100,10 +100,15 @@ config:
 
   # CloudEvents data payload configuration
   messageData:
-    resource_id: .id
-    resource_type: .kind
-    href: .href
-    generation: .generation
+    id: resource.id
+    kind: resource.kind
+    href: resource.href
+    generation: resource.generation
+#  For nodepools, the message should contain owner_references
+#  owner_references:
+#    id: "resource.owner_references.id"
+#    href: "resource.owner_references.href"
+#    kind: "resource.owner_references.kind"
 
 # Broker configuration using hyperfleet-broker library
 # WARNING: Never commit real credentials to git!
