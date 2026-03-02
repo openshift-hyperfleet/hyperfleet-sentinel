@@ -158,9 +158,16 @@ func TestIntegration_EndToEnd(t *testing.T) {
 		PollInterval:   100 * time.Millisecond, // Short interval for testing
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
-	s := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
 
 	// Run Sentinel in background
 	errChan := make(chan error, 1)
@@ -270,9 +277,16 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		ResourceSelector: []config.LabelSelector{
 			{Label: "shard", Value: "1"},
 		},
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
-	s := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
 
 	// Run sentinel in goroutine and capture error
 	errChan := make(chan error, 1)
@@ -374,9 +388,16 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 			{Label: "region", Value: "us-east"},
 			{Label: "env", Value: "production"},
 		},
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
-	s := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
 
 	// Run sentinel
 	errChan := make(chan error, 1)
@@ -467,10 +488,17 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 			{Label: "region", Value: "us-east"},
 			{Label: "env", Value: "production"},
 		},
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
 	// Create Sentinel with our logger and real RabbitMQ broker
-	s := sentinel.NewSentinel(sentinelConfig, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	s, err := sentinel.NewSentinel(sentinelConfig, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
 
 	// Run Sentinel
 	errChan := make(chan error, 1)

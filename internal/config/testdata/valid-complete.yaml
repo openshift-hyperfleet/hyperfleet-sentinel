@@ -14,6 +14,6 @@ hyperfleet_api:
   timeout: 5s
 
 message_data:
-  resource_id: .id
-  resource_type: .kind
-  region: .metadata.labels.region
+  id: "resource.id"
+  kind: "resource.kind"
+  region: "resource.labels.region"

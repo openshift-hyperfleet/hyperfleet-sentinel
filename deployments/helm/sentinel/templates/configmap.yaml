@@ -29,9 +29,7 @@ data:
     {{- if .Values.config.messageData }}
     # CloudEvents data payload configuration
     message_data:
-      {{- range $key, $value := .Values.config.messageData }}
-      {{ $key }}: {{ $value }}
-      {{- end }}
+      {{- toYaml .Values.config.messageData | nindent 6 }}
     {{- end }}
 ---
 apiVersion: v1

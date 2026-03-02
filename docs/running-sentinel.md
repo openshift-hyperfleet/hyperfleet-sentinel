@@ -353,6 +353,17 @@ helm install sentinel-test ./deployments/helm/sentinel \
   --set broker.type=googlepubsub \
   --set broker.googlepubsub.projectId=${GCP_PROJECT} \
   --set monitoring.podMonitoring.enabled=true
+
+# For Prometheus Operator environments (OpenShift, vanilla Kubernetes):
+helm install sentinel-test ./deployments/helm/sentinel \
+  --namespace ${NAMESPACE} \
+  --create-namespace \
+  --set image.repository=gcr.io/${GCP_PROJECT}/sentinel \
+  --set image.tag=${IMAGE_TAG} \
+  --set broker.type=googlepubsub \
+  --set broker.googlepubsub.projectId=${GCP_PROJECT} \
+  --set monitoring.serviceMonitor.enabled=true \
+  --set monitoring.serviceMonitor.additionalLabels.release=prometheus
 ```
 
 > **Tip**: The default topic is `{namespace}-{resourceType}`
@@ -405,18 +416,20 @@ Check metrics:
 curl http://localhost:8080/metrics | grep hyperfleet_sentinel
 ```
 
-#### Check PodMonitoring Status
+#### Check Monitoring Resources
 
-List PodMonitoring resources:
+For GKE with Google Cloud Managed Prometheus (PodMonitoring):
 
 ```bash
 kubectl get podmonitoring -n ${NAMESPACE}
+kubectl describe podmonitoring -n ${NAMESPACE} -l app.kubernetes.io/name=sentinel
 ```
 
-Describe PodMonitoring:
+For Prometheus Operator environments (ServiceMonitor):
 
 ```bash
-kubectl describe podmonitoring -n ${NAMESPACE} -l app.kubernetes.io/name=sentinel
+kubectl get servicemonitor -n ${NAMESPACE}
+kubectl describe servicemonitor -n ${NAMESPACE} -l app.kubernetes.io/name=sentinel
 ```
 
 #### Verify Metrics in Google Cloud Console

@@ -100,10 +100,15 @@ config:
 
   # CloudEvents data payload configuration
   messageData:
-    resource_id: .id
-    resource_type: .kind
-    href: .href
-    generation: .generation
+    id: resource.id
+    kind: resource.kind
+    href: resource.href
+    generation: resource.generation
+#  For nodepools, the message should contain owner_references
+#  owner_references:
+#    id: "resource.owner_references.id"
+#    href: "resource.owner_references.href"
+#    kind: "resource.owner_references.kind"
 
 # Broker configuration using hyperfleet-broker library
 # WARNING: Never commit real credentials to git!
@@ -156,6 +161,32 @@ monitoring:
     additionalLabels: {}
     # Metric relabel configs to apply to samples before ingestion
     metricRelabeling: []
+
+  # ServiceMonitor for Prometheus Operator environments (OpenShift, vanilla Kubernetes)
+  # Can coexist with PodMonitoring (different environments)
+  serviceMonitor:
+    # Enable ServiceMonitor creation
+    enabled: false
+    # Scrape interval
+    interval: 30s
+    # Scrape timeout (must be less than interval)
+    scrapeTimeout: 10s
+    # Additional labels for ServiceMonitor to match Prometheus selector
+    # Example: release: prometheus
+    additionalLabels: {}
+    # Namespace selector for cross-namespace monitoring
+    # Example:
+    #   matchNames:
+    #     - hyperfleet-system
+    namespaceSelector: {}
+    # Honor labels from the target to avoid overwriting
+    honorLabels: true
+    # Metric relabel configs to apply to samples before ingestion
+    metricRelabeling: []
+    # Override the namespace where ServiceMonitor is created (defaults to release namespace)
+    # When set, a namespaceSelector.matchNames is automatically added pointing to the
+    # release namespace so Prometheus can discover the Service across namespaces.
+    namespace: ""
 
   # PrometheusRule for alerting (requires Prometheus Operator or compatible system)
   prometheusRule:

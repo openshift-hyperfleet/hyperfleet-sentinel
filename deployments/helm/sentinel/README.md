@@ -104,6 +104,26 @@ The following table lists the configurable parameters of the Sentinel chart and 
 | `subscriber.parallelism` | Number of parallel workers for message processing | `1` |
 | `existingSecret` | Use existing secret for broker credentials | `""` |
 
+### Monitoring Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `monitoring.podMonitoring.enabled` | Create PodMonitoring resource (GMP) | `false` |
+| `monitoring.podMonitoring.interval` | Scrape interval | `30s` |
+| `monitoring.podMonitoring.additionalLabels` | Additional labels for PodMonitoring | `{}` |
+| `monitoring.podMonitoring.metricRelabeling` | Metric relabel configs | `[]` |
+| `monitoring.serviceMonitor.enabled` | Create ServiceMonitor resource (Prometheus Operator) | `false` |
+| `monitoring.serviceMonitor.interval` | Scrape interval | `30s` |
+| `monitoring.serviceMonitor.scrapeTimeout` | Scrape timeout (must be less than interval) | `10s` |
+| `monitoring.serviceMonitor.additionalLabels` | Labels for Prometheus selector matching | `{}` |
+| `monitoring.serviceMonitor.namespaceSelector` | Namespace selector for cross-namespace monitoring | `{}` |
+| `monitoring.serviceMonitor.honorLabels` | Honor labels from target | `true` |
+| `monitoring.serviceMonitor.metricRelabeling` | Metric relabel configs | `[]` |
+| `monitoring.serviceMonitor.namespace` | Override namespace for ServiceMonitor (auto-adds `namespaceSelector`) | `""` |
+| `monitoring.prometheusRule.enabled` | Create PrometheusRule resource | `false` |
+| `monitoring.prometheusRule.namespace` | Override namespace for PrometheusRule | `""` |
+| `monitoring.prometheusRule.additionalLabels` | Additional labels for PrometheusRule | `{}` |
+
 ## Examples
 
 ### Using RabbitMQ
@@ -244,12 +264,35 @@ Use one of these approaches for production:
 
 ## Monitoring
 
-Add Prometheus annotations for scraping metrics:
+### Prometheus Operator (ServiceMonitor)
+
+For clusters with Prometheus Operator (OpenShift, vanilla Kubernetes):
+
+```bash
+helm install sentinel ./deployments/helm/sentinel \
+  --namespace hyperfleet-system \
+  --set monitoring.serviceMonitor.enabled=true \
+  --set monitoring.serviceMonitor.additionalLabels.release=prometheus
+```
+
+### Google Cloud Managed Prometheus (PodMonitoring)
+
+For GKE clusters with GMP:
+
+```bash
+helm install sentinel ./deployments/helm/sentinel \
+  --namespace hyperfleet-system \
+  --set monitoring.podMonitoring.enabled=true
+```
+
+### Fallback: Prometheus Annotations
+
+If neither ServiceMonitor nor PodMonitoring is available:
 
 ```yaml
 podAnnotations:
   prometheus.io/scrape: "true"
-  prometheus.io/port: "8080"
+  prometheus.io/port: "9090"
   prometheus.io/path: "/metrics"
 ```
 
