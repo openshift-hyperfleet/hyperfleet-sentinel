@@ -4,7 +4,7 @@ This document describes the Prometheus metrics exposed by the HyperFleet Sentine
 
 ## Metrics Overview
 
-Sentinel exposes metrics on port 8080 at the `/metrics` endpoint. All metrics follow the `hyperfleet_sentinel_*` naming convention and include common labels for filtering and aggregation.
+Sentinel exposes metrics on port 9090 at the `/metrics` endpoint. Metrics follow the `hyperfleet_sentinel_*` naming convention for sentinel-specific metrics and the `hyperfleet_broker_*` naming convention for broker metrics (provided by hyperfleet-broker).
 
 ## Common Labels
 
@@ -181,6 +181,102 @@ rate(hyperfleet_sentinel_broker_errors_total[5m])
 
 # Errors by type
 sum by (error_type) (rate(hyperfleet_sentinel_broker_errors_total[5m]))
+```
+
+---
+
+## Broker Metrics
+
+The following metrics are automatically provided by the [hyperfleet-broker](https://github.com/openshift-hyperfleet/hyperfleet-broker) library (v1.1.0+). They are registered in the same Prometheus registry and exposed on the same `/metrics` endpoint.
+
+### Common Labels
+
+| Label | Description | Example Values |
+|-------|-------------|----------------|
+| `component` | Component using the broker | `sentinel` |
+| `version` | Version of the component | `1.0.0`, `dev` |
+| `topic` | Broker topic name | `hyperfleet.clusters.reconcile` |
+
+### 7. `hyperfleet_broker_messages_published_total`
+
+**Type:** Counter
+
+**Description:** Total number of messages published to the broker. Automatically incremented by the broker library on each successful publish.
+
+**Labels:**
+- `topic`: Broker topic
+- `component`: Component name
+- `version`: Component version
+
+**Example Query:**
+
+```promql
+# Published messages per second
+rate(hyperfleet_broker_messages_published_total{component="sentinel"}[5m])
+```
+
+---
+
+### 8. `hyperfleet_broker_messages_consumed_total`
+
+**Type:** Counter
+
+**Description:** Total number of messages consumed from the broker. Automatically incremented by the broker library when a message is received.
+
+**Labels:**
+- `topic`: Broker topic
+- `component`: Component name
+- `version`: Component version
+
+**Example Query:**
+
+```promql
+# Consumed messages per second
+rate(hyperfleet_broker_messages_consumed_total{component="sentinel"}[5m])
+```
+
+---
+
+### 9. `hyperfleet_broker_errors_total`
+
+**Type:** Counter
+
+**Description:** Total number of message processing errors in the broker library. Covers conversion errors, publish failures, and handler errors.
+
+**Labels:**
+- `topic`: Broker topic
+- `error_type`: Type of error (`conversion`, `publish`, `handler`)
+- `component`: Component name
+- `version`: Component version
+
+**Example Query:**
+
+```promql
+# Broker errors by type
+sum by (error_type) (rate(hyperfleet_broker_errors_total{component="sentinel"}[5m]))
+```
+
+---
+
+### 10. `hyperfleet_broker_message_duration_seconds`
+
+**Type:** Histogram
+
+**Description:** Duration of message handler execution in seconds. Useful for tracking message processing latency.
+
+**Labels:**
+- `topic`: Broker topic
+- `component`: Component name
+- `version`: Component version
+
+**Buckets:** 0.1, 0.5, 1, 2, 5, 10, 30, 60, 120
+
+**Example Query:**
+
+```promql
+# 95th percentile message processing duration
+histogram_quantile(0.95,
+  rate(hyperfleet_broker_message_duration_seconds_bucket{component="sentinel"}[5m]))
 ```
 
 ---
