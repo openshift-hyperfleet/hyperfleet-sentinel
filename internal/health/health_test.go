@@ -51,6 +51,54 @@ func TestReadinessChecker_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
+func TestHealthzHandler_InvalidParameters(t *testing.T) {
+	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+
+	tests := []struct {
+		name         string
+		lastPollFn   func() time.Time
+		threshold    time.Duration
+		expectedCode int
+		expectedBody string
+	}{
+		{
+			name:         "nil lastPollFn",
+			lastPollFn:   nil,
+			threshold:    15 * time.Second,
+			expectedCode: http.StatusInternalServerError,
+			expectedBody: "invalid health configuration",
+		},
+		{
+			name:         "non-positive threshold",
+			lastPollFn:   func() time.Time { return time.Now() },
+			threshold:    0,
+			expectedCode: http.StatusInternalServerError,
+			expectedBody: "invalid health configuration",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			w := httptest.NewRecorder()
+
+			rc.HealthzHandler(tt.lastPollFn, tt.threshold).ServeHTTP(w, req)
+
+			if w.Code != tt.expectedCode {
+				t.Fatalf("expected status %d, got %d", tt.expectedCode, w.Code)
+			}
+
+			var resp healthResponse
+			if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+				t.Fatalf("failed to decode response: %v", err)
+			}
+			if resp.Status != tt.expectedBody {
+				t.Fatalf("expected status %q, got %q", tt.expectedBody, resp.Status)
+			}
+		})
+	}
+}
+
 func TestHealthzHandler_PollStates(t *testing.T) {
 	tests := []struct {
 		name           string

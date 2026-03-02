@@ -76,6 +76,11 @@ func (r *ReadinessChecker) writeJSON(w http.ResponseWriter, statusCode int, v in
 // or 503 Service Unavailable when the last poll exceeds the staleness threshold.
 func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold time.Duration) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
+		if lastPollFn == nil || threshold <= 0 {
+			r.writeJSON(w, http.StatusInternalServerError, healthResponse{Status: "invalid health configuration"})
+			return
+		}
+		
 		lastPoll := lastPollFn()
 
 		if lastPoll.IsZero() {
