@@ -180,7 +180,14 @@ func TestReadyzHandler_PreFirstPollNotReady(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
-	if resp.Checks["sentinel_poll"] == "ok" {
+	if resp.Status != "error" {
+		t.Errorf("Expected status 'error', got %s", resp.Status)
+	}
+	got, ok := resp.Checks["sentinel_poll"]
+	if !ok {
+		t.Fatalf("Expected sentinel_poll check to be present")
+	}
+	if got == "ok" {
 		t.Errorf("Expected sentinel_poll check to fail before first poll")
 	}
 	if resp.Checks["broker"] != "ok" {
