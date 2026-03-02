@@ -14,7 +14,7 @@ hyperfleet_api:
   timeout: 20s
 
 message_data:
-  resource_id: .id
-  resource_type: .kind
-  cluster_id: .ownerResource.id
-  generation: .generation
+  id: "resource.id"
+  kind: "resource.kind"
+  cluster_id: "resource.owner_references.id"
+  generation: "resource.generation"

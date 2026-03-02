@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -12,7 +13,7 @@ func createTempConfigFile(t *testing.T, content string) string {
 	t.Helper()
 	tmpDir := t.TempDir()
 	configPath := filepath.Join(tmpDir, "config.yaml")
-	err := os.WriteFile(configPath, []byte(content), 0600)
+	err := os.WriteFile(configPath, []byte(content), 0o600)
 	if err != nil {
 		t.Fatalf("Failed to create temp config file: %v", err)
 	}
@@ -64,8 +65,12 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 	if len(cfg.MessageData) != 3 {
 		t.Errorf("Expected 3 message_data fields, got %d", len(cfg.MessageData))
 	}
-	if cfg.MessageData["resource_id"] != ".id" {
-		t.Errorf("Expected message_data.resource_id '.id', got '%s'", cfg.MessageData["resource_id"])
+	resourceID, ok := cfg.MessageData["id"].(string)
+	if !ok {
+		t.Fatalf("Expected message_data.id to be a string, got %T", cfg.MessageData["id"])
+	}
+	if resourceID != "resource.id" {
+		t.Errorf("Expected message_data.id 'resource.id', got '%v'", resourceID)
 	}
 }
 
@@ -150,8 +155,8 @@ func TestNewSentinelConfig_Defaults(t *testing.T) {
 	if len(cfg.ResourceSelector) != 0 {
 		t.Errorf("Expected empty resource_selector, got %d items", len(cfg.ResourceSelector))
 	}
-	if len(cfg.MessageData) != 0 {
-		t.Errorf("Expected empty message_data, got %d items", len(cfg.MessageData))
+	if cfg.MessageData != nil {
+		t.Errorf("Expected nil message_data, got %v", cfg.MessageData)
 	}
 }
 
@@ -222,6 +227,7 @@ func TestValidate_InvalidResourceTypes(t *testing.T) {
 			cfg := NewSentinelConfig()
 			cfg.ResourceType = tt.resourceType
 			cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+			cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 
 			err := cfg.Validate()
 			if tt.shouldFail && err == nil {
@@ -327,63 +333,116 @@ func TestLabelSelectorList_ToMap_EmptyLabel(t *testing.T) {
 }
 
 // ============================================================================
-// Template Validation Tests
+// Message Data Validation Tests
 // ============================================================================
 
-func TestValidateTemplates_Valid(t *testing.T) {
+func TestValidate_ValidMessageDataFlat(t *testing.T) {
 	cfg := NewSentinelConfig()
-	cfg.MessageData = map[string]string{
-		"resource_id":   ".id",
-		"resource_type": ".kind",
-		"region":        ".metadata.labels.region",
+	cfg.ResourceType = "clusters"
+	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.MessageData = map[string]interface{}{
+		"id":     "resource.id",
+		"kind":   "resource.kind",
+		"region": "resource.labels.region",
 	}
 
-	err := cfg.ValidateTemplates()
-	if err != nil {
-		t.Errorf("Expected no error for valid templates, got: %v", err)
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Expected no error for valid flat config, got: %v", err)
 	}
 }
 
-func TestValidateTemplates_ValidWithBraces(t *testing.T) {
+func TestValidate_ValidMessageDataNested(t *testing.T) {
 	cfg := NewSentinelConfig()
-	cfg.MessageData = map[string]string{
-		"resource_id": "{{.id}}",
-		"complex":     "{{if .metadata.name}}{{.metadata.name}}{{else}}unknown{{end}}",
+	cfg.ResourceType = "clusters"
+	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.MessageData = map[string]interface{}{
+		"origin": `"sentinel"`,
+		"ref": map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
-	err := cfg.ValidateTemplates()
-	if err != nil {
-		t.Errorf("Expected no error for valid templates with braces, got: %v", err)
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Expected no error for valid nested config, got: %v", err)
 	}
 }
 
-func TestValidateTemplates_Invalid(t *testing.T) {
+func TestValidate_NilMessageData(t *testing.T) {
 	cfg := NewSentinelConfig()
-	cfg.MessageData = map[string]string{
-		"valid":   ".id",
-		"invalid": "{{.id",
-	}
+	cfg.ResourceType = "clusters"
+	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	// MessageData is nil by default — message_data is required so this must fail
 
-	err := cfg.ValidateTemplates()
-	if err == nil {
-		t.Fatal("Expected error for invalid template syntax, got nil")
+	if err := cfg.Validate(); err == nil {
+		t.Error("Expected error for nil message_data, got nil")
 	}
 }
 
-func TestValidateTemplates_Empty(t *testing.T) {
+func TestValidate_NilLeafInMessageData(t *testing.T) {
+	// Mirrors YAML: `id:` — viper may drop the key, but if it doesn't the nil leaf must be rejected.
 	cfg := NewSentinelConfig()
-	cfg.MessageData = map[string]string{}
+	cfg.ResourceType = "clusters"
+	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.MessageData = map[string]interface{}{
+		"id":   nil,
+		"kind": "resource.kind",
+	}
 
-	// Empty message_data should not error, just log a warning
-	err := cfg.ValidateTemplates()
-	if err != nil {
-		t.Errorf("Expected no error for empty message_data, got: %v", err)
+	if err := cfg.Validate(); err == nil {
+		t.Error("Expected error for nil leaf in message_data, got nil")
+	}
+}
+
+func TestValidate_EmptyStringLeafInMessageData(t *testing.T) {
+	// Mirrors YAML: `id: ""` — an explicitly-set empty CEL expression.
+	cfg := NewSentinelConfig()
+	cfg.ResourceType = "clusters"
+	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.MessageData = map[string]interface{}{
+		"id":   "",
+		"kind": "resource.kind",
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Error("Expected error for empty-string leaf in message_data, got nil")
+	}
+}
+
+func TestValidate_NilLeafInNestedMessageData(t *testing.T) {
+	// Ensures the recursive check reaches nested objects.
+	cfg := NewSentinelConfig()
+	cfg.ResourceType = "clusters"
+	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.MessageData = map[string]interface{}{
+		"ref": map[string]interface{}{
+			"id":   nil,
+			"kind": "resource.kind",
+		},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Error("Expected error for nil leaf in nested message_data, got nil")
 	}
 }
 
 // ============================================================================
 // Integration-like Test with Full Config
 // ============================================================================
+
+func TestLoadConfig_BlankMessageDataLeafReturnsError(t *testing.T) {
+	// A blank leaf (e.g. `id:`) in message_data is decoded as nil by the YAML
+	// parser. mapstructure then silently drops nil-valued keys during Unmarshal,
+	// so the key disappears from cfg.MessageData before Validate() runs.
+	// LoadConfig must catch this via the raw viper value.
+	_, err := LoadConfig(filepath.Join("testdata", "message-data-blank-id.yaml"))
+	if err == nil {
+		t.Fatal("expected error for blank message_data leaf, got nil")
+	}
+	if !strings.Contains(err.Error(), "message_data.id") {
+		t.Errorf("expected error to mention message_data.id, got: %v", err)
+	}
+}
 
 func TestLoadConfig_FullWorkflow(t *testing.T) {
 	configPath := filepath.Join("testdata", "full-workflow.yaml")
@@ -403,8 +462,9 @@ func TestLoadConfig_FullWorkflow(t *testing.T) {
 	if len(cfg.ResourceSelector) != 2 {
 		t.Errorf("Expected 2 resource selectors, got %d", len(cfg.ResourceSelector))
 	}
-	if len(cfg.MessageData) != 4 {
-		t.Errorf("Expected 4 message_data fields, got %d", len(cfg.MessageData))
+	md := cfg.MessageData
+	if len(md) != 4 {
+		t.Errorf("Expected 4 message_data fields, got %d", len(md))
 	}
 }
 
@@ -438,6 +498,8 @@ resource_type: clusters
 hyperfleet_api:
   endpoint: http://localhost:8000
 topic: config-topic
+message_data:
+  id: resource.id
 `
 	configPath := createTempConfigFile(t, yaml)
 
@@ -465,6 +527,8 @@ resource_type: clusters
 hyperfleet_api:
   endpoint: http://localhost:8000
 topic: my-namespace-clusters
+message_data:
+  id: resource.id
 `
 	configPath := createTempConfigFile(t, yaml)
 
@@ -510,6 +574,8 @@ resource_type: clusters
 hyperfleet_api:
   endpoint: http://localhost:8000
 topic: config-topic
+message_data:
+  id: resource.id
 `
 	configPath := createTempConfigFile(t, yaml)
 

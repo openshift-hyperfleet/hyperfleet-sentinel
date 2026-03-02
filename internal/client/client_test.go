@@ -616,6 +616,15 @@ func TestFetchResources_NodePools(t *testing.T) {
 	if resources[0].Status.ObservedGeneration != 3 {
 		t.Errorf("Expected observed generation 3, got %d", resources[0].Status.ObservedGeneration)
 	}
+	if resources[0].OwnerReferences == nil {
+		t.Fatal("Expected OwnerReferences to be set, got nil")
+	}
+	if resources[0].OwnerReferences.ID != "cluster-123" {
+		t.Errorf("Expected OwnerReferences.ID cluster-123, got %s", resources[0].OwnerReferences.ID)
+	}
+	if resources[0].OwnerReferences.Kind != "Cluster" {
+		t.Errorf("Expected OwnerReferences.Kind Cluster, got %s", resources[0].OwnerReferences.Kind)
+	}
 }
 
 // TestFetchResources_WithLabelSelector tests search parameter functionality
