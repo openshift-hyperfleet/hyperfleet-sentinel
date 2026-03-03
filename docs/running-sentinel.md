@@ -163,17 +163,30 @@ LOG_LEVEL=debug LOG_FORMAT=json go run ./cmd/sentinel serve --config=configs/dev
 
 ### 4. Verification Steps
 
-#### Check Health Endpoint
+#### Check Health Endpoints
 
 ```bash
-curl http://localhost:8080/health
+# Liveness
+curl http://localhost:8080/healthz
+
+# Readiness
+curl http://localhost:8080/readyz
 ```
 
-Expected response:
+Expected responses:
 
 ```text
-OK
+# /healthz (healthy, HTTP 200)
+{"status":"ok"}
+
+# /healthz (stale poll, HTTP 503)
+{"status":"poll stale"}
+
+# /readyz (healthy, HTTP 200)
+{"status":"ok","checks":{...}}
 ```
+
+> **Note**: `/readyz` returns 503 until the first successful poll completes.
 
 #### Check Metrics Endpoint
 
@@ -217,7 +230,7 @@ Watch console output for startup and broker connection messages.
 [watermill] 2025/12/01 15:28:26.051755 connection.go:99: level=INFO msg="Connected to AMQP"
 ```
 
-**For Google Pub/Sub**, there is no explicit connection log. The Google Pub/Sub SDK does not expose connection events, so the publisher initializes silently. You can verify it's working by checking the health endpoint (`curl http://localhost:8080/health`) and metrics. For debugging, you can enable SDK debug logging with these environment variables:
+**For Google Pub/Sub**, there is no explicit connection log. The Google Pub/Sub SDK does not expose connection events, so the publisher initializes silently. You can verify it's working by checking the health endpoints (`curl http://localhost:8080/healthz` and `curl http://localhost:8080/readyz`) and metrics. For debugging, you can enable SDK debug logging with these environment variables:
 
 ```bash
 export GOOGLE_SDK_GO_LOGGING_LEVEL=debug
@@ -394,9 +407,9 @@ You should see the startup messages:
 2025-12-17T14:07:30.137382Z INFO [sentinel] [0.1.0] [pod-name] Starting HyperFleet Sentinel
 ```
 
-> **Note**: Sentinel outputs minimal logs during normal operation. Use the health endpoint and metrics to verify the service is running correctly. Configure `--log-format=json` for production deployments.
+> **Note**: Sentinel outputs minimal logs during normal operation. Use the health endpoints (`/healthz`, `/readyz`) and metrics to verify the service is running correctly. Configure `--log-format=json` for production deployments.
 
-#### Verify Health Endpoint
+#### Verify Health Endpoints
 
 Start port-forward in a separate terminal:
 
@@ -404,10 +417,14 @@ Start port-forward in a separate terminal:
 kubectl port-forward -n ${NAMESPACE} svc/sentinel-test 8080:8080
 ```
 
-Check health:
+Check health endpoints:
 
 ```bash
-curl http://localhost:8080/health
+# Liveness
+curl http://localhost:8080/healthz
+
+# Readiness
+curl http://localhost:8080/readyz
 ```
 
 Check metrics:

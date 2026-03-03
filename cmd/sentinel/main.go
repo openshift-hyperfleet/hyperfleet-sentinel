@@ -210,9 +210,16 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 		return fmt.Errorf("failed to initialize sentinel: %w", err)
 	}
 
+	readiness.AddCheck("sentinel_poll", func() error {
+		if s.LastSuccessfulPoll().IsZero() {
+			return fmt.Errorf("no successful poll completed yet")
+		}
+		return nil
+	})
+
 	// Health server on port 8080 (/healthz, /readyz)
 	healthMux := http.NewServeMux()
-	healthMux.HandleFunc("/healthz", readiness.HealthzHandler())
+	healthMux.HandleFunc("/healthz", readiness.HealthzHandler(s.LastSuccessfulPoll, 3*cfg.PollInterval))
 	healthMux.HandleFunc("/readyz", readiness.ReadyzHandler())
 
 	healthServer := &http.Server{

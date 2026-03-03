@@ -3,6 +3,7 @@ package sentinel
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -23,6 +24,9 @@ type Sentinel struct {
 	decisionEngine *engine.DecisionEngine
 	publisher      broker.Publisher
 	logger         logger.HyperFleetLogger
+
+	mu                 sync.RWMutex
+	lastSuccessfulPoll time.Time
 	payloadBuilder *payload.Builder
 }
 
@@ -51,6 +55,12 @@ func NewSentinel(
 	}
 
 	return s, nil
+}
+
+func (s *Sentinel) LastSuccessfulPoll() time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastSuccessfulPoll
 }
 
 // Start starts the polling loop
@@ -173,6 +183,10 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 
 	s.logger.Infof(ctx, "Trigger cycle completed total=%d published=%d skipped=%d duration=%.3fs",
 		len(resources), published, skipped, duration)
+
+	s.mu.Lock()
+	s.lastSuccessfulPoll = time.Now()
+	s.mu.Unlock()
 
 	return nil
 }
