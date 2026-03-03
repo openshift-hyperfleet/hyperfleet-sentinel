@@ -65,17 +65,25 @@ func NewHyperFleetClient(endpoint string, timeout time.Duration) (*HyperFleetCli
 	}, nil
 }
 
+// OwnerReference identifies the owner of a resource
+type OwnerReference struct {
+	ID   string `json:"id"`
+	Href string `json:"href"`
+	Kind string `json:"kind"`
+}
+
 // Resource represents a HyperFleet resource (cluster, nodepool, etc.)
 type Resource struct {
-	ID          string                 `json:"id"`
-	Href        string                 `json:"href"`
-	Kind        string                 `json:"kind"`
-	CreatedTime time.Time              `json:"created_time"`
-	UpdatedTime time.Time              `json:"updated_time"`
-	Generation  int32                  `json:"generation"`
-	Labels      map[string]string      `json:"labels"`
-	Status      ResourceStatus         `json:"status"`
-	Metadata    map[string]interface{} `json:"metadata,omitempty"`
+	ID              string                 `json:"id"`
+	Href            string                 `json:"href"`
+	Kind            string                 `json:"kind"`
+	CreatedTime     time.Time              `json:"created_time"`
+	UpdatedTime     time.Time              `json:"updated_time"`
+	Generation      int32                  `json:"generation"`
+	Labels          map[string]string      `json:"labels"`
+	Status          ResourceStatus         `json:"status"`
+	OwnerReferences *OwnerReference        `json:"owner_references,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // ResourceStatus represents the status of a resource
@@ -388,6 +396,22 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 		// Handle optional labels
 		if item.Labels != nil {
 			resource.Labels = *item.Labels
+		}
+
+		// Map owner references
+		ownerRef := item.OwnerReferences
+		ref := &OwnerReference{}
+		if ownerRef.Id != nil {
+			ref.ID = *ownerRef.Id
+		}
+		if ownerRef.Href != nil {
+			ref.Href = *ownerRef.Href
+		}
+		if ownerRef.Kind != nil {
+			ref.Kind = *ownerRef.Kind
+		}
+		if ref.ID != "" || ref.Href != "" || ref.Kind != "" {
+			resource.OwnerReferences = ref
 		}
 
 		// Convert conditions from OpenAPI model and extract Ready condition for ready status

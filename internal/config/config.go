@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"text/template"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
@@ -27,15 +26,15 @@ type LabelSelectorList []LabelSelector
 
 // SentinelConfig represents the Sentinel configuration
 type SentinelConfig struct {
-	ResourceType     string               `mapstructure:"resource_type"`
-	PollInterval     time.Duration        `mapstructure:"poll_interval"`
-	MaxAgeNotReady   time.Duration        `mapstructure:"max_age_not_ready"`
-	MaxAgeReady      time.Duration        `mapstructure:"max_age_ready"`
-	ResourceSelector LabelSelectorList    `mapstructure:"resource_selector"`
-	HyperFleetAPI    *HyperFleetAPIConfig `mapstructure:"hyperfleet_api"`
-	MessageData      map[string]string    `mapstructure:"message_data"`
-	Topic            string               `mapstructure:"topic"`
-	MessagingSystem  string               `mapstructure:"messaging_system"`
+	ResourceType     string                 `mapstructure:"resource_type"`
+	PollInterval     time.Duration          `mapstructure:"poll_interval"`
+	MaxAgeNotReady   time.Duration          `mapstructure:"max_age_not_ready"`
+	MaxAgeReady      time.Duration          `mapstructure:"max_age_ready"`
+	ResourceSelector LabelSelectorList      `mapstructure:"resource_selector"`
+	HyperFleetAPI    *HyperFleetAPIConfig   `mapstructure:"hyperfleet_api"`
+	MessageData      map[string]interface{} `mapstructure:"message_data"`
+	Topic            string                 `mapstructure:"topic"`
+	MessagingSystem  string                 `mapstructure:"messaging_system"`
 }
 
 // HyperFleetAPIConfig defines the HyperFleet API client configuration
@@ -71,7 +70,6 @@ func NewSentinelConfig() *SentinelConfig {
 			// Endpoint is required and must be set in config file
 			Timeout: 5 * time.Second,
 		},
-		MessageData:     make(map[string]string),
 		MessagingSystem: defaultMessagingSystem,
 	}
 }
@@ -101,6 +99,15 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
+	// Validate message_data leaves against the raw viper value, because
+	// mapstructure silently drops nil-valued keys during Unmarshal — meaning
+	// a blank `id:` in the YAML disappears before Validate() ever sees it.
+	if rawMD, ok := v.Get("message_data").(map[string]interface{}); ok {
+		if err := validateMessageDataLeaves(rawMD, "message_data"); err != nil {
+			return nil, fmt.Errorf("invalid config: %w", err)
+		}
+	}
+
 	// Override topic from environment variable if explicitly provided
 	// Environment variable takes precedence over config file (including empty value to clear)
 	if topic, ok := os.LookupEnv("BROKER_TOPIC"); ok {
@@ -116,44 +123,9 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	// Validate message data templates
-	if err := cfg.ValidateTemplates(); err != nil {
-		return nil, fmt.Errorf("invalid message_data templates: %w", err)
-	}
-
 	log.Infof(ctx, "Configuration loaded successfully: resource_type=%s", cfg.ResourceType)
 
 	return cfg, nil
-}
-
-// ValidateTemplates validates Go template syntax in message_data fields
-// Templates are validated at startup to fail-fast on invalid configuration
-func (c *SentinelConfig) ValidateTemplates() error {
-	log := logger.NewHyperFleetLogger()
-	ctx := context.Background()
-
-	if len(c.MessageData) == 0 {
-		log.Warn(ctx, "message_data is empty, CloudEvents will have minimal data payload")
-		return nil
-	}
-
-	// Validate each template expression
-	for key, tmplStr := range c.MessageData {
-		// Wrap the template string in {{ }} if not already wrapped
-		// This allows both ".id" and "{{.id}}" syntax in YAML
-		if !strings.HasPrefix(tmplStr, "{{") {
-			tmplStr = "{{" + tmplStr + "}}"
-		}
-
-		// Try to parse and validate the template
-		_, err := template.New(key).Parse(tmplStr)
-		if err != nil {
-			return fmt.Errorf("invalid template for message_data.%s (%s): %w", key, c.MessageData[key], err)
-		}
-	}
-
-	log.V(2).Infof(ctx, "Validated %d message_data templates", len(c.MessageData))
-	return nil
 }
 
 // Validate validates the configuration
@@ -184,6 +156,37 @@ func (c *SentinelConfig) Validate() error {
 		return fmt.Errorf("max_age_ready must be positive")
 	}
 
+	if c.MessageData == nil {
+		return fmt.Errorf("message_data is required")
+	}
+
+	if err := validateMessageDataLeaves(c.MessageData, "message_data"); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateMessageDataLeaves recursively checks that every leaf value in a
+// message_data map is a non-empty string (CEL expression). nil values and
+// empty strings are rejected early so that the error is reported at config
+// load time rather than silently producing a broken payload.
+func validateMessageDataLeaves(data map[string]interface{}, path string) error {
+	for k, v := range data {
+		fullKey := path + "." + k
+		switch val := v.(type) {
+		case nil:
+			return fmt.Errorf("%s: nil value is not allowed; every leaf must be a non-empty CEL expression string (was the field left blank in the config?)", fullKey)
+		case string:
+			if val == "" {
+				return fmt.Errorf("%s: empty CEL expression is not allowed; every leaf must be a non-empty CEL expression string", fullKey)
+			}
+		case map[string]interface{}:
+			if err := validateMessageDataLeaves(val, fullKey); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 

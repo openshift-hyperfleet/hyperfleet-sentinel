@@ -50,15 +50,35 @@ hyperfleet_api:
   # Request timeout for API calls.
   timeout: 5s
 
-# Message data template configuration (optional).
-# Define custom fields to include in CloudEvents data payload.
-# Uses Go template syntax - both .field and {{.field}} formats are supported.
-# Templates can reference any field from the Resource object returned by the API.
+# CloudEvent payload configuration.
+#
+# Each property value is a CEL expression evaluated against "resource" and "reason".
+# A nested map builds a nested object — each leaf value is still a CEL expression.
+#
+# Available CEL variables:
+#   resource — the HyperFleet resource (id, kind, href, generation, status, labels, ...)
+#   reason   — the decision reason string (e.g. "max_age_exceeded")
+#
+# Examples:
+#   field: "resource.id"                                    — field access
+#   field: 'resource.status.ready ? "Ready" : "NotReady"'  — conditional
+#   field: '"constant"'                                     — CEL string literal
+#   field: "reason"                                         — decision reason
+#
+# Note: if a field path does not exist on the resource, the key is silently omitted
+# from the payload with no error. Check your field names carefully.
 message_data:
-  resource_id: .id
-  resource_type: .kind
-  href: .href
-  generation: .generation
+  id: "resource.id"
+  kind: "resource.kind"
+  href: "resource.href"
+  generation: "resource.generation"
+
+#  For nodepools, the message should contain owner_references
+#  
+#  owner_references:
+#    id: "resource.owner_references.id"
+#    href: "resource.owner_references.href"
+#    kind: "resource.owner_references.kind"
 
 # See broker.yaml for configuration options.
 #

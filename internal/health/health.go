@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
@@ -71,10 +72,27 @@ func (r *ReadinessChecker) writeJSON(w http.ResponseWriter, statusCode int, v in
 }
 
 // HealthzHandler returns an http.HandlerFunc for the /healthz liveness endpoint.
-// It always returns 200 OK with {"status":"ok"} since liveness only checks
-// that the process can respond to HTTP requests.
-func (r *ReadinessChecker) HealthzHandler() http.HandlerFunc {
+// It returns 200 OK when the last poll is recent or not yet occurred (pre-first poll),
+// or 503 Service Unavailable when the last poll exceeds the staleness threshold.
+func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold time.Duration) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
+		if lastPollFn == nil || threshold <= 0 {
+			r.writeJSON(w, http.StatusInternalServerError, healthResponse{Status: "invalid health configuration"})
+			return
+		}
+
+		lastPoll := lastPollFn()
+
+		if lastPoll.IsZero() {
+			r.writeJSON(w, http.StatusOK, healthResponse{Status: "ok"})
+			return
+		}
+
+		if time.Since(lastPoll) > threshold {
+			r.writeJSON(w, http.StatusServiceUnavailable, healthResponse{Status: "poll stale"})
+			return
+		}
+
 		r.writeJSON(w, http.StatusOK, healthResponse{Status: "ok"})
 	}
 }

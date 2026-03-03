@@ -13,12 +13,14 @@ HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, make
 ### Getting Started
 
 1. **Clone the repository**:
+
    ```bash
    git clone https://github.com/openshift-hyperfleet/hyperfleet-sentinel.git
    cd hyperfleet-sentinel
    ```
 
 2. **Generate the OpenAPI client**:
+
    ```bash
    make generate
    ```
@@ -30,16 +32,19 @@ HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, make
    Both the downloaded spec and generated client code are **not committed** to git and must be regenerated locally.
 
 3. **Download dependencies**:
+
    ```bash
    make download
    ```
 
 4. **Build the binary**:
+
    ```bash
    make build
    ```
 
 5. **Run tests**:
+
    ```bash
    make test
    ```
@@ -85,6 +90,7 @@ This project follows the [rh-trex](https://github.com/openshift-online/rh-trex) 
 The client is generated using Docker/Podman to ensure consistency across development environments.
 
 To use a different branch or tag:
+
 ```bash
 make generate OPENAPI_SPEC_REF=v1.0.0    # Use a specific tag
 make generate OPENAPI_SPEC_REF=develop   # Use a branch
@@ -140,19 +146,22 @@ An empty or omitted `resource_selector` means watch all resources. Multiple sele
 
 For detailed instructions on deploying multiple Sentinel instances with different resource selectors, see [docs/multi-instance-deployment.md](docs/multi-instance-deployment.md).
 
-#### Message Data Templates
+#### Message Data
 
-Define custom fields to include in CloudEvents using Go template syntax. Both `.field` and `{{.field}}` formats are supported:
+Define custom fields to include in CloudEvents using CEL syntax. The evaluation CEL engine has access to variables:
+
+- `resource` : contains the resource fetched from HyperFleet API
+- `reason` : decision outcome of Sentinel for the resource
 
 ```yaml
 message_data:
-  resource_id: .id
-  resource_type: .kind
-  href: .href
-  generation: .generation
+  id: resource.id
+  kind: resource.kind
+  href: resource.href
+  generation: resource.generation
 ```
 
-Templates can reference any field from the Resource object returned by the API. The example above follows the `ObjectReference` pattern (id, kind, href) with generation for reconciliation tracking.
+CEL expressions can reference any field from the Resource object returned by the API. The example above follows the `ObjectReference` pattern (id, kind, href) with generation for reconciliation tracking.
 
 ### Broker Configuration
 
@@ -165,11 +174,13 @@ Broker configuration is managed by the [hyperfleet-broker library](https://githu
 #### Environment Variables (Override broker.yaml)
 
 **RabbitMQ:**
+
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `BROKER_RABBITMQ_URL` | Complete connection URL | `amqp://user:pass@localhost:5672/vhost` |
 
 **Google Pub/Sub:**
+
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `BROKER_GOOGLEPUBSUB_PROJECT_ID` | GCP project ID | `my-gcp-project` |
@@ -198,7 +209,7 @@ The service validates configuration at startup and will fail fast on errors:
 - **Required fields present**: `resource_type`, `hyperfleet_api.endpoint`
 - **Valid enums**: `resource_type` must be clusters/nodepools
 - **Valid durations**: All interval fields must be positive
-- **Valid templates**: All `message_data` templates must be valid Go templates
+- **Valid CEL expressions**: All `message_data` values must be valid CEL expressions
 - **Broker configuration**: Managed by hyperfleet-broker library (see broker.yaml)
 
 ### Configuration Examples
@@ -230,10 +241,10 @@ hyperfleet_api:
   timeout: 30s
 
 message_data:
-  resource_id: .id
-  resource_type: .kind
-  href: .href
-  generation: .generation
+  id: resource.id
+  kind: resource.kind
+  href: resource.href
+  generation: resource.generation
 ```
 
 ## Observability
@@ -262,32 +273,41 @@ All metrics include `resource_type` and `resource_selector` labels for filtering
 A pre-built Grafana dashboard is available at `deployments/dashboards/sentinel-metrics.json` with 8 visualization panels covering all metrics.
 
 To import:
+
 1. Navigate to Grafana → Dashboards → Import
 2. Upload `deployments/dashboards/sentinel-metrics.json`
 3. Select your Prometheus datasource
 
-### GKE Integration with Google Cloud Managed Prometheus
+### Prometheus Integration
 
-Sentinel integrates with Google Cloud Managed Prometheus (GMP) for automated metrics collection:
+Sentinel supports two monitoring resource types for automatic metrics scraping:
+
+| Environment | Resource | Helm Value |
+|-------------|----------|------------|
+| GKE with Google Cloud Managed Prometheus | PodMonitoring | `monitoring.podMonitoring.enabled=true` |
+| Prometheus Operator (OpenShift, vanilla K8s) | ServiceMonitor | `monitoring.serviceMonitor.enabled=true` |
 
 ```bash
-# Deploy with PodMonitoring enabled (default)
+# GKE with GMP (PodMonitoring)
 helm install sentinel ./deployments/helm/sentinel \
   --namespace hyperfleet-system \
-  --create-namespace
+  --set monitoring.podMonitoring.enabled=true
 
-# Verify metrics in Google Cloud Console
-# Navigate to: Monitoring → Metrics Explorer
-# Query: hyperfleet_sentinel_pending_resources
+# Prometheus Operator (ServiceMonitor)
+helm install sentinel ./deployments/helm/sentinel \
+  --namespace hyperfleet-system \
+  --set monitoring.serviceMonitor.enabled=true \
+  --set monitoring.serviceMonitor.additionalLabels.release=prometheus
 ```
 
-GMP automatically discovers the PodMonitoring resource and begins scraping metrics. No additional configuration required.
+Both resources can coexist for hybrid environments. See [docs/metrics.md](docs/metrics.md) for detailed configuration options.
 
 #### Alerting
 
-Configure alerts in **Google Cloud Console → Monitoring → Alerting** using the PromQL expressions provided in [docs/metrics.md](docs/metrics.md).
+Configure alerts using the PromQL expressions provided in [docs/metrics.md](docs/metrics.md).
 
 Recommended alerts:
+
 - SentinelHighPendingResources - High number of pending resources
 - SentinelAPIErrorRateHigh - High API error rate
 - SentinelBrokerErrorRateHigh - High broker error rate
@@ -297,15 +317,6 @@ Recommended alerts:
 - SentinelDown - Sentinel service is down
 
 See [docs/metrics.md](docs/metrics.md) for complete alerting rules documentation.
-
-### Accessing Metrics
-
-Access metrics through Google Cloud Console:
-1. Navigate to **Monitoring → Metrics Explorer**
-2. Select resource type: **Prometheus Target**
-3. Query: `hyperfleet_sentinel_pending_resources`
-
-Metrics are automatically collected by Google Cloud Managed Prometheus via the PodMonitoring resource.
 
 ## Repository Access
 

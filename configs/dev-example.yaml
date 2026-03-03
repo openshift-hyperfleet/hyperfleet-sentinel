@@ -44,14 +44,39 @@ hyperfleet_api:
   # Shorter timeout for faster failure detection in dev.
   timeout: 10s
 
-# Message data template configuration (optional).
-# Minimal set for development.
-# Uses Go template syntax - both .field and {{.field}} formats are supported.
+# CloudEvent payload configuration.
+#
+# Each property value is a CEL expression evaluated against "resource" and "reason".
+# A nested map builds a nested object — each leaf value is still a CEL expression.
+#
+# Available CEL variables:
+#   resource — the HyperFleet resource (id, kind, href, generation, status, labels, ...)
+#   reason   — the decision reason string (e.g. "max_age_exceeded")
+#
+# Examples:
+#   field: "resource.id"                                    — field access
+#   field: 'resource.status.ready ? "Ready" : "NotReady"'  — conditional
+#   field: '"constant"'                                     — CEL string literal
+#   field: "reason"                                         — decision reason
+#
+# Note: if a field path does not exist on the resource, the key is silently omitted
+# from the payload with no error. Check your field names carefully.
 message_data:
-  id: .id
-  kind: .kind
-  href: .href
-  generation: .generation
+  id: "resource.id"
+  kind: "resource.kind"
+  href: "resource.href"
+  generation: "resource.generation"
+
+#  For nodepools, the message should contain owner_references
+#  
+#  owner_references:
+#    id: "resource.owner_references.id"
+#    href: "resource.owner_references.href"
+#    kind: "resource.owner_references.kind"
+
+  # examples of other possible fields
+  #ready_status: 'resource.status.conditions.filter(c, c.type=="Ready")[0].value == "True" ? "Ready" : "NotReady"'
+  #origin: "hyperfleet-sentinel"
 
 # For local development, use environment variable:
 #   export BROKER_RABBITMQ_URL=amqp://guest:guest@localhost:5672/

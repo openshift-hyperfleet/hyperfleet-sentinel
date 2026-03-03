@@ -3,6 +3,7 @@ package sentinel
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
@@ -12,6 +13,7 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/payload"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
@@ -25,6 +27,10 @@ type Sentinel struct {
 	decisionEngine *engine.DecisionEngine
 	publisher      broker.Publisher
 	logger         logger.HyperFleetLogger
+
+	mu                 sync.RWMutex
+	lastSuccessfulPoll time.Time
+	payloadBuilder     *payload.Builder
 }
 
 // NewSentinel creates a new sentinel
@@ -34,14 +40,30 @@ func NewSentinel(
 	decisionEngine *engine.DecisionEngine,
 	pub broker.Publisher,
 	log logger.HyperFleetLogger,
-) *Sentinel {
-	return &Sentinel{
+) (*Sentinel, error) {
+	s := &Sentinel{
 		config:         cfg,
 		client:         client,
 		decisionEngine: decisionEngine,
 		publisher:      pub,
 		logger:         log,
 	}
+
+	if cfg.MessageData != nil {
+		builder, err := payload.NewBuilder(cfg.MessageData, log)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create payload builder: %w", err)
+		}
+		s.payloadBuilder = builder
+	}
+
+	return s, nil
+}
+
+func (s *Sentinel) LastSuccessfulPoll() time.Time {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.lastSuccessfulPoll
 }
 
 // Start starts the polling loop
@@ -126,19 +148,15 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Add decision reason to context for structured logging
 			eventCtx := logger.WithDecisionReason(evalCtx, decision.Reason)
 
+			eventData := s.buildEventData(eventCtx, resource, decision)
+
 			// Create CloudEvent
 			event := cloudevents.NewEvent()
 			event.SetSpecVersion(cloudevents.VersionV1)
 			event.SetType(fmt.Sprintf("com.redhat.hyperfleet.%s.reconcile", resource.Kind))
 			event.SetSource("hyperfleet-sentinel")
 			event.SetID(uuid.New().String())
-			if err := event.SetData(cloudevents.ApplicationJSON, map[string]interface{}{
-				"kind":       resource.Kind,
-				"id":         resource.ID,
-				"generation": resource.Generation,
-				"href":       resource.Href,
-				"reason":     decision.Reason,
-			}); err != nil {
+			if err := event.SetData(cloudevents.ApplicationJSON, eventData); err != nil {
 				s.logger.Errorf(eventCtx, "Failed to set event data resource_id=%s error=%v", resource.ID, err)
 				evalSpan.End()
 				continue
@@ -204,5 +222,19 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	s.logger.Infof(ctx, "Trigger cycle completed total=%d published=%d skipped=%d duration=%.3fs",
 		len(resources), published, skipped, duration)
 
+	s.mu.Lock()
+	s.lastSuccessfulPoll = time.Now()
+	s.mu.Unlock()
+
 	return nil
+}
+
+// buildEventData builds the CloudEvent data payload for a resource using the
+// configured payload builder.
+func (s *Sentinel) buildEventData(ctx context.Context, resource *client.Resource, decision engine.Decision) map[string]interface{} {
+	if s.payloadBuilder == nil {
+		s.logger.Errorf(ctx, "payload builder not initialized for resource_id=%s", resource.ID)
+		return map[string]interface{}{}
+	}
+	return s.payloadBuilder.BuildPayload(ctx, resource, decision.Reason)
 }

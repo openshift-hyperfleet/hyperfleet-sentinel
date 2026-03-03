@@ -448,6 +448,74 @@ Access metrics in **Google Cloud Console → Metrics Explorer**:
    ```
 
 
+### Prometheus Operator (OpenShift, vanilla Kubernetes)
+
+For clusters using [Prometheus Operator](https://github.com/prometheus-operator/prometheus-operator) (common in OpenShift, Rancher, and vanilla Kubernetes environments), the Helm chart can create a ServiceMonitor resource.
+
+#### 1. Enable ServiceMonitor
+
+Deploy Sentinel with ServiceMonitor enabled:
+
+```bash
+helm install sentinel ./deployments/helm/sentinel \
+  --namespace hyperfleet-system \
+  --create-namespace \
+  --set monitoring.serviceMonitor.enabled=true
+```
+
+#### 2. Match Prometheus Selector Labels
+
+Most Prometheus Operator installations require ServiceMonitors to have specific labels to be picked up. Check your Prometheus instance's `serviceMonitorSelector`:
+
+```bash
+kubectl get prometheus -A -o jsonpath='{.items[*].spec.serviceMonitorSelector}'
+```
+
+Then set the matching labels:
+
+```bash
+helm install sentinel ./deployments/helm/sentinel \
+  --namespace hyperfleet-system \
+  --set monitoring.serviceMonitor.enabled=true \
+  --set monitoring.serviceMonitor.additionalLabels.release=prometheus
+```
+
+#### 3. Verify Metrics Collection
+
+```bash
+# Check ServiceMonitor was created
+kubectl get servicemonitor -n hyperfleet-system
+
+# Verify the ServiceMonitor details (name follows Helm release: <release>-sentinel)
+kubectl get servicemonitor -n hyperfleet-system -l app.kubernetes.io/name=sentinel
+
+# Verify the Service exposes the metrics port
+kubectl get svc -n hyperfleet-system -l app.kubernetes.io/name=sentinel
+```
+
+#### ServiceMonitor Configuration Options
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `monitoring.serviceMonitor.enabled` | `false` | Create ServiceMonitor resource |
+| `monitoring.serviceMonitor.interval` | `30s` | Scrape interval |
+| `monitoring.serviceMonitor.scrapeTimeout` | `10s` | Scrape timeout (must be less than interval) |
+| `monitoring.serviceMonitor.additionalLabels` | `{}` | Labels for Prometheus selector matching |
+| `monitoring.serviceMonitor.namespaceSelector` | `{}` | Target namespaces for cross-namespace monitoring |
+| `monitoring.serviceMonitor.honorLabels` | `true` | Honor labels from target to avoid overwriting |
+| `monitoring.serviceMonitor.metricRelabeling` | `[]` | Metric relabel configs |
+| `monitoring.serviceMonitor.namespace` | `""` | Override namespace for ServiceMonitor creation |
+
+> **Note**: When `monitoring.serviceMonitor.namespace` is set, a `namespaceSelector.matchNames` is automatically added pointing to the release namespace, so Prometheus can discover the Service across namespaces. To use a custom `namespaceSelector` instead, set `monitoring.serviceMonitor.namespaceSelector` explicitly.
+
+#### Coexistence with PodMonitoring
+
+ServiceMonitor and PodMonitoring can be enabled simultaneously for environments that support both. Each resource is independently gated:
+
+- **GKE with GMP**: Use `monitoring.podMonitoring.enabled=true`
+- **OpenShift / vanilla Kubernetes**: Use `monitoring.serviceMonitor.enabled=true`
+- **Hybrid**: Both can be enabled without conflict
+
 ---
 
 ## Querying Metrics

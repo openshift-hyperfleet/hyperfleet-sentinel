@@ -145,12 +145,19 @@ func TestTrigger_Success(t *testing.T) {
 		Topic:          "test-topic",
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
-	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
 
 	// Execute
-	err := s.trigger(ctx)
+	err = s.trigger(ctx)
 	// Verify
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
@@ -212,12 +219,19 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 		Topic:          "test-topic",
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
-	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
 
 	// Execute
-	err := s.trigger(ctx)
+	err = s.trigger(ctx)
 	// Verify
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
@@ -256,12 +270,19 @@ func TestTrigger_FetchError(t *testing.T) {
 		Topic:          "test-topic",
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
-	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
 
 	// Execute
-	err := s.trigger(ctx)
+	err = s.trigger(ctx)
 
 	// Verify
 	if err == nil {
@@ -305,12 +326,19 @@ func TestTrigger_PublishError(t *testing.T) {
 		Topic:          "test-topic",
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
-	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
 
 	// Execute
-	err := s.trigger(ctx)
+	err = s.trigger(ctx)
 	// Verify - trigger should succeed even if publish fails (graceful degradation)
 	if err != nil {
 		t.Errorf("Expected no error (graceful degradation), got %v", err)
@@ -353,12 +381,19 @@ func TestTrigger_MixedResources(t *testing.T) {
 		Topic:          "test-topic",
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
-	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
 
 	// Execute
-	err := s.trigger(ctx)
+	err = s.trigger(ctx)
 	// Verify
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
@@ -377,6 +412,173 @@ func TestTrigger_MixedResources(t *testing.T) {
 		if topic != "test-topic" {
 			t.Errorf("Expected topic 'test-topic', got '%s'", topic)
 		}
+	}
+}
+
+// TestTrigger_WithMessageDataConfig verifies that configured field definitions are
+// used in place of the hardcoded payload when MessageData is set.
+func TestTrigger_WithMessageDataConfig(t *testing.T) {
+	ctx := context.Background()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cluster := createMockCluster("cluster-xyz", 2, 2, true, time.Now().Add(-31*time.Minute))
+		response := createMockClusterList([]map[string]interface{}{cluster})
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Logf("Error encoding response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	mockPublisher := &MockPublisher{}
+	log := logger.NewHyperFleetLogger()
+
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry, "test")
+
+	cfg := &config.SentinelConfig{
+		ResourceType:   "clusters",
+		Topic:          "test-topic",
+		MaxAgeNotReady: 10 * time.Second,
+		MaxAgeReady:    30 * time.Minute,
+		MessageData: map[string]interface{}{
+			"id":     "resource.id",
+			"kind":   "resource.kind",
+			"origin": `"sentinel"`,
+		},
+	}
+
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
+
+	if err := s.trigger(ctx); err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if len(mockPublisher.publishedEvents) != 1 {
+		t.Fatalf("Expected 1 published event, got %d", len(mockPublisher.publishedEvents))
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(mockPublisher.publishedEvents[0].Data(), &data); err != nil {
+		t.Fatalf("Failed to unmarshal event data: %v", err)
+	}
+
+	if data["id"] != "cluster-xyz" {
+		t.Errorf("Expected id 'cluster-xyz', got %v", data["id"])
+	}
+	if data["kind"] != "Cluster" {
+		t.Errorf("Expected kind 'Cluster', got %v", data["kind"])
+	}
+	if data["origin"] != "sentinel" {
+		t.Errorf("Expected origin 'sentinel', got %v", data["origin"])
+	}
+	// Hardcoded fields should NOT be present when builder is configured
+	if _, ok := data["reason"]; ok {
+		t.Errorf("Expected 'reason' to be absent (hardcoded field), but found it")
+	}
+}
+
+// TestTrigger_WithNestedMessageData verifies that nested objects are correctly built.
+func TestTrigger_WithNestedMessageData(t *testing.T) {
+	ctx := context.Background()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cluster := createMockCluster("cluster-nest", 1, 1, true, time.Now().Add(-31*time.Minute))
+		response := createMockClusterList([]map[string]interface{}{cluster})
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Logf("Error encoding response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	mockPublisher := &MockPublisher{}
+	log := logger.NewHyperFleetLogger()
+
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry, "test")
+
+	cfg := &config.SentinelConfig{
+		ResourceType:   "clusters",
+		Topic:          "test-topic",
+		MaxAgeNotReady: 10 * time.Second,
+		MaxAgeReady:    30 * time.Minute,
+		MessageData: map[string]interface{}{
+			"id": "resource.id",
+			"resource": map[string]interface{}{
+				"id":   "resource.id",
+				"kind": "resource.kind",
+			},
+		},
+	}
+
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
+
+	if err := s.trigger(ctx); err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if len(mockPublisher.publishedEvents) != 1 {
+		t.Fatalf("Expected 1 published event, got %d", len(mockPublisher.publishedEvents))
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(mockPublisher.publishedEvents[0].Data(), &data); err != nil {
+		t.Fatalf("Failed to unmarshal event data: %v", err)
+	}
+
+	nested, ok := data["resource"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected 'resource' to be a nested map, got %T", data["resource"])
+	}
+	if nested["id"] != "cluster-nest" {
+		t.Errorf("Expected nested id 'cluster-nest', got %v", nested["id"])
+	}
+	if nested["kind"] != "Cluster" {
+		t.Errorf("Expected nested kind 'Cluster', got %v", nested["kind"])
+	}
+}
+
+// TestBuildEventData_WithBuilder tests buildEventData directly with a configured builder.
+func TestBuildEventData_WithBuilder(t *testing.T) {
+	cfg := &config.SentinelConfig{
+		ResourceType:   "clusters",
+		MaxAgeNotReady: 10 * time.Second,
+		MaxAgeReady:    30 * time.Minute,
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
+	}
+	log := logger.NewHyperFleetLogger()
+	s, err := NewSentinel(cfg, nil, nil, nil, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
+
+	resource := &client.Resource{
+		ID:         "cls-direct",
+		Kind:       "Cluster",
+		Href:       "/api/v1/clusters/cls-direct",
+		Generation: 1,
+	}
+	decision := engine.Decision{ShouldPublish: true, Reason: "max_age_exceeded"}
+	ctx := logger.WithDecisionReason(context.Background(), decision.Reason)
+
+	data := s.buildEventData(ctx, resource, decision)
+	if data["id"] != "cls-direct" {
+		t.Errorf("Expected id 'cls-direct', got %v", data["id"])
+	}
+	if data["kind"] != "Cluster" {
+		t.Errorf("Expected kind 'Cluster', got %v", data["kind"])
 	}
 }
 
