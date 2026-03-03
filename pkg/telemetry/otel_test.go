@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,9 +48,9 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 	ctx := context.Background()
 
 	// Create mock OTLP HTTP server that accepts trace data
-	receivedRequests := 0
+	var receivedRequests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedRequests++
+		receivedRequests.Add(1)
 		// Verify it's an OTLP traces request
 		if r.URL.Path != "/v1/traces" {
 			t.Errorf("Expected path /v1/traces, got %s", r.URL.Path)
@@ -87,6 +88,10 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 		t.Error("Expected tracer to be available")
 	}
 
+	// Emit at least one span so exporter performs an OTLP request.
+	_, span := tracer.Start(ctx, "otlp-export-test-span")
+	span.End()
+
 	// Test shutdown - should now succeed against mock server
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -94,6 +99,10 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 	err = Shutdown(shutdownCtx, tp)
 	if err != nil {
 		t.Errorf("Failed to shutdown trace provider: %v", err)
+	}
+
+	if got := receivedRequests.Load(); got == 0 {
+		t.Error("Expected at least one OTLP request, got 0")
 	}
 }
 
@@ -176,6 +185,11 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 			if tt.expectedSample {
 				if !span.SpanContext().IsValid() {
 					t.Error("Expected valid span context for sampling=true")
+				}
+			} else {
+				// Add missing validation for expectedSample=false
+				if span.SpanContext().IsValid() && span.SpanContext().TraceFlags().IsSampled() {
+					t.Error("Expected span to NOT be sampled for sampling=false")
 				}
 			}
 			span.End()
