@@ -217,35 +217,15 @@ rate(hyperfleet_broker_messages_published_total{component="sentinel"}[5m])
 
 ---
 
-### 8. `hyperfleet_broker_messages_consumed_total`
+### 8. `hyperfleet_broker_errors_total`
 
 **Type:** Counter
 
-**Description:** Total number of messages consumed from the broker. Automatically incremented by the broker library when a message is received.
+**Description:** Total number of message processing errors in the broker library. Covers conversion errors and publish failures.
 
 **Labels:**
 - `topic`: Broker topic
-- `component`: Component name
-- `version`: Component version
-
-**Example Query:**
-
-```promql
-# Consumed messages per second
-rate(hyperfleet_broker_messages_consumed_total{component="sentinel"}[5m])
-```
-
----
-
-### 9. `hyperfleet_broker_errors_total`
-
-**Type:** Counter
-
-**Description:** Total number of message processing errors in the broker library. Covers conversion errors, publish failures, and handler errors.
-
-**Labels:**
-- `topic`: Broker topic
-- `error_type`: Type of error (`conversion`, `publish`, `handler`)
+- `error_type`: Type of error (`conversion`, `publish`)
 - `component`: Component name
 - `version`: Component version
 
@@ -258,26 +238,7 @@ sum by (error_type) (rate(hyperfleet_broker_errors_total{component="sentinel"}[5
 
 ---
 
-### 10. `hyperfleet_broker_message_duration_seconds`
-
-**Type:** Histogram
-
-**Description:** Duration of message handler execution in seconds. Useful for tracking message processing latency.
-
-**Labels:**
-- `topic`: Broker topic
-- `component`: Component name
-- `version`: Component version
-
-**Buckets:** 0.1, 0.5, 1, 2, 5, 10, 30, 60, 120
-
-**Example Query:**
-
-```promql
-# 95th percentile message processing duration
-histogram_quantile(0.95,
-  rate(hyperfleet_broker_message_duration_seconds_bucket{component="sentinel"}[5m]))
-```
+> **Note:** The broker library also registers consumer-side metrics (`messages_consumed_total`, `message_duration_seconds`) that are not documented here because the Sentinel only publishes messages. See the [hyperfleet-broker](https://github.com/openshift-hyperfleet/hyperfleet-broker) documentation for the full metric catalog.
 
 ---
 
