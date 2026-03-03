@@ -150,6 +150,81 @@ tidy: ## Tidy go.mod
 download: ## Download dependencies
 	$(GO) mod download
 
+##@ Helm Charts
+
+HELM_CHART_DIR := deployments/helm/sentinel
+
+.PHONY: test-helm
+test-helm: ## Test Helm charts (lint, template, validate)
+	@echo "Testing Helm charts..."
+	@if ! command -v helm > /dev/null; then \
+		echo "Error: helm not found. Please install Helm:"; \
+		echo "  brew install helm  # macOS"; \
+		echo "  curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash  # Linux"; \
+		exit 1; \
+	fi
+	@echo "Linting Helm chart..."
+	helm lint $(HELM_CHART_DIR)/
+	@echo ""
+	@echo "Testing template rendering with default values..."
+	helm template test-release $(HELM_CHART_DIR)/ > /dev/null
+	@echo "Default values template OK"
+	@echo ""
+	@echo "Testing template with custom image registry..."
+	helm template test-release $(HELM_CHART_DIR)/ \
+		--set image.registry=quay.io/openshift-hyperfleet \
+		--set image.tag=v1.0.0 > /dev/null
+	@echo "Custom image config template OK"
+	@echo ""
+	@echo "Testing template with PDB enabled..."
+	helm template test-release $(HELM_CHART_DIR)/ \
+		--set podDisruptionBudget.enabled=true \
+		--set podDisruptionBudget.maxUnavailable=1 > /dev/null
+	@echo "PDB config template OK"
+	@echo ""
+	@echo "Testing template with PDB disabled..."
+	helm template test-release $(HELM_CHART_DIR)/ \
+		--set podDisruptionBudget.enabled=false > /dev/null
+	@echo "PDB disabled template OK"
+	@echo ""
+	@echo "Testing template with RabbitMQ broker..."
+	helm template test-release $(HELM_CHART_DIR)/ \
+		--set broker.type=rabbitmq \
+		--set broker.rabbitmq.url=amqp://user:pass@rabbitmq:5672/hyperfleet > /dev/null
+	@echo "RabbitMQ broker template OK"
+	@echo ""
+	@echo "Testing template with Google Pub/Sub broker..."
+	helm template test-release $(HELM_CHART_DIR)/ \
+		--set broker.type=googlepubsub \
+		--set broker.googlepubsub.projectId=test-project > /dev/null
+	@echo "Google Pub/Sub broker template OK"
+	@echo ""
+	@echo "Testing template with PodMonitoring enabled..."
+	helm template test-release $(HELM_CHART_DIR)/ \
+		--set monitoring.podMonitoring.enabled=true \
+		--set monitoring.podMonitoring.interval=15s > /dev/null
+	@echo "PodMonitoring config template OK"
+	@echo ""
+	@echo "Testing template with ServiceMonitor enabled..."
+	helm template test-release $(HELM_CHART_DIR)/ \
+		--set monitoring.serviceMonitor.enabled=true \
+		--set monitoring.serviceMonitor.interval=30s > /dev/null
+	@echo "ServiceMonitor config template OK"
+	@echo ""
+	@echo "Testing template with PrometheusRule enabled..."
+	helm template test-release $(HELM_CHART_DIR)/ \
+		--set monitoring.prometheusRule.enabled=true > /dev/null
+	@echo "PrometheusRule config template OK"
+	@echo ""
+	@echo "Testing template with custom resource selector..."
+	helm template test-release $(HELM_CHART_DIR)/ \
+		--set config.resourceType=nodepools \
+		--set config.pollInterval=10s \
+		--set config.maxAgeReady=1h > /dev/null
+	@echo "Custom resource selector template OK"
+	@echo ""
+	@echo "All Helm chart tests passed!"
+
 ##@ Container Images
 
 .PHONY: image
