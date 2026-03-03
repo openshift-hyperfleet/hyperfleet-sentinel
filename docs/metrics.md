@@ -610,7 +610,7 @@ kubectl get endpoints sentinel -n hyperfleet-system
 ### Metrics Architecture
 
 ```text
-[Sentinel Pod] → [Service (ClusterIP):8080] → [PodMonitoring] → [Prometheus] → [Metrics Explorer] → [Google Cloud Console]
+[Sentinel Pod] → [Service (ClusterIP):9090] → [PodMonitoring] → [Prometheus] → [Metrics Explorer] → [Google Cloud Console]
 ```
 
 Metrics are collected internally by Google Cloud Managed Prometheus (GMP) via the PodMonitoring.
@@ -652,7 +652,7 @@ Metrics are collected internally by Google Cloud Managed Prometheus (GMP) via th
    ```bash
    kubectl get svc sentinel -n hyperfleet-system
    kubectl get endpoints sentinel -n hyperfleet-system
-   # Should show pod IP:8080
+   # Should show pod IP:9090
    ```
 
 4. **Review GMP collector logs:**
@@ -663,9 +663,9 @@ Metrics are collected internally by Google Cloud Managed Prometheus (GMP) via th
 
 5. **Test metrics endpoint directly:**
    ```bash
-   kubectl port-forward -n hyperfleet-system svc/sentinel 8080:8080
+   kubectl port-forward -n hyperfleet-system svc/sentinel 9090:9090
    # In another terminal:
-   curl http://localhost:8080/metrics | grep hyperfleet_sentinel
+   curl http://localhost:9090/metrics | grep hyperfleet_sentinel
    ```
 
 6. **Check if metrics appear in Google Cloud Console:**
