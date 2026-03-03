@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/rabbitmq"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -58,7 +59,8 @@ func NewRabbitMQTestContainer(ctx context.Context) (*RabbitMQTestContainer, erro
 		"broker.rabbitmq.url": amqpURL,
 	}
 
-	publisher, err := broker.NewPublisher(log, configMap)
+	metricsRecorder := broker.NewMetricsRecorder("sentinel-test", "test", prometheus.NewRegistry())
+	publisher, err := broker.NewPublisher(log, metricsRecorder, configMap)
 	if err != nil {
 		container.Terminate(ctx)
 		return nil, fmt.Errorf("failed to create broker publisher: %w", err)
