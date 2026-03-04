@@ -107,10 +107,11 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	// Convert label selectors to map for filtering
 	labelSelector := s.config.ResourceSelector.ToMap()
 
-	// Fetch resources from HyperFleet API
-	resources, err := s.client.FetchResources(ctx, client.ResourceType(s.config.ResourceType), labelSelector)
+	// Fetch resources using condition-based server-side filtering:
+	// Query 1: Not-ready resources (need frequent reconciliation)
+	// Query 2: Stale ready resources (exceeded max age)
+	resources, err := s.fetchFilteredResources(ctx, labelSelector)
 	if err != nil {
-		// Record API error
 		metrics.UpdateAPIErrorsMetric(resourceType, resourceSelector, "fetch_error")
 		return fmt.Errorf("failed to fetch resources: %w", err)
 	}
@@ -189,6 +190,60 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	s.mu.Unlock()
 
 	return nil
+}
+
+// fetchFilteredResources makes two targeted API queries to fetch only resources
+// that likely need reconciliation, reducing network traffic compared to fetching
+// all resources:
+//
+//  1. Not-ready resources: status.conditions.Ready='False'
+//  2. Stale ready resources: Ready='True' with last_updated_time older than max_age_ready
+//
+// Results are merged and deduplicated by resource ID. The DecisionEngine still
+// evaluates the filtered set in memory (e.g., for generation-based checks).
+func (s *Sentinel) fetchFilteredResources(ctx context.Context, labelSelector map[string]string) ([]client.Resource, error) {
+	rt := client.ResourceType(s.config.ResourceType)
+
+	// Query 1: Not-ready resources
+	notReadyResources, err := s.client.FetchResources(ctx, rt, labelSelector,
+		"status.conditions.Ready='False'")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch not-ready resources: %w", err)
+	}
+	s.logger.V(2).Infof(ctx, "Fetched not-ready resources count=%d", len(notReadyResources))
+
+	// Query 2: Stale ready resources (last_updated_time exceeded max_age_ready)
+	cutoff := time.Now().Add(-s.config.MaxAgeReady)
+	staleFilter := fmt.Sprintf(
+		"status.conditions.Ready='True' and status.conditions.Ready.last_updated_time<='%s'",
+		cutoff.Format(time.RFC3339))
+	staleResources, err := s.client.FetchResources(ctx, rt, labelSelector, staleFilter)
+	if err != nil {
+		// Graceful degradation: if stale query fails, continue with not-ready results
+		s.logger.Errorf(ctx, "Failed to fetch stale resources, continuing with not-ready only: %v", err)
+		return notReadyResources, nil
+	}
+	s.logger.V(2).Infof(ctx, "Fetched stale ready resources count=%d", len(staleResources))
+
+	return mergeResources(notReadyResources, staleResources), nil
+}
+
+// mergeResources combines two resource slices, deduplicating by resource ID.
+// Resources from the first slice take precedence when duplicates are found.
+func mergeResources(a, b []client.Resource) []client.Resource {
+	seen := make(map[string]struct{}, len(a))
+	result := make([]client.Resource, 0, len(a)+len(b))
+
+	for i := range a {
+		seen[a[i].ID] = struct{}{}
+		result = append(result, a[i])
+	}
+	for i := range b {
+		if _, exists := seen[b[i].ID]; !exists {
+			result = append(result, b[i])
+		}
+	}
+	return result
 }
 
 // buildEventData builds the CloudEvent data payload for a resource using the

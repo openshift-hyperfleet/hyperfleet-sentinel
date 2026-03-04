@@ -119,26 +119,34 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	helper := NewHelper()
 
 	now := time.Now()
+	pollCycleCount := 0
 
-	// Create mock HyperFleet API server
-	callCount := 0
+	// Create mock HyperFleet API server that handles condition-based queries
+	// Each poll cycle makes 2 queries: not-ready + stale
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
+		search := r.URL.Query().Get("search")
 
-		// First call: Return clusters with one needing reconciliation
-		if callCount == 1 {
-			clusters := []map[string]interface{}{
-				createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)), // Max age exceeded
-				createMockCluster("cluster-2", 1, 1, true, now.Add(-5*time.Minute)),  // Within max age
-			}
-			response := createMockClusterList(clusters)
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(response)
-			return
+		var clusters []map[string]interface{}
+
+		// Track poll cycles (stale query marks end of a cycle)
+		if strings.Contains(search, "Ready='True'") {
+			pollCycleCount++
 		}
 
-		// Subsequent calls: Empty list
-		response := createMockClusterList([]map[string]interface{}{})
+		switch {
+		case strings.Contains(search, "Ready='False'"):
+			// Not-ready query: no not-ready clusters
+			clusters = nil
+		case strings.Contains(search, "Ready='True'"):
+			// Stale query: return stale cluster only on first cycle
+			if pollCycleCount == 1 {
+				clusters = []map[string]interface{}{
+					createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)), // Max age exceeded
+				}
+			}
+		}
+
+		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	}))
@@ -180,8 +188,8 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	cancel()
 
 	// Verify that Sentinel actually polled the API at least twice
-	if callCount < 2 {
-		t.Errorf("Expected at least 2 polling cycles, got %d", callCount)
+	if pollCycleCount < 2 {
+		t.Errorf("Expected at least 2 polling cycles, got %d", pollCycleCount)
 	}
 
 	// Wait for Sentinel to stop
@@ -209,50 +217,32 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 
 	now := time.Now()
 
-	// Create mock server that returns 2 clusters: one with shard:1, one with shard:2
-	// Server implements server-side filtering based on search parameter
+	// Create mock server that returns clusters filtered by label selector and conditions.
+	// With condition-based queries, Sentinel sends:
+	// - Not-ready query: "labels.shard='1' and status.conditions.Ready='False'"
+	// - Stale query: "labels.shard='1' and status.conditions.Ready='True' and ..."
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// All available clusters
-		allClusters := []map[string]interface{}{
-			// This cluster has shard:1 - SHOULD match selector and trigger event
-			createMockClusterWithLabels(
-				"cluster-shard-1",
-				2,
-				2,
-				true,
-				now.Add(-31*time.Minute), // Exceeds max_age_ready (30m)
-				map[string]string{"shard": "1"},
-			),
-			// This cluster has shard:2 - should NOT match selector
-			createMockClusterWithLabels(
-				"cluster-shard-2",
-				2,
-				2,
-				true,
-				now.Add(-31*time.Minute), // Also exceeds max_age, but should be filtered
-				map[string]string{"shard": "2"},
-			),
-		}
-
-		// Server-side filtering: check for search parameter
-		// TSL syntax: labels.key='value' and labels.key2='value2'
 		searchParam := r.URL.Query().Get("search")
-		filteredClusters := allClusters
+		var filteredClusters []map[string]interface{}
 
-		if searchParam != "" {
-			filteredClusters = []map[string]interface{}{}
-			for _, cluster := range allClusters {
-				labels, ok := cluster["labels"].(map[string]string)
-				if !ok {
-					continue
-				}
-
-				// TSL matching: if search contains "labels.shard='1'", only include clusters with shard=1
-				if searchParam == "labels.shard='1'" && labels["shard"] == "1" {
-					filteredClusters = append(filteredClusters, cluster)
+		// Only return clusters matching shard:1 label AND condition filters
+		if strings.Contains(searchParam, "labels.shard='1'") {
+			if strings.Contains(searchParam, "Ready='False'") {
+				// Not-ready query: no not-ready clusters with shard:1
+				filteredClusters = nil
+			} else if strings.Contains(searchParam, "Ready='True'") {
+				// Stale query: return stale cluster with shard:1
+				filteredClusters = []map[string]interface{}{
+					createMockClusterWithLabels(
+						"cluster-shard-1",
+						2, 2, true,
+						now.Add(-31*time.Minute), // Exceeds max_age_ready (30m)
+						map[string]string{"shard": "1"},
+					),
 				}
 			}
 		}
+		// shard:2 clusters are never returned since label selector doesn't match
 
 		response := createMockClusterList(filteredClusters)
 		w.Header().Set("Content-Type", "application/json")
@@ -304,12 +294,12 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		t.Errorf("Expected Start to return nil or context.Canceled, got: %v", startErr)
 	}
 
-	// Integration test validates label selector filtering works end-to-end
-	// Event verification requires subscriber implementation (future enhancement)
+	// Integration test validates label selector + condition filtering works end-to-end
 	t.Log("Label selector filtering test with real RabbitMQ broker completed successfully")
 }
 
 // TestIntegration_TSLSyntaxMultipleLabels validates TSL syntax with multiple label selectors
+// and condition-based filtering
 func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -319,48 +309,31 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 
 	now := time.Now()
 
-	// Track the search parameter received by the mock server
-	var receivedSearchParam string
+	// Track the search parameters received by the mock server
+	var receivedSearchParams []string
 
-	// Create mock server that validates TSL syntax
+	// Create mock server that validates TSL syntax with conditions
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedSearchParam = r.URL.Query().Get("search")
+		search := r.URL.Query().Get("search")
+		receivedSearchParams = append(receivedSearchParams, search)
 
-		// All available clusters
-		allClusters := []map[string]interface{}{
-			createMockClusterWithLabels(
-				"cluster-region-env-match",
-				2,
-				2,
-				true,
-				now.Add(-31*time.Minute),
-				map[string]string{"region": "us-east", "env": "production"},
-			),
-			createMockClusterWithLabels(
-				"cluster-region-only",
-				2,
-				2,
-				true,
-				now.Add(-31*time.Minute),
-				map[string]string{"region": "us-east", "env": "staging"},
-			),
-		}
+		var filteredClusters []map[string]interface{}
 
-		// Server-side filtering using TSL syntax
-		filteredClusters := allClusters
-
-		// Expected TSL format: "labels.env='production' and labels.region='us-east'"
-		expectedTSL := "labels.env='production' and labels.region='us-east'"
-		if receivedSearchParam == expectedTSL {
-			filteredClusters = []map[string]interface{}{}
-			for _, cluster := range allClusters {
-				labels, ok := cluster["labels"].(map[string]string)
-				if !ok {
-					continue
-				}
-				// Match clusters with both labels
-				if labels["region"] == "us-east" && labels["env"] == "production" {
-					filteredClusters = append(filteredClusters, cluster)
+		// With condition-based queries, labels are combined with condition filters
+		labelPrefix := "labels.env='production' and labels.region='us-east'"
+		if strings.HasPrefix(search, labelPrefix) {
+			if strings.Contains(search, "Ready='False'") {
+				// Not-ready query
+				filteredClusters = nil
+			} else if strings.Contains(search, "Ready='True'") {
+				// Stale query: return matching cluster
+				filteredClusters = []map[string]interface{}{
+					createMockClusterWithLabels(
+						"cluster-region-env-match",
+						2, 2, true,
+						now.Add(-31*time.Minute),
+						map[string]string{"region": "us-east", "env": "production"},
+					),
 				}
 			}
 		}
@@ -409,10 +382,12 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	cancel()
 
-	// Validate the search parameter format is correct TSL syntax
-	expectedTSL := "labels.env='production' and labels.region='us-east'"
-	if receivedSearchParam != expectedTSL {
-		t.Errorf("Expected TSL search parameter %q, got %q", expectedTSL, receivedSearchParam)
+	// Validate that queries include both label selectors and condition filters
+	labelPrefix := "labels.env='production' and labels.region='us-east'"
+	for _, search := range receivedSearchParams {
+		if !strings.HasPrefix(search, labelPrefix) {
+			t.Errorf("Expected search to start with label selectors %q, got %q", labelPrefix, search)
+		}
 	}
 
 	// Wait for sentinel to stop
@@ -421,7 +396,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 		t.Errorf("Expected Start to return nil or context.Canceled, got: %v", startErr)
 	}
 
-	t.Logf("TSL syntax validation completed - received correct format: %s", receivedSearchParam)
+	t.Logf("TSL syntax validation completed with %d queries", len(receivedSearchParams))
 }
 
 func TestIntegration_BrokerLoggerContext(t *testing.T) {
@@ -455,19 +430,34 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	log := logger.NewHyperFleetLoggerWithConfig(cfg)
 
 	// Mock server returns clusters that will trigger event publishing
+	// With condition-based queries, each poll cycle makes 2 queries
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount++
-		if callCount >= 2 {
-			select {
-			case readyChan <- true:
-			default:
+		search := r.URL.Query().Get("search")
+
+		var clusters []map[string]interface{}
+		switch {
+		case strings.Contains(search, "Ready='False'"):
+			callCount++
+			if callCount >= 2 {
+				select {
+				case readyChan <- true:
+				default:
+				}
 			}
-		}
-		clusters := []map[string]interface{}{
-			// This cluster will trigger max_age_ready exceeded event
-			createMockCluster("cluster-old", 2, 2, true, now.Add(-35*time.Minute)), // Exceeds 30min
-			// This cluster will trigger max_age_not_ready exceeded event
-			createMockCluster("cluster-not-ready", 1, 1, false, now.Add(-15*time.Second)), // Exceeds 10sec
+			// Not-ready query: return not-ready cluster
+			clusters = []map[string]interface{}{
+				createMockCluster("cluster-not-ready", 1, 1, false, now.Add(-15*time.Second)),
+			}
+		case strings.Contains(search, "Ready='True'"):
+			// Stale query: return stale ready cluster
+			clusters = []map[string]interface{}{
+				createMockCluster("cluster-old", 2, 2, true, now.Add(-35*time.Minute)),
+			}
+		default:
+			clusters = []map[string]interface{}{
+				createMockCluster("cluster-old", 2, 2, true, now.Add(-35*time.Minute)),
+				createMockCluster("cluster-not-ready", 1, 1, false, now.Add(-15*time.Second)),
+			}
 		}
 		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")
