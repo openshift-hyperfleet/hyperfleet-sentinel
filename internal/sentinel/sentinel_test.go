@@ -864,4 +864,9 @@ func TestTrigger_StaleQueryFailure(t *testing.T) {
 	if len(mockPublisher.publishedEvents) != 1 {
 		t.Errorf("Expected 1 published event (from not-ready query), got %d", len(mockPublisher.publishedEvents))
 	}
+
+	// Both queries should have been attempted (stale query retries on 500, so queryCount >= 2)
+	if queryCount < 2 {
+		t.Errorf("Expected at least 2 queries (not-ready + stale), got %d", queryCount)
+	}
 }

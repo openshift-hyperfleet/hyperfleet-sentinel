@@ -219,12 +219,20 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 
 	now := time.Now()
 
+	// Track search parameters for assertion
+	var capturedSearchParams []string
+	var captureMu sync.Mutex
+
 	// Create mock server that returns clusters filtered by label selector and conditions.
 	// With condition-based queries, Sentinel sends:
 	// - Not-ready query: "labels.shard='1' and status.conditions.Ready='False'"
 	// - Stale query: "labels.shard='1' and status.conditions.Ready='True' and ..."
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		searchParam := r.URL.Query().Get("search")
+		captureMu.Lock()
+		capturedSearchParams = append(capturedSearchParams, searchParam)
+		captureMu.Unlock()
+
 		var filteredClusters []map[string]interface{}
 
 		// Only return clusters matching shard:1 label AND condition filters
@@ -296,8 +304,37 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		t.Errorf("Expected Start to return nil or context.Canceled, got: %v", startErr)
 	}
 
-	// Integration test validates label selector + condition filtering works end-to-end
-	t.Log("Label selector filtering test with real RabbitMQ broker completed successfully")
+	// Validate captured search parameters
+	captureMu.Lock()
+	params := make([]string, len(capturedSearchParams))
+	copy(params, capturedSearchParams)
+	captureMu.Unlock()
+
+	if len(params) == 0 {
+		t.Fatal("No search queries were captured — Sentinel may not have polled")
+	}
+
+	hasNotReady := false
+	hasStale := false
+	for _, search := range params {
+		if !strings.Contains(search, "labels.shard='1'") {
+			t.Errorf("Expected search to contain label selector \"labels.shard='1'\", got %q", search)
+		}
+		if strings.Contains(search, "Ready='False'") {
+			hasNotReady = true
+		}
+		if strings.Contains(search, "Ready='True'") {
+			hasStale = true
+		}
+	}
+	if !hasNotReady {
+		t.Error("No not-ready query (Ready='False') was captured")
+	}
+	if !hasStale {
+		t.Error("No stale query (Ready='True') was captured")
+	}
+
+	t.Logf("Label selector filtering test completed with %d queries", len(params))
 }
 
 // TestIntegration_TSLSyntaxMultipleLabels validates TSL syntax with multiple label selectors
@@ -393,10 +430,29 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	paramsCopy := make([]string, len(receivedSearchParams))
 	copy(paramsCopy, receivedSearchParams)
 	searchMu.Unlock()
+
+	if len(paramsCopy) == 0 {
+		t.Fatal("No search queries were captured — Sentinel may not have polled")
+	}
+
+	hasNotReady := false
+	hasStale := false
 	for _, search := range paramsCopy {
 		if !strings.HasPrefix(search, labelPrefix) {
 			t.Errorf("Expected search to start with label selectors %q, got %q", labelPrefix, search)
 		}
+		if strings.Contains(search, "Ready='False'") {
+			hasNotReady = true
+		}
+		if strings.Contains(search, "Ready='True'") {
+			hasStale = true
+		}
+	}
+	if !hasNotReady {
+		t.Error("No not-ready query (Ready='False') was captured")
+	}
+	if !hasStale {
+		t.Error("No stale query (Ready='True') was captured")
 	}
 
 	// Wait for sentinel to stop
@@ -462,10 +518,9 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 				createMockCluster("cluster-old", 2, 2, true, now.Add(-35*time.Minute)),
 			}
 		default:
-			clusters = []map[string]interface{}{
-				createMockCluster("cluster-old", 2, 2, true, now.Add(-35*time.Minute)),
-				createMockCluster("cluster-not-ready", 1, 1, false, now.Add(-15*time.Second)),
-			}
+			t.Errorf("unexpected search query: %q", search)
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")
