@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -722,10 +724,13 @@ func TestTrigger_ConditionBasedQueries(t *testing.T) {
 	now := time.Now()
 
 	var receivedSearchParams []string
+	var receivedMu sync.Mutex
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		search := r.URL.Query().Get("search")
+		receivedMu.Lock()
 		receivedSearchParams = append(receivedSearchParams, search)
+		receivedMu.Unlock()
 
 		// Return appropriate responses based on query
 		var clusters []map[string]interface{}
@@ -777,21 +782,26 @@ func TestTrigger_ConditionBasedQueries(t *testing.T) {
 	}
 
 	// Verify two queries were made
-	if len(receivedSearchParams) != 2 {
-		t.Fatalf("Expected 2 API queries, got %d", len(receivedSearchParams))
+	receivedMu.Lock()
+	paramsCopy := make([]string, len(receivedSearchParams))
+	copy(paramsCopy, receivedSearchParams)
+	receivedMu.Unlock()
+
+	if len(paramsCopy) != 2 {
+		t.Fatalf("Expected 2 API queries, got %d", len(paramsCopy))
 	}
 
 	// Query 1: Not-ready resources
-	if !strings.Contains(receivedSearchParams[0], "status.conditions.Ready='False'") {
-		t.Errorf("First query should filter not-ready resources, got: %q", receivedSearchParams[0])
+	if !strings.Contains(paramsCopy[0], "status.conditions.Ready='False'") {
+		t.Errorf("First query should filter not-ready resources, got: %q", paramsCopy[0])
 	}
 
 	// Query 2: Stale ready resources
-	if !strings.Contains(receivedSearchParams[1], "status.conditions.Ready='True'") {
-		t.Errorf("Second query should filter ready resources, got: %q", receivedSearchParams[1])
+	if !strings.Contains(paramsCopy[1], "status.conditions.Ready='True'") {
+		t.Errorf("Second query should filter ready resources, got: %q", paramsCopy[1])
 	}
-	if !strings.Contains(receivedSearchParams[1], "last_updated_time") {
-		t.Errorf("Second query should include time-based filter, got: %q", receivedSearchParams[1])
+	if !strings.Contains(paramsCopy[1], "last_updated_time") {
+		t.Errorf("Second query should include time-based filter, got: %q", paramsCopy[1])
 	}
 
 	// Both resources should trigger events
@@ -805,9 +815,9 @@ func TestTrigger_StaleQueryFailure(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 
-	queryCount := 0
+	var queryCount atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		queryCount++
+		queryCount.Add(1)
 		search := r.URL.Query().Get("search")
 
 		if strings.Contains(search, "Ready='False'") {
@@ -866,7 +876,7 @@ func TestTrigger_StaleQueryFailure(t *testing.T) {
 	}
 
 	// Both queries should have been attempted (stale query retries on 500, so queryCount >= 2)
-	if queryCount < 2 {
-		t.Errorf("Expected at least 2 queries (not-ready + stale), got %d", queryCount)
+	if queryCount.Load() < 2 {
+		t.Errorf("Expected at least 2 queries (not-ready + stale), got %d", queryCount.Load())
 	}
 }
