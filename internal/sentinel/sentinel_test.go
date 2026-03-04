@@ -686,7 +686,10 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
 
 	// Execute trigger
 	err = s.trigger(ctx)
