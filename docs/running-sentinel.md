@@ -294,6 +294,9 @@ gcloud container clusters get-credentials hyperfleet-dev --zone=us-central1-a --
 For pushing to your personal Quay registry:
 
 ```bash
+# One-time login (required before pushing to Quay)
+podman login quay.io
+
 # Build and push to quay.io/${QUAY_USER}/sentinel:dev-<commit>
 QUAY_USER=${USER} make image-dev
 ```
@@ -313,7 +316,7 @@ podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TA
 
 ### 4. Authentication and Image Push
 
-> **Note**: If you used `make image-dev` (Option A above), authentication and push are handled automatically. Skip to [Helm Deployment](#5-helm-deployment). For Quay.io, ensure you've run `podman login quay.io` first.
+> **Note**: If you used `make image-dev` (Option A above), authentication and push are handled automatically. Skip to [Helm Deployment](#6-helm-deployment). For Quay.io, ensure you've run `podman login quay.io` first.
 
 #### Configure Authentication with GCR
 
@@ -355,10 +358,30 @@ gcloud projects add-iam-policy-binding ${GCP_PROJECT} \
 
 ### 6. Helm Deployment
 
-Deploy Sentinel:
+Deploy Sentinel using the image you built:
+
+#### Option A: Using Quay Image (from `make image-dev`)
+
+If you used `make image-dev`, deploy with:
 
 ```bash
-helm install sentinel-test ./deployments/helm/sentinel \
+helm upgrade --install sentinel-test ./deployments/helm/sentinel \
+  --namespace ${NAMESPACE} \
+  --create-namespace \
+  --set global.imageRegistry=quay.io \
+  --set image.repository=${USER}/hyperfleet-sentinel \
+  --set image.tag=dev-$(git rev-parse --short HEAD) \
+  --set broker.type=googlepubsub \
+  --set broker.googlepubsub.projectId=${GCP_PROJECT} \
+  --set monitoring.podMonitoring.enabled=true
+```
+
+#### Option B: Using GCR Image (from manual build)
+
+If you manually built and pushed to GCR, deploy with:
+
+```bash
+helm upgrade --install sentinel-test ./deployments/helm/sentinel \
   --namespace ${NAMESPACE} \
   --create-namespace \
   --set image.repository=gcr.io/${GCP_PROJECT}/sentinel \
@@ -368,7 +391,7 @@ helm install sentinel-test ./deployments/helm/sentinel \
   --set monitoring.podMonitoring.enabled=true
 
 # For Prometheus Operator environments (OpenShift, vanilla Kubernetes):
-helm install sentinel-test ./deployments/helm/sentinel \
+helm upgrade --install sentinel-test ./deployments/helm/sentinel \
   --namespace ${NAMESPACE} \
   --create-namespace \
   --set image.repository=gcr.io/${GCP_PROJECT}/sentinel \
