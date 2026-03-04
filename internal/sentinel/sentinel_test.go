@@ -830,12 +830,16 @@ func TestTrigger_StaleQueryFailure(t *testing.T) {
 			if err := json.NewEncoder(w).Encode(response); err != nil {
 				t.Logf("Error encoding response: %v", err)
 			}
-		} else {
+		} else if strings.Contains(search, "Ready='True'") {
 			// Stale query fails
 			w.WriteHeader(http.StatusInternalServerError)
 			if _, err := w.Write([]byte(`{"error": "internal server error"}`)); err != nil {
 				t.Logf("Error writing error response: %v", err)
 			}
+		} else {
+			t.Errorf("unexpected search query: %q", search)
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 	}))
 	defer server.Close()
