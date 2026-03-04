@@ -4,18 +4,73 @@ pkg/api/openapi/
 
 # Build artifacts
 bin/
-coverage.out
-coverage.html
+*.exe
+*.dll
+*.so
+*.dylib
 
 # IDE and editor files
 .idea/
 .vscode/
 *.swp
 *.swo
+*~
+.DS_Store
 
 # Git
 .git/
 .gitignore
+.github/
+
+# Environment files
+.env
+.env.*
 
 # Local config files
 *.local.yaml
+
+# CI/CD files (not needed in container)
+.gitlab-ci.yml
+.travis.yml
+Jenkinsfile
+
+# Kubernetes and deployment files
+chart/
+charts/
+deployments/
+
+# License and owners
+LICENSE
+OWNERS
+CONTRIBUTING.md
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Log files
+*.log
+
+# Test and coverage files
+coverage/
+*.out
+*.test
+*.prof
+
+# Config examples and runtime configs (not needed for build)
+configs/
+broker.yaml
+
+# Linter config (not needed for build)
+.golangci.yml
+
+# AI assistant config
+.claude/
+
+# Dockerfile itself
+Dockerfile
+
+# Documentation (not needed in container)
+*.md
+docs/
