@@ -2,6 +2,7 @@ package sentinel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -219,7 +220,11 @@ func (s *Sentinel) fetchFilteredResources(ctx context.Context, labelSelector map
 		cutoff.Format(time.RFC3339))
 	staleResources, err := s.client.FetchResources(ctx, rt, labelSelector, staleFilter)
 	if err != nil {
-		// Graceful degradation: if stale query fails, continue with not-ready results
+		// Propagate context cancellation/timeout — the caller must see these
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
+		// Graceful degradation: for transient/API errors, continue with not-ready results
 		s.logger.Errorf(ctx, "Failed to fetch stale resources, continuing with not-ready only: %v", err)
 		return notReadyResources, nil
 	}
@@ -230,16 +235,25 @@ func (s *Sentinel) fetchFilteredResources(ctx context.Context, labelSelector map
 
 // mergeResources combines two resource slices, deduplicating by resource ID.
 // Resources from the first slice take precedence when duplicates are found.
+// Resources with empty IDs are treated as distinct and always preserved.
 func mergeResources(a, b []client.Resource) []client.Resource {
 	seen := make(map[string]struct{}, len(a))
 	result := make([]client.Resource, 0, len(a)+len(b))
 
 	for i := range a {
-		seen[a[i].ID] = struct{}{}
+		key := a[i].ID
+		if key == "" {
+			key = fmt.Sprintf("__empty_a_%d", i)
+		}
+		seen[key] = struct{}{}
 		result = append(result, a[i])
 	}
 	for i := range b {
-		if _, exists := seen[b[i].ID]; !exists {
+		key := b[i].ID
+		if key == "" {
+			key = fmt.Sprintf("__empty_b_%d", i)
+		}
+		if _, exists := seen[key]; !exists {
 			result = append(result, b[i])
 		}
 	}

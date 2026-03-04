@@ -13,6 +13,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -119,7 +121,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	helper := NewHelper()
 
 	now := time.Now()
-	pollCycleCount := 0
+	var pollCycleCount atomic.Int32
 
 	// Create mock HyperFleet API server that handles condition-based queries
 	// Each poll cycle makes 2 queries: not-ready + stale
@@ -130,7 +132,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 
 		// Track poll cycles (stale query marks end of a cycle)
 		if strings.Contains(search, "Ready='True'") {
-			pollCycleCount++
+			pollCycleCount.Add(1)
 		}
 
 		switch {
@@ -139,7 +141,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 			clusters = nil
 		case strings.Contains(search, "Ready='True'"):
 			// Stale query: return stale cluster only on first cycle
-			if pollCycleCount == 1 {
+			if pollCycleCount.Load() == 1 {
 				clusters = []map[string]interface{}{
 					createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)), // Max age exceeded
 				}
@@ -188,8 +190,8 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	cancel()
 
 	// Verify that Sentinel actually polled the API at least twice
-	if pollCycleCount < 2 {
-		t.Errorf("Expected at least 2 polling cycles, got %d", pollCycleCount)
+	if pollCycleCount.Load() < 2 {
+		t.Errorf("Expected at least 2 polling cycles, got %d", pollCycleCount.Load())
 	}
 
 	// Wait for Sentinel to stop
@@ -311,11 +313,14 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 
 	// Track the search parameters received by the mock server
 	var receivedSearchParams []string
+	var searchMu sync.Mutex
 
 	// Create mock server that validates TSL syntax with conditions
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		search := r.URL.Query().Get("search")
+		searchMu.Lock()
 		receivedSearchParams = append(receivedSearchParams, search)
+		searchMu.Unlock()
 
 		var filteredClusters []map[string]interface{}
 
@@ -384,7 +389,11 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 
 	// Validate that queries include both label selectors and condition filters
 	labelPrefix := "labels.env='production' and labels.region='us-east'"
-	for _, search := range receivedSearchParams {
+	searchMu.Lock()
+	paramsCopy := make([]string, len(receivedSearchParams))
+	copy(paramsCopy, receivedSearchParams)
+	searchMu.Unlock()
+	for _, search := range paramsCopy {
 		if !strings.HasPrefix(search, labelPrefix) {
 			t.Errorf("Expected search to start with label selectors %q, got %q", labelPrefix, search)
 		}
@@ -396,7 +405,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 		t.Errorf("Expected Start to return nil or context.Canceled, got: %v", startErr)
 	}
 
-	t.Logf("TSL syntax validation completed with %d queries", len(receivedSearchParams))
+	t.Logf("TSL syntax validation completed with %d queries", len(paramsCopy))
 }
 
 func TestIntegration_BrokerLoggerContext(t *testing.T) {
@@ -408,7 +417,7 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	// Buffer to observe logs
 	var logBuffer bytes.Buffer
 	now := time.Now()
-	callCount := 0
+	var callCount atomic.Int32
 	readyChan := make(chan bool, 1)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -437,8 +446,7 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		var clusters []map[string]interface{}
 		switch {
 		case strings.Contains(search, "Ready='False'"):
-			callCount++
-			if callCount >= 2 {
+			if callCount.Add(1) >= 2 {
 				select {
 				case readyChan <- true:
 				default:

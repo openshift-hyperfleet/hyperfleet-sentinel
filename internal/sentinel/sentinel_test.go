@@ -128,7 +128,9 @@ func mockServerForConditionQueries(t *testing.T, notReadyClusters, staleClusters
 		case strings.Contains(search, "Ready='True'"):
 			clusters = staleClusters
 		default:
-			clusters = append(notReadyClusters, staleClusters...)
+			t.Errorf("unexpected search query: %q", search)
+			w.WriteHeader(http.StatusBadRequest)
+			return
 		}
 
 		response := createMockClusterList(clusters)
@@ -682,6 +684,12 @@ func TestMergeResources(t *testing.T) {
 			a:       nil,
 			b:       nil,
 			wantIDs: []string{},
+		},
+		{
+			name:    "empty IDs are treated as distinct",
+			a:       []client.Resource{{ID: "", Kind: "from-a"}},
+			b:       []client.Resource{{ID: "", Kind: "from-b"}},
+			wantIDs: []string{"", ""},
 		},
 	}
 
