@@ -283,3 +283,10 @@ endif
 	@echo "Add to your terraform.tfvars:"
 	@echo "  sentinel_image_tag = \"$(DEV_TAG)\""
 
+.PHONY: quay-login
+quay-login:
+	@if [ -z "$(CONTAINER_TOOL)" ]; then \
+		echo "Error: neither podman nor docker found in PATH"; \
+		exit 1; \
+	fi
+	$(CONTAINER_TOOL) login quay.io
