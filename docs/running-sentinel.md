@@ -297,7 +297,7 @@ For pushing to your personal Quay registry:
 # One-time login (required before pushing to Quay)
 make quay-login
 
-# Build and push to quay.io/${QUAY_USER}/sentinel:dev-<commit>
+# Build and push to quay.io/${QUAY_USER}/${IMAGE_NAME}:dev-<commit>
 QUAY_USER=${USER} make image-dev
 ```
 
