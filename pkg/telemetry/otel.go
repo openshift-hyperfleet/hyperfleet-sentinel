@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
@@ -26,6 +27,7 @@ const (
 	envOtelTracesSampler        = "OTEL_TRACES_SAMPLER"
 	envOtelTracesSamplerArg     = "OTEL_TRACES_SAMPLER_ARG"
 	envOtelExporterOtlpEndpoint = "OTEL_EXPORTER_OTLP_ENDPOINT"
+	parentBasedTraceIdRatio     = "parentbased_traceidratio"
 	defaultSamplingRate         = 1.0
 )
 
@@ -73,7 +75,7 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 			samplingRate = 1.0
 		case samplerAlwaysOff:
 			samplingRate = 0.0
-		case samplerTraceIdRatio:
+		case samplerTraceIdRatio, parentBasedTraceIdRatio:
 			if arg := os.Getenv(envOtelTracesSamplerArg); arg != "" {
 				rate, err := strconv.ParseFloat(arg, 64)
 				if err != nil {
@@ -91,9 +93,9 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 	var sampler trace.Sampler
 	switch {
 	case samplingRate >= 1.0:
-		sampler = trace.AlwaysSample() // Sample all
+		sampler = trace.ParentBased(trace.AlwaysSample()) // Sample all
 	case samplingRate <= 0.0:
-		sampler = trace.NeverSample() // Sample none
+		sampler = trace.ParentBased(trace.NeverSample()) // Sample none
 	default:
 		sampler = trace.ParentBased(trace.TraceIDRatioBased(samplingRate))
 	}
@@ -107,7 +109,10 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 
 	// Set global trace provider
 	otel.SetTracerProvider(tp)
-
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
 	return tp, nil
 }
 

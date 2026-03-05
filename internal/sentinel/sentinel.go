@@ -119,6 +119,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	resources, err := s.client.FetchResources(ctx, client.ResourceType(s.config.ResourceType), labelSelector)
 	if err != nil {
 		// Record API error
+		pollSpan.RecordError(err)
+		pollSpan.SetStatus(codes.Error, "fetch resources failed")
 		metrics.UpdateAPIErrorsMetric(resourceType, resourceSelector, "fetch_error")
 		return fmt.Errorf("failed to fetch resources: %w", err)
 	}

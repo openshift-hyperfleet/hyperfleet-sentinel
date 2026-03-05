@@ -773,7 +773,10 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		MaxAgeReady:    30 * time.Minute,
 	}
 
-	s := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
 
 	// Run Sentinel to generate spans
 	errChan := make(chan error, 1)
@@ -804,7 +807,7 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer flushCancel()
 
-	err := tp.ForceFlush(flushCtx)
+	err = tp.ForceFlush(flushCtx)
 	if err != nil {
 		t.Fatalf("force flush error: %v", err)
 	}
