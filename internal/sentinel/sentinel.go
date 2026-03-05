@@ -160,6 +160,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			event.SetID(uuid.New().String())
 			if err := event.SetData(cloudevents.ApplicationJSON, eventData); err != nil {
 				s.logger.Errorf(eventCtx, "Failed to set event data resource_id=%s error=%v", resource.ID, err)
+				evalSpan.RecordError(err)
+				evalSpan.SetStatus(codes.Error, "set event data failed")
 				evalSpan.End()
 				continue
 			}
