@@ -295,7 +295,7 @@ For pushing to your personal Quay registry:
 
 ```bash
 # One-time login (required before pushing to Quay)
-podman login quay.io
+make quay-login
 
 # Build and push to quay.io/${QUAY_USER}/sentinel:dev-<commit>
 QUAY_USER=${USER} make image-dev
@@ -316,7 +316,7 @@ podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TA
 
 ### 4. Authentication and Image Push
 
-> **Note**: If you used `make image-dev` (Option A above), authentication and push are handled automatically. Skip to [Helm Deployment](#6-helm-deployment). For Quay.io, ensure you've run `podman login quay.io` first.
+> **Note**: If you used `make image-dev` (Option A above), authentication and push are handled automatically. Skip to [Helm Deployment](#6-helm-deployment). For Quay.io, ensure you've run `make quay-login` first.
 
 #### Configure Authentication with GCR
 

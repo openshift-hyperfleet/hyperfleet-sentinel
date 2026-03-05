@@ -193,3 +193,6 @@ endif
 	@echo "Add to your terraform.tfvars:"
 	@echo "  sentinel_image_tag = \"$(DEV_TAG)\""
 
+.PHONY: quay-login
+quay-login:
+	$(CONTAINER_TOOL) login quay.io
