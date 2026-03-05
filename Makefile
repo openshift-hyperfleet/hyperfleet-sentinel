@@ -151,7 +151,7 @@ download: ## Download dependencies
 
 ##@ Helm Charts
 
-HELM_CHART_DIR := deployments/helm/sentinel
+HELM_CHART_DIR := charts
 
 .PHONY: test-helm
 test-helm: ## Test Helm charts (lint, template, validate)

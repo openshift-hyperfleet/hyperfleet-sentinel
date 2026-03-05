@@ -1,0 +1,16 @@
+apiVersion: v2
+name: sentinel
+description: HyperFleet Sentinel - Kubernetes service that polls HyperFleet API and publishes CloudEvents
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - hyperfleet
+  - sentinel
+  - events
+  - polling
+home: https://github.com/openshift-hyperfleet/hyperfleet-sentinel
+sources:
+  - https://github.com/openshift-hyperfleet/hyperfleet-sentinel
+maintainers:
+  - name: HyperFleet Team

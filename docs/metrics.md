@@ -478,7 +478,7 @@ gcloud container clusters update CLUSTER_NAME \
 The Helm chart automatically creates a PodMonitoring resource when deployed:
 
 ```bash
-helm install sentinel ./deployments/helm/sentinel \
+helm install sentinel ./charts \
   --namespace hyperfleet-system \
   --create-namespace \
   --set monitoring.podMonitoring.enabled=true
@@ -514,7 +514,7 @@ For clusters using [Prometheus Operator](https://github.com/prometheus-operator/
 Deploy Sentinel with ServiceMonitor enabled:
 
 ```bash
-helm install sentinel ./deployments/helm/sentinel \
+helm install sentinel ./charts \
   --namespace hyperfleet-system \
   --create-namespace \
   --set monitoring.serviceMonitor.enabled=true
@@ -531,7 +531,7 @@ kubectl get prometheus -A -o jsonpath='{.items[*].spec.serviceMonitorSelector}'
 Then set the matching labels:
 
 ```bash
-helm install sentinel ./deployments/helm/sentinel \
+helm install sentinel ./charts \
   --namespace hyperfleet-system \
   --set monitoring.serviceMonitor.enabled=true \
   --set monitoring.serviceMonitor.additionalLabels.release=prometheus

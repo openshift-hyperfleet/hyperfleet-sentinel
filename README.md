@@ -200,7 +200,7 @@ For detailed broker configuration options, see the [hyperfleet-broker documentat
 
 For detailed instructions on running Sentinel locally or deploying to GKE, see [docs/running-sentinel.md](docs/running-sentinel.md).
 
-For Helm chart documentation and configuration options, see [deployments/helm/sentinel/README.md](deployments/helm/sentinel/README.md).
+For Helm chart documentation and configuration options, see [charts/README.md](charts/README.md).
 
 ### Configuration Validation
 
@@ -289,12 +289,12 @@ Sentinel supports two monitoring resource types for automatic metrics scraping:
 
 ```bash
 # GKE with GMP (PodMonitoring)
-helm install sentinel ./deployments/helm/sentinel \
+helm install sentinel ./charts \
   --namespace hyperfleet-system \
   --set monitoring.podMonitoring.enabled=true
 
 # Prometheus Operator (ServiceMonitor)
-helm install sentinel ./deployments/helm/sentinel \
+helm install sentinel ./charts \
   --namespace hyperfleet-system \
   --set monitoring.serviceMonitor.enabled=true \
   --set monitoring.serviceMonitor.additionalLabels.release=prometheus

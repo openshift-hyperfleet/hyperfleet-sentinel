@@ -1,0 +1,333 @@
+# Sentinel Helm Chart
+
+This Helm chart deploys the HyperFleet Sentinel service to Kubernetes.
+
+## Prerequisites
+
+- Kubernetes 1.25+
+- Helm 3.0+
+- HyperFleet API deployed and accessible
+- Message broker (RabbitMQ or GCP Pub/Sub) configured
+
+## Installing the Chart
+
+```bash
+# Install with default values (RabbitMQ)
+helm install sentinel ./charts \
+  --namespace hyperfleet-system \
+  --create-namespace
+
+# Install with custom values
+helm install sentinel ./charts \
+  --namespace hyperfleet-system \
+  --create-namespace \
+  --values my-values.yaml
+```
+
+> **Note**: The `--create-namespace` flag creates the namespace if it doesn't exist. If the namespace already exists, Helm will use it and this flag has no effect. You can omit this flag if you've already created the namespace.
+
+## Upgrading the Chart
+
+```bash
+helm upgrade sentinel ./charts \
+  --namespace hyperfleet-system \
+  --values my-values.yaml
+```
+
+## Uninstalling the Chart
+
+```bash
+helm uninstall sentinel --namespace hyperfleet-system
+```
+
+## Configuration
+
+The following table lists the configurable parameters of the Sentinel chart and their default values.
+
+### General Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `replicaCount` | Number of Sentinel replicas | `1` |
+| `image.registry` | Container image registry | `CHANGE_ME` |
+| `image.repository` | Container image repository | `hyperfleet-sentinel` |
+| `image.tag` | Container image tag (defaults to appVersion if empty) | `""` |
+| `image.pullPolicy` | Image pull policy | `Always` |
+| `imagePullSecrets` | Image pull secrets | `[]` |
+| `nameOverride` | Override chart name | `""` |
+| `fullnameOverride` | Override fully qualified app name | `""` |
+
+### ServiceAccount Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `serviceAccount.create` | Create service account | `true` |
+| `serviceAccount.annotations` | Service account annotations | `{}` |
+| `serviceAccount.name` | Service account name | `""` |
+
+### Resource Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `resources.limits.cpu` | CPU limit | `500m` |
+| `resources.limits.memory` | Memory limit | `512Mi` |
+| `resources.requests.cpu` | CPU request | `100m` |
+| `resources.requests.memory` | Memory request | `128Mi` |
+
+### Sentinel Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `config.resourceType` | Resource type to watch | `clusters` |
+| `config.pollInterval` | Polling interval | `5s` |
+| `config.maxAgeNotReady` | Max age for not ready resources | `10s` |
+| `config.maxAgeReady` | Max age for ready resources | `30m` |
+| `config.resourceSelector` | Resource selector for sharding | See values.yaml |
+| `config.hyperfleetApi.baseUrl` | HyperFleet API base URL | `http://hyperfleet-api:8000` |
+| `config.hyperfleetApi.timeout` | API timeout | `5s` |
+| `config.messageData` | CloudEvents data payload fields | See values.yaml |
+
+### Broker Configuration
+
+> **Note**: Broker configuration uses the [hyperfleet-broker library](https://github.com/openshift-hyperfleet/hyperfleet-broker).
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `broker.type` | Broker type (`rabbitmq` or `googlepubsub`) | `rabbitmq` |
+| `broker.topic` | Topic name for broker publishing (supports Helm templates) | `{{ .Release.Namespace }}-{{ .Values.config.resourceType }}` |
+| `broker.rabbitmq.url` | RabbitMQ connection URL (format: `amqp://user:pass@host:port/vhost`) | `amqp://sentinel-user:change-me-in-production@rabbitmq.hyperfleet-system.svc.cluster.local:5672/hyperfleet` |
+| `broker.rabbitmq.exchangeType` | RabbitMQ exchange type | `topic` |
+| `broker.googlepubsub.projectId` | GCP project ID (for Pub/Sub) | `your-gcp-project-id` |
+| `broker.googlepubsub.maxOutstandingMessages` | Max outstanding messages (for Pub/Sub) | `1000` |
+| `broker.googlepubsub.numGoroutines` | Number of goroutines (for Pub/Sub) | `10` |
+| `broker.googlepubsub.createTopicIfMissing` | Auto-create topic if it doesn't exist (for Pub/Sub) | `false` |
+| `subscriber.parallelism` | Number of parallel workers for message processing | `1` |
+| `existingSecret` | Use existing secret for broker credentials | `""` |
+
+### Monitoring Configuration
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `monitoring.podMonitoring.enabled` | Create PodMonitoring resource (GMP) | `false` |
+| `monitoring.podMonitoring.interval` | Scrape interval | `30s` |
+| `monitoring.podMonitoring.additionalLabels` | Additional labels for PodMonitoring | `{}` |
+| `monitoring.podMonitoring.metricRelabeling` | Metric relabel configs | `[]` |
+| `monitoring.serviceMonitor.enabled` | Create ServiceMonitor resource (Prometheus Operator) | `false` |
+| `monitoring.serviceMonitor.interval` | Scrape interval | `30s` |
+| `monitoring.serviceMonitor.scrapeTimeout` | Scrape timeout (must be less than interval) | `10s` |
+| `monitoring.serviceMonitor.additionalLabels` | Labels for Prometheus selector matching | `{}` |
+| `monitoring.serviceMonitor.namespaceSelector` | Namespace selector for cross-namespace monitoring | `{}` |
+| `monitoring.serviceMonitor.honorLabels` | Honor labels from target | `true` |
+| `monitoring.serviceMonitor.metricRelabeling` | Metric relabel configs | `[]` |
+| `monitoring.serviceMonitor.namespace` | Override namespace for ServiceMonitor (auto-adds `namespaceSelector`) | `""` |
+| `monitoring.prometheusRule.enabled` | Create PrometheusRule resource | `false` |
+| `monitoring.prometheusRule.namespace` | Override namespace for PrometheusRule | `""` |
+| `monitoring.prometheusRule.additionalLabels` | Additional labels for PrometheusRule | `{}` |
+
+## Examples
+
+### Using RabbitMQ
+
+```yaml
+# values-rabbitmq.yaml
+broker:
+  type: rabbitmq
+  rabbitmq:
+    # Connection URL with credentials, host, port, and vhost
+    url: amqp://sentinel-prod:super-secret-password@rabbitmq.messaging.svc.cluster.local:5672/prod
+    exchangeType: topic
+
+config:
+  resourceSelector:
+    - label: environment
+      value: production
+```
+
+```bash
+helm install sentinel ./charts \
+  --namespace hyperfleet-system \
+  --values values-rabbitmq.yaml
+```
+
+### Using Google Cloud Pub/Sub
+
+```yaml
+# values-googlepubsub.yaml
+broker:
+  type: googlepubsub
+  googlepubsub:
+    projectId: my-gcp-project
+    maxOutstandingMessages: 1000
+    numGoroutines: 10
+```
+
+```bash
+helm install sentinel ./charts \
+  --namespace hyperfleet-system \
+  --values values-googlepubsub.yaml
+```
+
+### Using Existing Secret
+
+```yaml
+# values-existing-secret.yaml
+existingSecret: my-broker-credentials
+
+# Create secret separately (only for RabbitMQ):
+kubectl create secret generic my-broker-credentials \
+  --namespace hyperfleet-system \
+  --from-literal=BROKER_RABBITMQ_URL=amqp://user:pass@rabbitmq.local:5672/
+
+# Note: Google Pub/Sub doesn't require Secret
+# projectId is configured in values.yaml (not sensitive)
+# Authentication uses Workload Identity in GKE
+```
+
+### Horizontal Scaling with Sharding
+
+Deploy multiple Sentinel instances watching different resource shards:
+
+```yaml
+# values-shard-1.yaml
+config:
+  resourceSelector:
+    - label: shard
+      value: "1"
+```
+
+```yaml
+# values-shard-2.yaml
+config:
+  resourceSelector:
+    - label: shard
+      value: "2"
+```
+
+```bash
+helm install sentinel-shard-1 ./charts \
+  --namespace hyperfleet-system \
+  --values values-shard-1.yaml
+
+helm install sentinel-shard-2 ./charts \
+  --namespace hyperfleet-system \
+  --values values-shard-2.yaml
+```
+
+## Security Considerations
+
+### Broker Credentials
+
+**WARNING**: Never commit real credentials to git!
+
+Use one of these approaches for production:
+
+1. **External Secrets Operator**:
+
+   ```yaml
+   apiVersion: external-secrets.io/v1beta1
+   kind: ExternalSecret
+   metadata:
+     name: sentinel-broker-credentials
+   spec:
+     secretStoreRef:
+       name: vault-backend
+       kind: SecretStore
+     target:
+       name: sentinel-broker-credentials
+     data:
+       - secretKey: BROKER_RABBITMQ_URL
+         remoteRef:
+           key: sentinel/broker
+           property: rabbitmq-url
+   ```
+
+2. **Sealed Secrets**:
+
+   ```bash
+   kubectl create secret generic sentinel-broker-credentials \
+     --dry-run=client -o yaml \
+     --from-literal=BROKER_RABBITMQ_URL=amqp://user:password@rabbitmq:5672/hyperfleet | \
+     kubeseal -o yaml > sealed-secret.yaml
+   ```
+
+3. **HashiCorp Vault**:
+
+   ```yaml
+   serviceAccount:
+     annotations:
+       vault.hashicorp.com/agent-inject: "true"
+       vault.hashicorp.com/role: "sentinel"
+       vault.hashicorp.com/agent-inject-secret-broker: "secret/data/sentinel/broker"
+   ```
+
+## Monitoring
+
+### Prometheus Operator (ServiceMonitor)
+
+For clusters with Prometheus Operator (OpenShift, vanilla Kubernetes):
+
+```bash
+helm install sentinel ./charts \
+  --namespace hyperfleet-system \
+  --set monitoring.serviceMonitor.enabled=true \
+  --set monitoring.serviceMonitor.additionalLabels.release=prometheus
+```
+
+### Google Cloud Managed Prometheus (PodMonitoring)
+
+For GKE clusters with GMP:
+
+```bash
+helm install sentinel ./charts \
+  --namespace hyperfleet-system \
+  --set monitoring.podMonitoring.enabled=true
+```
+
+### Fallback: Prometheus Annotations
+
+If neither ServiceMonitor nor PodMonitoring is available:
+
+```yaml
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9090"
+  prometheus.io/path: "/metrics"
+```
+
+## Troubleshooting
+
+### Check Pod Status
+
+```bash
+kubectl get pods -n hyperfleet-system -l app.kubernetes.io/name=sentinel
+```
+
+### View Logs
+
+```bash
+kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel -f
+```
+
+### Describe Pod
+
+```bash
+kubectl describe pod -n hyperfleet-system -l app.kubernetes.io/name=sentinel
+```
+
+### Check ConfigMap
+
+```bash
+kubectl get configmap -n hyperfleet-system
+kubectl describe configmap sentinel-config -n hyperfleet-system
+```
+
+### Verify Secret
+
+```bash
+kubectl get secret -n hyperfleet-system
+kubectl describe secret sentinel-broker-credentials -n hyperfleet-system
+```
+
+## License
+
+See the parent [LICENSE](../LICENSE) file for details.
