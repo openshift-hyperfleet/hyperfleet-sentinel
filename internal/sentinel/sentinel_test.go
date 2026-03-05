@@ -688,10 +688,10 @@ func TestMergeResources(t *testing.T) {
 			wantIDs: []string{},
 		},
 		{
-			name:    "empty IDs are treated as distinct",
+			name:    "empty IDs are deduplicated",
 			a:       []client.Resource{{ID: "", Kind: "from-a"}},
 			b:       []client.Resource{{ID: "", Kind: "from-b"}},
-			wantIDs: []string{"", ""},
+			wantIDs: []string{""},
 		},
 	}
 

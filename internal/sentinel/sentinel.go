@@ -18,6 +18,15 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
+const (
+	// notReadyFilter selects resources whose Ready condition is False.
+	notReadyFilter = "status.conditions.Ready='False'"
+
+	// staleReadyFilterFmt selects resources whose Ready condition is True but
+	// last_updated_time is older than the given cutoff (RFC 3339 timestamp).
+	staleReadyFilterFmt = "status.conditions.Ready='True' and status.conditions.Ready.last_updated_time<='%s'"
+)
+
 // Sentinel polls the HyperFleet API and triggers reconciliation events
 type Sentinel struct {
 	config         *config.SentinelConfig
@@ -103,7 +112,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	ctx = logger.WithSubset(ctx, resourceType)
 	ctx = logger.WithTopic(ctx, topic)
 
-	s.logger.V(2).Info(ctx, "Starting trigger cycle")
+	s.logger.Debug(ctx, "Starting trigger cycle")
 
 	// Convert label selectors to map for filtering
 	labelSelector := s.config.ResourceSelector.ToMap()
@@ -127,6 +136,11 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	// Evaluate each resource
 	for i := range resources {
 		resource := &resources[i]
+
+		if resource.ID == "" {
+			s.logger.Warnf(ctx, "Skipping resource with empty ID kind=%s", resource.Kind)
+			continue
+		}
 
 		decision := s.decisionEngine.Evaluate(resource, now)
 
@@ -170,7 +184,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Record skipped resource
 			metrics.UpdateResourcesSkippedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.V(2).Infof(skipCtx, "Skipped resource resource_id=%s ready=%t",
+			s.logger.Debugf(skipCtx, "Skipped resource resource_id=%s ready=%t",
 				resource.ID, resource.Status.Ready)
 			skipped++
 		}
@@ -206,18 +220,15 @@ func (s *Sentinel) fetchFilteredResources(ctx context.Context, labelSelector map
 	rt := client.ResourceType(s.config.ResourceType)
 
 	// Query 1: Not-ready resources
-	notReadyResources, err := s.client.FetchResources(ctx, rt, labelSelector,
-		"status.conditions.Ready='False'")
+	notReadyResources, err := s.client.FetchResources(ctx, rt, labelSelector, notReadyFilter)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch not-ready resources: %w", err)
 	}
-	s.logger.V(2).Infof(ctx, "Fetched not-ready resources count=%d", len(notReadyResources))
+	s.logger.Debugf(ctx, "Fetched not-ready resources count=%d", len(notReadyResources))
 
 	// Query 2: Stale ready resources (last_updated_time exceeded max_age_ready)
 	cutoff := time.Now().Add(-s.config.MaxAgeReady)
-	staleFilter := fmt.Sprintf(
-		"status.conditions.Ready='True' and status.conditions.Ready.last_updated_time<='%s'",
-		cutoff.Format(time.RFC3339))
+	staleFilter := fmt.Sprintf(staleReadyFilterFmt, cutoff.Format(time.RFC3339))
 	staleResources, err := s.client.FetchResources(ctx, rt, labelSelector, staleFilter)
 	if err != nil {
 		// Propagate context cancellation/timeout — the caller must see these
@@ -228,32 +239,23 @@ func (s *Sentinel) fetchFilteredResources(ctx context.Context, labelSelector map
 		s.logger.Errorf(ctx, "Failed to fetch stale resources, continuing with not-ready only: %v", err)
 		return notReadyResources, nil
 	}
-	s.logger.V(2).Infof(ctx, "Fetched stale ready resources count=%d", len(staleResources))
+	s.logger.Debugf(ctx, "Fetched stale ready resources count=%d", len(staleResources))
 
 	return mergeResources(notReadyResources, staleResources), nil
 }
 
 // mergeResources combines two resource slices, deduplicating by resource ID.
 // Resources from the first slice take precedence when duplicates are found.
-// Resources with empty IDs are treated as distinct and always preserved.
 func mergeResources(a, b []client.Resource) []client.Resource {
 	seen := make(map[string]struct{}, len(a))
 	result := make([]client.Resource, 0, len(a)+len(b))
 
 	for i := range a {
-		key := a[i].ID
-		if key == "" {
-			key = fmt.Sprintf("__empty_a_%d", i)
-		}
-		seen[key] = struct{}{}
+		seen[a[i].ID] = struct{}{}
 		result = append(result, a[i])
 	}
 	for i := range b {
-		key := b[i].ID
-		if key == "" {
-			key = fmt.Sprintf("__empty_b_%d", i)
-		}
-		if _, exists := seen[key]; !exists {
+		if _, exists := seen[b[i].ID]; !exists {
 			result = append(result, b[i])
 		}
 	}

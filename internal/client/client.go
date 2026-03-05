@@ -148,11 +148,11 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 		if err != nil {
 			// Check if error is retriable
 			if isRetriable(err) {
-				c.log.V(2).Infof(ctx, "Retriable error fetching %s: %v (will retry)", resourceType, err)
+				c.log.Debugf(ctx, "Retriable error fetching %s: %v (will retry)", resourceType, err)
 				return nil, err // Retry
 			}
 			// Non-retriable error - stop retrying
-			c.log.V(2).Infof(ctx, "Non-retriable error fetching %s: %v (will not retry)", resourceType, err)
+			c.log.Debugf(ctx, "Non-retriable error fetching %s: %v (will not retry)", resourceType, err)
 			return nil, backoff.Permanent(err)
 		}
 		return resources, nil
