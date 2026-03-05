@@ -203,9 +203,14 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 	}
 	decisionEngine := engine.NewDecisionEngine(cfg.MaxAgeNotReady, cfg.MaxAgeReady)
 
+	// Initialize broker metrics recorder
+	// Broker metrics (messages_published_total, errors_total, etc.) are registered
+	// in the same Prometheus registry used by sentinel metrics.
+	brokerMetrics := broker.NewMetricsRecorder("sentinel", version, registry)
+
 	// Initialize publisher using hyperfleet-broker library
 	// Configuration is loaded from broker.yaml or BROKER_CONFIG_FILE env var
-	pub, err := broker.NewPublisher(log)
+	pub, err := broker.NewPublisher(log, brokerMetrics)
 	if err != nil {
 		log.Errorf(ctx, "Failed to initialize broker publisher: %v", err)
 		return fmt.Errorf("failed to initialize broker publisher: %w", err)
