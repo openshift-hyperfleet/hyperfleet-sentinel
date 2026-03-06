@@ -75,24 +75,26 @@ func (r *ReadinessChecker) writeJSON(w http.ResponseWriter, statusCode int, v in
 // It returns 200 OK when the last poll is recent or not yet occurred (pre-first poll),
 // or 503 Service Unavailable when the last poll exceeds the staleness threshold.
 func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold time.Duration) http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, req *http.Request) {
 		if lastPollFn == nil || threshold <= 0 {
+			r.logger.Errorf(req.Context(), "Healthz check called with invalid configuration: lastPollFn=%v, threshold=%v", lastPollFn, threshold)
 			r.writeJSON(w, http.StatusInternalServerError, healthResponse{Status: "invalid health configuration"})
 			return
 		}
-		
+
 		lastPoll := lastPollFn()
 
 		if lastPoll.IsZero() {
 			r.writeJSON(w, http.StatusOK, healthResponse{Status: "ok"})
 			return
 		}
-	
+
 		if time.Since(lastPoll) > threshold {
+			r.logger.Warnf(req.Context(), "Healthz check failed: last poll was %s ago, threshold is %s", time.Since(lastPoll).Round(time.Second), threshold)
 			r.writeJSON(w, http.StatusServiceUnavailable, healthResponse{Status: "poll stale"})
 			return
 		}
-	
+
 		r.writeJSON(w, http.StatusOK, healthResponse{Status: "ok"})
 	}
 }
@@ -102,7 +104,7 @@ func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold
 // When ready=true, it evaluates all registered checks and returns 200 if all pass,
 // or 503 with details of which checks failed.
 func (r *ReadinessChecker) ReadyzHandler() http.HandlerFunc {
-	return func(w http.ResponseWriter, _ *http.Request) {
+	return func(w http.ResponseWriter, req *http.Request) {
 		if !r.IsReady() {
 			r.writeJSON(w, http.StatusServiceUnavailable, readyResponse{
 				Status: "error",
@@ -128,6 +130,7 @@ func (r *ReadinessChecker) ReadyzHandler() http.HandlerFunc {
 			return
 		}
 
+		r.logger.Warnf(req.Context(), "Readyz check failed: %v", checks)
 		r.writeJSON(w, http.StatusServiceUnavailable, readyResponse{
 			Status: "error",
 			Checks: checks,

@@ -52,8 +52,6 @@ func TestReadinessChecker_ConcurrentAccess(t *testing.T) {
 }
 
 func TestHealthzHandler_InvalidParameters(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
-
 	tests := []struct {
 		name         string
 		lastPollFn   func() time.Time
@@ -79,6 +77,8 @@ func TestHealthzHandler_InvalidParameters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			mock := logger.NewMockLogger()
+			rc := NewReadinessChecker(mock)
 			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 			w := httptest.NewRecorder()
 
@@ -95,6 +95,9 @@ func TestHealthzHandler_InvalidParameters(t *testing.T) {
 			if resp.Status != tt.expectedBody {
 				t.Fatalf("expected status %q, got %q", tt.expectedBody, resp.Status)
 			}
+			if len(*mock.CapturedLogs) == 0 {
+				t.Errorf("Expected an error log for invalid health configuration")
+			}
 		})
 	}
 }
@@ -105,6 +108,7 @@ func TestHealthzHandler_PollStates(t *testing.T) {
 		lastPoll       time.Time
 		expectedCode   int
 		expectedStatus string
+		expectLog bool
 	}{
 		{
 			name:           "healthy poll",
@@ -117,6 +121,7 @@ func TestHealthzHandler_PollStates(t *testing.T) {
 			lastPoll:       time.Now().Add(-20 * time.Second),
 			expectedCode:   http.StatusServiceUnavailable,
 			expectedStatus: "poll stale",
+			expectLog: true,
 		},
 		{
 			name:           "pre-first poll",
@@ -131,7 +136,8 @@ func TestHealthzHandler_PollStates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+			mock := logger.NewMockLogger()
+			rc := NewReadinessChecker(mock)
 			lastPollFn := func() time.Time { return tt.lastPoll }
 
 			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -154,12 +160,19 @@ func TestHealthzHandler_PollStates(t *testing.T) {
 			if resp.Status != tt.expectedStatus {
 				t.Errorf("Expected status %s, got '%s'", tt.expectedStatus, resp.Status)
 			}
+			if tt.expectLog && len(*mock.CapturedLogs) == 0 {
+				t.Errorf("Expected a warning log for stale poll")
+			}
+			if !tt.expectLog && len(*mock.CapturedLogs) > 0 {
+				t.Errorf("Expected no logs, got %v", *mock.CapturedLogs)
+			}
 		})
 	}
 }
 
 func TestReadyzHandler_PreFirstPollNotReady(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	mock := logger.NewMockLogger()
+	rc := NewReadinessChecker(mock)
 	rc.AddCheck("broker", func() error { return nil })
 	rc.AddCheck("sentinel_poll", func() error {
 		return fmt.Errorf("no successful poll completed yet")
@@ -192,6 +205,9 @@ func TestReadyzHandler_PreFirstPollNotReady(t *testing.T) {
 	}
 	if resp.Checks["broker"] != "ok" {
 		t.Errorf("Expected broker 'ok', got %s", resp.Checks["broker"])
+	}
+	if len(*mock.CapturedLogs) == 0 {
+		t.Errorf("Expected a warning log for the failed readyz check")
 	}
 }
 
@@ -279,7 +295,8 @@ func TestReadyzHandler_TransitionOnShutdown(t *testing.T) {
 }
 
 func TestReadyzHandler_CheckFails(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	mock := logger.NewMockLogger()
+	rc := NewReadinessChecker(mock)
 	rc.AddCheck("broker", func() error { return fmt.Errorf("connection refused") })
 	rc.AddCheck("config", func() error { return nil })
 	rc.SetReady(true)
@@ -305,6 +322,9 @@ func TestReadyzHandler_CheckFails(t *testing.T) {
 	}
 	if resp.Checks["config"] != "ok" {
 		t.Errorf("Expected config check 'ok', got '%s'", resp.Checks["config"])
+	}
+	if len(*mock.CapturedLogs) == 0 {
+		t.Errorf("Expected a warning log for failed readyz check")
 	}
 }
 

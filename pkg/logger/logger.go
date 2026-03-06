@@ -546,6 +546,10 @@ type MockLoggerWithContext struct {
 	CapturedContexts *[]context.Context
 }
 
+func NewMockLogger() *MockLoggerWithContext {
+	return &MockLoggerWithContext{CapturedLogs: &[]string{}}
+}
+
 func (m *MockLoggerWithContext) capture(ctx context.Context, msg string) {
 	if m.CapturedLogs == nil {
 		m.CapturedLogs = &[]string{}
