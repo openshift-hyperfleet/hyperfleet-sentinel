@@ -26,6 +26,12 @@ max_age_not_ready: 10s
 # Stable resources are checked less frequently to reduce API load.
 max_age_ready: 30m
 
+# Messaging system type for OpenTelemetry tracing attributes.
+# Should match the actual message broker being used for accurate observability.
+# Valid values: rabbitmq, gcp_pubsub, kafka, activemq, aws_sqs, etc.
+# Can be overridden via MESSAGING_SYSTEM environment variable.
+messaging_system: "gcp_pubsub"
+
 # Resource selector (optional) - filter resources by labels.
 # If empty or omitted, all resources of the specified type are watched.
 # This enables horizontal scaling by having multiple Sentinels watch different resource subsets.

@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
-	"time"
 	"sync/atomic"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
@@ -80,19 +80,19 @@ func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold
 			r.writeJSON(w, http.StatusInternalServerError, healthResponse{Status: "invalid health configuration"})
 			return
 		}
-		
+
 		lastPoll := lastPollFn()
 
 		if lastPoll.IsZero() {
 			r.writeJSON(w, http.StatusOK, healthResponse{Status: "ok"})
 			return
 		}
-	
+
 		if time.Since(lastPoll) > threshold {
 			r.writeJSON(w, http.StatusServiceUnavailable, healthResponse{Status: "poll stale"})
 			return
 		}
-	
+
 		r.writeJSON(w, http.StatusOK, healthResponse{Status: "ok"})
 	}
 }
