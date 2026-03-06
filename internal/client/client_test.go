@@ -533,6 +533,123 @@ func TestLabelSelectorToSearchString(t *testing.T) {
 	}
 }
 
+// TestBuildSearchString tests combining label selectors with additional filters
+func TestBuildSearchString(t *testing.T) {
+	tests := []struct {
+		name              string
+		labelSelector     map[string]string
+		additionalFilters []string
+		want              string
+	}{
+		{
+			name:              "labels only",
+			labelSelector:     map[string]string{"region": "us-east"},
+			additionalFilters: nil,
+			want:              "labels.region='us-east'",
+		},
+		{
+			name:              "condition filter only",
+			labelSelector:     nil,
+			additionalFilters: []string{"status.conditions.Ready='False'"},
+			want:              "status.conditions.Ready='False'",
+		},
+		{
+			name:              "labels and condition filter",
+			labelSelector:     map[string]string{"shard": "1"},
+			additionalFilters: []string{"status.conditions.Ready='False'"},
+			want:              "labels.shard='1' and status.conditions.Ready='False'",
+		},
+		{
+			name:              "labels and multiple filters",
+			labelSelector:     map[string]string{"shard": "1"},
+			additionalFilters: []string{"status.conditions.Ready='True'", "status.conditions.Ready.last_updated_time<='2025-01-01T00:00:00Z'"},
+			want:              "labels.shard='1' and status.conditions.Ready='True' and status.conditions.Ready.last_updated_time<='2025-01-01T00:00:00Z'",
+		},
+		{
+			name:              "empty labels and filters",
+			labelSelector:     nil,
+			additionalFilters: nil,
+			want:              "",
+		},
+		{
+			name:              "empty string filter ignored",
+			labelSelector:     map[string]string{"env": "prod"},
+			additionalFilters: []string{"", "status.conditions.Ready='False'"},
+			want:              "labels.env='prod' and status.conditions.Ready='False'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildSearchString(tt.labelSelector, tt.additionalFilters)
+			if got != tt.want {
+				t.Errorf("buildSearchString() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFetchResources_WithAdditionalFilters tests search with condition-based filters
+func TestFetchResources_WithAdditionalFilters(t *testing.T) {
+	var receivedSearchParam string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedSearchParam = r.URL.Query().Get("search")
+
+		cluster := createMockCluster("cluster-1")
+		response := createMockClusterList([]map[string]interface{}{cluster})
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+
+	labelSelector := map[string]string{"shard": "1"}
+	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, labelSelector,
+		"status.conditions.Ready='False'")
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	expectedSearch := "labels.shard='1' and status.conditions.Ready='False'"
+	if receivedSearchParam != expectedSearch {
+		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
+	}
+}
+
+// TestFetchResources_WithConditionFilterOnly tests search with only condition filters (no labels)
+func TestFetchResources_WithConditionFilterOnly(t *testing.T) {
+	var receivedSearchParam string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedSearchParam = r.URL.Query().Get("search")
+
+		response := createMockClusterList([]map[string]interface{}{createMockCluster("cluster-1")})
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+
+	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil,
+		"status.conditions.Ready='True'", "status.conditions.Ready.last_updated_time<='2025-01-01T00:00:00Z'")
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	expectedSearch := "status.conditions.Ready='True' and status.conditions.Ready.last_updated_time<='2025-01-01T00:00:00Z'"
+	if receivedSearchParam != expectedSearch {
+		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
+	}
+}
+
 // TestFetchResources_NodePools tests fetching nodepools
 func TestFetchResources_NodePools(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
