@@ -10,19 +10,19 @@ Deploy multiple Sentinel instances by installing the Helm chart multiple times w
 
 ```bash
 # Instance 1: Watch clusters in us-east region
-helm install sentinel-us-east ./deployments/helm/sentinel \
+helm install sentinel-us-east ./charts \
   --namespace hyperfleet-system \
   --set config.resourceSelector[0].label=region \
   --set config.resourceSelector[0].value=us-east
 
 # Instance 2: Watch clusters in us-west region
-helm install sentinel-us-west ./deployments/helm/sentinel \
+helm install sentinel-us-west ./charts \
   --namespace hyperfleet-system \
   --set config.resourceSelector[0].label=region \
   --set config.resourceSelector[0].value=us-west
 
 # Instance 3: Watch clusters in eu-central region
-helm install sentinel-eu-central ./deployments/helm/sentinel \
+helm install sentinel-eu-central ./charts \
   --namespace hyperfleet-system \
   --set config.resourceSelector[0].label=region \
   --set config.resourceSelector[0].value=eu-central
@@ -56,11 +56,11 @@ config:
 
 Deploy using values files:
 ```bash
-helm install sentinel-us-east ./deployments/helm/sentinel \
+helm install sentinel-us-east ./charts \
   --namespace hyperfleet-system \
   -f values-us-east.yaml
 
-helm install sentinel-us-west ./deployments/helm/sentinel \
+helm install sentinel-us-west ./charts \
   --namespace hyperfleet-system \
   -f values-us-west.yaml
 ```
@@ -82,14 +82,14 @@ When deploying multiple Sentinel instances, consider using separate broker topic
 
 ```bash
 # Instance for us-east with dedicated topic
-helm install sentinel-us-east ./deployments/helm/sentinel \
+helm install sentinel-us-east ./charts \
   --namespace hyperfleet-system \
   --set config.resourceSelector[0].label=region \
   --set config.resourceSelector[0].value=us-east \
   --set broker.topic=hyperfleet-clusters-us-east
 
 # Instance for us-west with dedicated topic
-helm install sentinel-us-west ./deployments/helm/sentinel \
+helm install sentinel-us-west ./charts \
   --namespace hyperfleet-system \
   --set config.resourceSelector[0].label=region \
   --set config.resourceSelector[0].value=us-west \

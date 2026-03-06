@@ -365,7 +365,7 @@ Deploy Sentinel using the image you built:
 If you used `make image-dev`, deploy with:
 
 ```bash
-helm upgrade --install sentinel-test ./deployments/helm/sentinel \
+helm upgrade --install sentinel-test ./charts \
   --namespace ${NAMESPACE} \
   --create-namespace \
   --set global.imageRegistry=quay.io \
@@ -381,7 +381,7 @@ helm upgrade --install sentinel-test ./deployments/helm/sentinel \
 If you manually built and pushed to GCR, deploy with:
 
 ```bash
-helm upgrade --install sentinel-test ./deployments/helm/sentinel \
+helm upgrade --install sentinel-test ./charts \
   --namespace ${NAMESPACE} \
   --create-namespace \
   --set image.repository=gcr.io/${GCP_PROJECT}/sentinel \
@@ -391,7 +391,7 @@ helm upgrade --install sentinel-test ./deployments/helm/sentinel \
   --set monitoring.podMonitoring.enabled=true
 
 # For Prometheus Operator environments (OpenShift, vanilla Kubernetes):
-helm upgrade --install sentinel-test ./deployments/helm/sentinel \
+helm upgrade --install sentinel-test ./charts \
   --namespace ${NAMESPACE} \
   --create-namespace \
   --set image.repository=gcr.io/${GCP_PROJECT}/sentinel \
