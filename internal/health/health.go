@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"sync"
-	"time"
 	"sync/atomic"
+	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
@@ -77,7 +77,9 @@ func (r *ReadinessChecker) writeJSON(w http.ResponseWriter, statusCode int, v in
 func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold time.Duration) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if lastPollFn == nil || threshold <= 0 {
-			r.logger.Errorf(req.Context(), "Healthz check called with invalid configuration: lastPollFn=%v, threshold=%v", lastPollFn, threshold)
+			r.logger.Extra("lastPollFn", lastPollFn).Extra("threshold", threshold).
+				Errorf(req.Context(), "Healthz check called with invalid configuration")
+
 			r.writeJSON(w, http.StatusInternalServerError, healthResponse{Status: "invalid health configuration"})
 			return
 		}
@@ -90,7 +92,8 @@ func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold
 		}
 
 		if time.Since(lastPoll) > threshold {
-			r.logger.Warnf(req.Context(), "Healthz check failed: last poll was %s ago, threshold is %s", time.Since(lastPoll).Round(time.Second), threshold)
+			r.logger.Extra("staleness", time.Since(lastPoll).Round(time.Second)).Extra("threshold", threshold).
+				Warnf(req.Context(), "Healthz check failed: poll stale")
 			r.writeJSON(w, http.StatusServiceUnavailable, healthResponse{Status: "poll stale"})
 			return
 		}
@@ -130,7 +133,8 @@ func (r *ReadinessChecker) ReadyzHandler() http.HandlerFunc {
 			return
 		}
 
-		r.logger.Warnf(req.Context(), "Readyz check failed: %v", checks)
+		r.logger.Extra("checks", checks).
+			Warnf(req.Context(), "Readyz check failed")
 		r.writeJSON(w, http.StatusServiceUnavailable, readyResponse{
 			Status: "error",
 			Checks: checks,
