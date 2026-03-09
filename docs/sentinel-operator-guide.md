@@ -4,27 +4,26 @@ This comprehensive guide teaches operators how to deploy, configure, and operate
 
 ## Table of Contents
 
-1. [Introduction](#introduction)
-   - [What is Sentinel?](#what-is-sentinel)
-   - [When to Use Sentinel](#when-to-use-sentinel)
-2. [Core Concepts](#core-concepts)
-   - [Decision Engine](#decision-engine)
-      - [Generation-Based Reconciliation](#generation-based-reconciliation)
-      - [Time-Based Reconciliation (Max Age Intervals)](#time-based-reconciliation-max-age-intervals)
-   - [Resource Filtering and Sharding](#resource-filtering-and-sharding)
-3. [Configuration Reference](#configuration-reference)
-   - [Configuration File Structure](#configuration-file-structure)
-   - [Required Fields](#required-fields)
-   - [Optional Fields](#optional-fields)
-   - [Resource Selector](#resource-selector)
-   - [Message Data (CEL Expressions)](#message-data-cel-expressions)
-   - [Broker Configuration](#broker-configuration)
-4. [Deployment Checklist](#deployment-checklist)
+1. [Introduction](#1-introduction)
+   - [What is Sentinel?](#11-what-is-sentinel)
+   - [When to Use Sentinel](#12-when-to-use-sentinel)
+2. [Core Concepts](#2-core-concepts)
+   - [Decision Engine](#21-decision-engine)
+      - [State-Based Reconciliation](#211-state-based-reconciliation)
+      - [Time-Based Reconciliation (Max Age Intervals)](#212-time-based-reconciliation-max-age-intervals)
+   - [Resource Filtering](#22-resource-filtering)
+3. [Configuration Reference](#3-configuration-reference)
+   - [Configuration File Structure](#31-configuration-file-structure)
+   - [Required Fields](#32-required-fields)
+   - [Optional Fields](#33-optional-fields)
+   - [Resource Selector](#34-resource-selector)
+   - [Message Data (CEL Expressions)](#35-message-data-cel-expressions)
+   - [Broker Configuration](#36-broker-configuration)
+4. [Deployment Checklist](#4-deployment-checklist)
 5. [Additional Resources](#additional-resources)
 
 **Appendices:**
 - [Appendix A: Troubleshooting](#appendix-a-troubleshooting)
-- [Appendix B: Quick Reference](#appendix-b-quick-reference)
 
 ---
 
@@ -32,13 +31,20 @@ This comprehensive guide teaches operators how to deploy, configure, and operate
 
 ### 1.1 What is Sentinel?
 
-HyperFleet Sentinel is a **polling-based event publisher** that monitors HyperFleet API resources and publishes CloudEvents to a message broker when reconciliation is needed. It acts as the trigger mechanism for the HyperFleet orchestration platform.
+**Sentinel is the component within the HyperFleet system responsible for triggering reconciliation events for changes in managed API resources.** It acts as the centralized trigger mechanism for the orchestration platform.
+
+**Key Benefits:**
+
+- **Single source of truth** - Centralized decision logic for when reconciliation should occur
+- **Configurable polling strategy** - Different reconciliation rates for stable vs transitional resources
+- **Broker abstraction** - Supports multiple message broker backends
+- **Horizontal scalability** - Multiple instances can distribute workload through resource filtering
 
 **Core Responsibilities:**
 
 1. **Poll HyperFleet API** for resource updates at configurable intervals
 2. **Evaluate resources** using a decision engine to determine when events should be published
-3. **Publish CloudEvents** to a message broker (RabbitMQ or Google Pub/Sub)
+3. **Publish CloudEvents** to a message broker
 4. **Track metrics** for observability and debugging
 
 **Architecture Overview:**
@@ -53,8 +59,8 @@ graph LR
     E -->|Update Status| B
 ```
 
-Sentinel operates independently of adapters and uses a **dual-trigger reconciliation strategy**:
-- **Generation-based**: Publish immediately when resource spec changes (generation increments)
+Sentinel publishes events to a message broker, which fans out messages to downstream adapters. It uses a **dual-trigger reconciliation strategy**:
+- **State-based**: Publish immediately when resource state indicates unprocessed spec changes
 - **Time-based**: Publish periodically based on max age intervals to ensure eventual consistency
 
 ### 1.2 When to Use Sentinel
@@ -64,7 +70,7 @@ Deploy Sentinel when you need:
 - **Event-driven orchestration** for cluster lifecycle management
 - **Centralized reconciliation logic** instead of distributed polling by each adapter
 - **Configurable polling intervals** with different rates for ready vs not-ready resources
-- **Horizontal scaling** through resource filtering (sharding)
+- **Horizontal scaling** through resource filtering
 - **Broker abstraction** to support multiple message broker backends
 
 ---
@@ -75,8 +81,8 @@ Deploy Sentinel when you need:
 
 Sentinel's decision engine evaluates resources during each poll cycle to determine when to publish events. It uses a **dual-trigger strategy** that combines two complementary mechanisms to ensure both immediate response to changes and eventual consistency over time:
 
-1. **Generation-Based Reconciliation** — Immediate event publishing when resource specs change, which is checked first
-2. **Time-Based Reconciliation** — Periodic event publishing to handle drift and failures when generations match
+1. **State-Based Reconciliation** — Immediate event publishing when resource state indicates unprocessed spec changes, which is checked first
+2. **Time-Based Reconciliation** — Periodic event publishing to handle drift and failures when state is in sync
 
 **How Sentinel Reads Resource State:**
 
@@ -85,15 +91,19 @@ When Sentinel polls the HyperFleet API, it retrieves cluster or nodepool resourc
 1. **`resource.Generation`** — Retrieved from the API resource. The HyperFleet API increments this value every time the resource spec is updated.
 2. **`resource.status`** — Extracted from the API resource's `type=Ready` condition.
 
-#### 2.1.1 Generation-Based Reconciliation
+#### 2.1.1 State-Based Reconciliation
 
-Generation-based reconciliation is a **spec-change detection mechanism** where Sentinel immediately publishes events when a resource's desired state changes.
+State-based reconciliation is a **spec-change detection mechanism** where Sentinel immediately publishes events when resource state indicates the spec has changed but hasn't been fully processed yet.
 
 **How It Works:**
 
+Sentinel detects unprocessed spec changes by comparing the resource's `generation` field with the `ObservedGeneration` from the Ready condition:
+
 1. **Generation Counter**: Every resource has a `generation` field that increments when the spec changes
-2. **Observed Generation**: Adapters track the last processed generation in `status.observed_generation`
-3. **Mismatch Detection**: Sentinel publishes an event when `generation > observed_generation`
+2. **Ready Condition Aggregation**: The Ready condition (type=Ready) contains an `ObservedGeneration` field which is aggregated from individual adapter conditions
+3. **State Comparison**: Sentinel publishes an event when `generation` is greater than the `ObservedGeneration` field from the Ready condition
+
+**Note**: Sentinel uses the Ready condition's `ObservedGeneration` field as a proxy signal for spec changes. While the Ready condition can also be False for other reasons (e.g., adapter-reported infrastructure failures), the `ObservedGeneration` field specifically tracks spec processing, making this an effective spec-change detection mechanism.
 
 **Flow Diagram:**
 
@@ -110,7 +120,7 @@ sequenceDiagram
     Sentinel->>API: Poll resources
     API-->>Sentinel: cluster (gen: 2, observed_gen: 1)
     Sentinel->>Sentinel: Evaluate: 2 > 1 → PUBLISH
-    Sentinel->>Broker: CloudEvent (reason: generation changed)
+    Sentinel->>Broker: CloudEvent (reason: state change detected)
     Broker->>Adapter: Consume event
     Adapter->>API: Reconcile cluster
     Adapter->>API: Update status (observed_generation: 2)
@@ -118,9 +128,10 @@ sequenceDiagram
 
 **Key Properties:**
 
-- **Immediate Response**: No need to wait for max age interval when spec changes
+- **Immediate Response**: No need to wait for max age interval when state indicates unprocessed changes
 - **Idempotent**: Adapters can safely process the same generation multiple times
 - **Race Prevention**: Ensures spec changes are never missed due to timing
+- **Condition-Based**: Uses Ready condition data as a reliable proxy for tracking spec processing status
 
 #### 2.1.2 Time-Based Reconciliation (Max Age Intervals)
 
@@ -128,24 +139,24 @@ Time-based reconciliation ensures **eventual consistency** by publishing events 
 
 **How It Works:**
 
-Sentinel uses two configurable max age intervals based on resource status:
+Sentinel uses two configurable max age intervals based on the resource's status (`Ready` condition):
 
 | Resource State | Default Interval | Rationale                                                                              |
 |----------------|------------------|----------------------------------------------------------------------------------------|
-| **Not Ready** (`status.ready: false`) | `10s` | Faster reconciliation for transitional states requires more frequent checks to complete quickly |
-| **Ready** (`status.ready: true`) | `30m` | Lower frequency for drift detection on stable resources to avoid excessive load            |
+| **Not Ready** (`Ready` condition status = False) | `10s` | Faster reconciliation for transitional states requires more frequent checks to complete quickly |
+| **Ready** (`Ready` condition status = True) | `30m` | Lower frequency for drift detection on stable resources to avoid excessive load            |
 
 **Decision Logic:**
 
-When `generation == observed_generation` (no spec changes), Sentinel checks if enough time has elapsed:
+When the resource's `generation` matches the `Ready` condition's `ObservedGeneration` (indicating the condition reflects the current state), Sentinel checks if enough time has elapsed:
 
 1. Calculate reference timestamp:
    - If `status.last_updated` exists → use it (adapter has processed resource)
    - Otherwise → use `created_time` (new resource never processed)
 
 2. Determine max age interval:
-   - If `status.ready == true` → use `max_age_ready` (default: 30m)
-   - If `status.ready == false` → use `max_age_not_ready` (default: 10s)
+   - If resource is ready (`Ready` condition status == True) → use `max_age_ready` (default: 30m)
+   - If resource is not ready (`Ready` condition status == False) → use `max_age_not_ready` (default: 10s)
 
 3. Calculate next event time:
    ```text
@@ -173,13 +184,9 @@ graph TD
     H -->|No| J[Skip: within max age]
 ```
 
-**Adapter Contract:**
+### 2.2 Resource Filtering
 
-For time-based reconciliation to work correctly, **adapters MUST** update their adapter-specific status fields (`observed_time`, `observed_generation`, and `Available` condition) on every reconciliation. These adapter statuses are then aggregated into the resource's overall `Ready` condition.
-
-### 2.2 Resource Filtering and Sharding
-
-Resource filtering enables **horizontal scaling** by distributing resources across multiple Sentinel instances using label-based selectors.
+Resource filtering enables **horizontal scaling** by allowing operators to distribute resources across multiple Sentinel instances using label-based selectors.
 
 **How It Works:**
 
@@ -199,14 +206,13 @@ resource_selector:
 - **Single selector**: Match resources with that label
 - **Multiple selectors**: Match resources with ALL labels (AND logic)
 
-**Common Sharding Strategies:**
+**Common Filtering Patterns:**
 
-| Strategy | Example                                     | Use Case |
+| Pattern | Example                                     | Use Case |
 |----------|---------------------------------------------|----------|
 | **Regional** | `region: us-east`, `region: eu-west`        | Geographic distribution |
 | **Environment** | `environment: prod`, `environment: staging` | Isolation by environment |
-| **Numeric Sharding** | `shard: "1"`, `shard: "2"`, `shard: "3"`    | Even distribution for high volume |
-| **Cluster Type** | `type: hypershift`, `type: standalone`      | Workload-specific instances |
+| **Index-based** | `index: "1"`, `index: "2"`, `index: "3"`    | Numeric distribution for high volume |
 | **Combined** | `region: us-east` + `environment: prod`     | Multi-dimensional filtering |
 
 **Architecture Diagram:**
@@ -215,16 +221,18 @@ resource_selector:
 graph TB
     API[HyperFleet API<br/>All Resources]
 
-    API --> S1[Sentinel US-East<br/>selector: region=us-east]
-    API --> S2[Sentinel US-West<br/>selector: region=us-west]
-    API --> S3[Sentinel EU-Central<br/>selector: region=eu-central]
+    API --> S1[Sentinel US-East Clusters<br/>resource_type: clusters<br/>selector: region=us-east]
+    API --> S2[Sentinel US-West Clusters<br/>resource_type: clusters<br/>selector: region=us-west]
+    API --> S3[Sentinel EU-Central NodePools<br/>resource_type: nodepools<br/>selector: region=eu-central]
 
     S1 --> B1[Broker Topic:<br/>us-east-clusters]
     S2 --> B2[Broker Topic:<br/>us-west-clusters]
-    S3 --> B3[Broker Topic:<br/>eu-central-clusters]
+    S3 --> B3[Broker Topic:<br/>eu-central-nodepools]
 
-    B1 --> A1[Adapter US-East]
-    B2 --> A2[Adapter US-West]
+    B1 --> A1a[Adapter US-East-1]
+    B1 --> A1b[Adapter US-East-2]
+    B2 --> A2a[Adapter US-West-1]
+    B2 --> A2b[Adapter US-West-2]
     B3 --> A3[Adapter EU-Central]
 ```
 
@@ -237,7 +245,7 @@ graph TB
 
 **Broker Topic Isolation:**
 
-When using sharded deployments, consider using separate broker topics to enable independent processing:
+When using multiple filtered instances, consider using separate broker topics to enable independent processing:
 
 ```yaml
 # US-East instance
@@ -270,7 +278,7 @@ poll_interval: 5s
 max_age_not_ready: 10s
 max_age_ready: 30m
 
-# Optional: Resource filtering (sharding)
+# Optional: Resource filtering
 resource_selector:
   - label: region
     value: us-east-1
@@ -417,7 +425,7 @@ The `message_data` configuration produces CloudEvents with the following structu
 ```json
 {
   "specversion": "1.0",
-  "type": "hyperfleet.clusters.reconcile",
+  "type": "com.redhat.hyperfleet.cluster.reconcile",
   "source": "hyperfleet-sentinel",
   "id": "uuid-generated",
   "time": "2025-01-01T10:00:00Z",
@@ -462,25 +470,20 @@ broker:
 |----------|--------|-------------|---------|
 | `BROKER_RABBITMQ_URL` | RabbitMQ | Complete connection URL with credentials | `amqp://user:pass@localhost:5672/vhost` |
 | `BROKER_GOOGLEPUBSUB_PROJECT_ID` | Pub/Sub | GCP project ID | `my-gcp-project` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Pub/Sub | Service account key path (optional, uses ADC if not set) | `/path/to/key.json` |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Pub/Sub | Service account key path (local dev/testing only, production GKE uses Workload Identity) | `/path/to/key.json` |
 | `BROKER_TOPIC` | Both | Topic name for publishing events | `hyperfleet-prod-clusters` |
 | `BROKER_CONFIG_FILE` | Both | Path to broker config file | `/app/broker.yaml` |
-| `PUBSUB_EMULATOR_HOST` | Pub/Sub | Pub/Sub emulator endpoint (dev only) | `localhost:8085` |
+| `PUBSUB_EMULATOR_HOST` | Pub/Sub | Pub/Sub emulator endpoint (local dev/testing only) | `localhost:8085` |
 
 **Topic Naming:**
 
-The `BROKER_TOPIC` environment variable sets the full topic name where events are published. When using Helm, the default topic follows the pattern:
+The `BROKER_TOPIC` environment variable sets the topic name where events are published. You can use any naming convention that fits your deployment requirements.
 
-```text
-{namespace}-{resourceType}
-```
+Example topic names:
+- `hyperfleet-prod-clusters`
+- `us-east-clusters`
 
-Examples:
-- `hyperfleet-dev-clusters`
-- `hyperfleet-prod-nodepools`
-- `hyperfleet-us-east-clusters` (with resource selector)
-
-This enables isolation between environments or tenants sharing the same broker. For details, see the [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md).
+When using the provided Helm chart, the default template uses `{namespace}-{resource_type}` (e.g., `hyperfleet-dev-clusters`), but this can be overridden by setting the `BROKER_TOPIC` environment variable or the `broker.topic` Helm value.
 
 **Broker Type: RabbitMQ**
 
@@ -508,20 +511,33 @@ broker:
     project_id: hcm-hyperfleet
 ```
 
-```bash
-# Environment variables
-export BROKER_TOPIC="hyperfleet-prod-clusters"
+**Local Development Authentication:**
 
-# Option 1: Use Application Default Credentials (recommended for GKE)
+For local development and testing, use one of these authentication methods:
+
+```bash
+# Set the topic name
+export BROKER_TOPIC="hyperfleet-dev-clusters"
+
+# Option 1: Use personal Application Default Credentials (local development)
 gcloud auth application-default login
 
-# Option 2: Use service account key file
+# Option 2: Use service account key file (local development/testing)
 export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account-key.json"
 ```
 
-**Google Pub/Sub Authentication on GKE:**
+**Production GKE Authentication:**
 
-When deploying to GKE, use **Workload Identity Federation** for authentication instead of service account keys. See [Deployment: Broker Setup](#broker-setup) for details.
+When deploying to production GKE, use **Workload Identity Federation** for authentication. This method does not require `GOOGLE_APPLICATION_CREDENTIALS` or `gcloud auth` commands - credentials are automatically provided to the pod:
+
+```bash
+# Only the topic name is required via environment variable
+export BROKER_TOPIC="hyperfleet-prod-clusters"
+
+# No GOOGLE_APPLICATION_CREDENTIALS needed - Workload Identity handles authentication
+```
+
+For Workload Identity setup instructions, see [Configure Workload Identity](running-sentinel.md#5-configure-workload-identity).
 
 **Broker Configuration Reference:**
 
@@ -540,8 +556,8 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
 - [ ] Determine `resource_type` to monitor: `clusters` or `nodepools`
 - [ ] Define `resource_selector` labels for filtering resources
   - Leave empty (`[]`) to monitor all resources
-  - Use label selectors for horizontal scaling or sharding
-  - Reference: [Resource Filtering and Sharding](#resource-filtering-and-sharding)
+  - Use label selectors for horizontal scaling
+  - Reference: [Resource Filtering](#22-resource-filtering)
 
 **Configure Reconciliation Parameters**
 
@@ -576,10 +592,9 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
   - Configure topic routing keys
   - Set retention and delivery policies
 - [ ] **Google Pub/Sub:**
-  - Create topic using naming convention: `{namespace}-{resourceType}`
+  - Create topic with your chosen naming convention (e.g., `hyperfleet-prod-clusters`)
   - Configure message retention duration
   - Set up dead-letter topic (optional)
-- [ ] Reference: [Sentinel Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md)
 
 **Configure Authentication and Permissions**
 
@@ -601,7 +616,7 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
   - Sensitive credentials in `secrets` or reference to existing secrets
 - [ ] Install Sentinel using Helm chart:
   ```bash
-  helm install sentinel ./deployments/helm/sentinel \
+  helm install sentinel ./charts \
     --namespace hyperfleet-system \
     --values values.yaml
   ```
@@ -610,7 +625,7 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
   kubectl get deployment -n hyperfleet-system sentinel
   kubectl get pods -n hyperfleet-system -l app.kubernetes.io/name=sentinel
   ```
-- [ ] Reference: [Helm Chart README](../deployments/helm/sentinel/README.md)
+- [ ] Reference: [Helm Chart README](../charts/README.md)
 
 ### Phase 4: Post-Deployment Validation
 
@@ -631,7 +646,7 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
   Expected log output when Sentinel is operating correctly:
   ```text
   Fetched resources count=15 label_selectors=1 topic=hyperfleet-dev-clusters subset=clusters
-  Trigger cycle completed total=15 published=3 skipped=12 duration=125ms topic=hyperfleet-dev-clusters subset=clusters
+  Trigger cycle completed total=15 published=3 skipped=12 duration=0.125s topic=hyperfleet-dev-clusters subset=clusters
   ```
   - `count` - Number of resources fetched from the API matching the resource selector
   - `published` - Number of events published (generation changed or max age exceeded)
@@ -649,7 +664,7 @@ For detailed deployment guidance, see [docs/running-sentinel.md](running-sentine
 - **[Metrics Documentation](metrics.md)** - Complete metrics catalog with PromQL examples
 - **[Multi-Instance Deployment](multi-instance-deployment.md)** - Horizontal scaling strategies
 - **[Testcontainers Documentation](testcontainers.md)** - Integration testing with testcontainers
-- **[Helm Chart README](../deployments/helm/sentinel/README.md)** - Helm chart configuration reference
+- **[Helm Chart README](../charts/README.md)** - Helm chart configuration reference
 
 ### Tools and Libraries
 
@@ -670,7 +685,7 @@ For detailed deployment guidance, see [docs/running-sentinel.md](running-sentine
 | **Broker PermissionDenied (Pub/Sub)**                                                                                        | Missing publisher role | Grant role: `gcloud projects add-iam-policy-binding ${GCP_PROJECT} --role="roles/pubsub.publisher" --member="principal://iam.googleapis.com/..."` |
 | **Broker Topic not found (Pub/Sub)**                                                                                         | Topic doesn't exist | Create topic: `gcloud pubsub topics create hyperfleet-prod-clusters --project=${GCP_PROJECT}` |
 | **Broker type mismatch**                                                                                                     | Config doesn't match actual broker | Ensure `broker.type` matches: `rabbitmq` or `googlepubsub`. Check: `kubectl get configmap sentinel -o jsonpath='{.data.broker\.yaml}'` |
-| **High CPU/memory usage**                                                                                                    | Too many resources or slow API | Check `kubectl top pod -n hyperfleet-system -l app=sentinel`. Consider horizontal sharding with `resource_selector` or increase poll intervals. |
+| **High CPU/memory usage**                                                                                                    | Too many resources or slow API | Check `kubectl top pod -n hyperfleet-system -l app=sentinel`. Consider horizontal scaling with `resource_selector` or increase poll intervals. |
 | **Error: resource_type is required**                                                                                         | Missing required config field | Add `resource_type: clusters` or `resource_type: nodepools` to configuration. |
 | **Error: invalid resource_type**                                                                                             | Invalid value | Use only `clusters` or `nodepools`. |
 | **Error: hyperfleet_api.endpoint is required**                                                                               | Missing required config field | Add `hyperfleet_api.endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080` |
@@ -678,112 +693,5 @@ For detailed deployment guidance, see [docs/running-sentinel.md](running-sentine
 | **Error: OpenAPI client not generated**                                                                                      | Missing generated code | Run `make generate && make build` before starting Sentinel. |
 | **Pods stay unready after startup**                                                                                         | Normal startup behavior | The `/readyz` endpoint returns `false` until the first successful poll completes and broker health checks pass. This is expected. If readiness probe failures persist beyond initial startup, check pod logs and broker connectivity. Tune probe timing (e.g., increase `initialDelaySeconds`) in Helm values if needed. |
 | **Health/readiness endpoints return errors**                                                                                 | Configuration validation failed | Check pod logs for startup errors: `kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel`. Verify all required config fields. |
-
----
-
-## Appendix B: Quick Reference
-
-### Configuration Fields Reference
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `resource_type` | string | Yes | - | Resource to watch: `clusters` or `nodepools` |
-| `poll_interval` | duration | No | `5s` | How often to poll the API |
-| `max_age_not_ready` | duration | No | `10s` | Max age interval for not-ready resources |
-| `max_age_ready` | duration | No | `30m` | Max age interval for ready resources |
-| `resource_selector` | array | No | `[]` | Label selectors for filtering (empty = all) |
-| `resource_selector[].label` | string | Yes (if selector used) | - | Label key |
-| `resource_selector[].value` | string | Yes (if selector used) | - | Label value |
-| `hyperfleet_api.endpoint` | string | Yes | - | HyperFleet API base URL |
-| `hyperfleet_api.timeout` | duration | No | `5s` | Request timeout for API calls |
-| `message_data` | map | No | `{}` | CEL expressions for CloudEvents payload |
-| `topic` | string | No | `""` | Broker topic name (overrides Helm default) |
-
-### Environment Variables Reference
-
-#### Sentinel Configuration
-
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `LOG_LEVEL` | Logging level | `debug`, `info`, `warn`, `error` |
-| `LOG_FORMAT` | Log format | `text`, `json` |
-| `LOG_OUTPUT` | Log output | `stdout`, `stderr` |
-
-#### Broker Configuration
-
-| Variable | Broker | Description | Example |
-|----------|--------|-------------|---------|
-| `BROKER_CONFIG_FILE` | Both | Path to broker config file | `/app/broker.yaml` |
-| `BROKER_TOPIC` | Both | Topic name for events | `hyperfleet-prod-clusters` |
-| `BROKER_RABBITMQ_URL` | RabbitMQ | Complete connection URL | `amqp://user:pass@host:5672/` |
-| `BROKER_GOOGLEPUBSUB_PROJECT_ID` | Pub/Sub | GCP project ID | `hcm-hyperfleet` |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Pub/Sub | Service account key path | `/path/to/key.json` |
-| `PUBSUB_EMULATOR_HOST` | Pub/Sub | Emulator endpoint (dev only) | `localhost:8085` |
-
-### Metrics Catalog Reference
-
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `hyperfleet_sentinel_pending_resources` | Gauge | `resource_type`, `resource_selector` | Current pending resources |
-| `hyperfleet_sentinel_events_published_total` | Counter | `resource_type`, `resource_selector`, `reason` | Total events published |
-| `hyperfleet_sentinel_resources_skipped_total` | Counter | `resource_type`, `resource_selector`, `reason` | Total resources skipped |
-| `hyperfleet_sentinel_poll_duration_seconds` | Histogram | `resource_type`, `resource_selector` | Poll cycle duration |
-| `hyperfleet_sentinel_api_errors_total` | Counter | `resource_type`, `resource_selector`, `error_type` | API errors |
-| `hyperfleet_sentinel_broker_errors_total` | Counter | `resource_type`, `resource_selector`, `error_type` | Broker errors |
-
-**Common PromQL Queries:**
-
-```promql
-# Total pending resources
-sum(hyperfleet_sentinel_pending_resources)
-
-# Events published rate (per second)
-rate(hyperfleet_sentinel_events_published_total[5m])
-
-# 95th percentile poll duration
-histogram_quantile(0.95, rate(hyperfleet_sentinel_poll_duration_seconds_bucket[5m]))
-
-# API error rate
-rate(hyperfleet_sentinel_api_errors_total[5m])
-
-# Broker error rate
-rate(hyperfleet_sentinel_broker_errors_total[5m])
-```
-
-For complete metrics documentation, see [docs/metrics.md](metrics.md).
-
-### Command-Line Flags Reference
-
-```bash
-sentinel serve [flags]
-```
-
-| Flag | Environment Variable | Type | Default | Description |
-|------|---------------------|------|---------|-------------|
-| `--config` | - | string | - | Path to configuration file (required) |
-| `--log-level` | `LOG_LEVEL` | string | `info` | Logging level: debug, info, warn, error |
-| `--log-format` | `LOG_FORMAT` | string | `text` | Log format: text, json |
-| `--log-output` | `LOG_OUTPUT` | string | `stdout` | Log output: stdout, stderr |
-| `--health-server-bindaddress` | - | string | `:8080` | Health/readiness server bind address |
-| `--metrics-server-bindaddress` | - | string | `:9090` | Metrics server bind address |
-
-**Precedence:** Flags → Environment Variables → Defaults
-
-**Example Usage:**
-
-```bash
-# Local development with debug logging
-./bin/sentinel serve \
-  --config=configs/dev-example.yaml \
-  --log-level=debug \
-  --log-format=text
-
-# Production with JSON logging
-./bin/sentinel serve \
-  --config=/app/configs/sentinel.yaml \
-  --log-level=info \
-  --log-format=json \
-  --log-output=stdout
-```
 
 ---
