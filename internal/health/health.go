@@ -77,7 +77,7 @@ func (r *ReadinessChecker) writeJSON(w http.ResponseWriter, statusCode int, v in
 func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold time.Duration) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if lastPollFn == nil || threshold <= 0 {
-			r.logger.Extra("lastPollFnSet", lastPollFn != nil).Extra("threshold", threshold).
+			r.logger.Extra("lastPollFnSet", lastPollFn != nil).Extra("threshold", threshold.String()).
 				Errorf(req.Context(), "Healthz check called with invalid configuration")
 
 			r.writeJSON(w, http.StatusInternalServerError, healthResponse{Status: "invalid health configuration"})
@@ -93,7 +93,7 @@ func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold
 
 		staleness := time.Since(lastPoll)
 		if staleness > threshold {
-			r.logger.Extra("staleness", staleness.Round(time.Second)).Extra("threshold", threshold).
+			r.logger.Extra("staleness", staleness.Round(time.Second).String()).Extra("threshold", threshold.String()).
 				Warnf(req.Context(), "Healthz check failed: poll stale")
 			r.writeJSON(w, http.StatusServiceUnavailable, healthResponse{Status: "poll stale"})
 			return
