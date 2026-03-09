@@ -14,12 +14,12 @@ BINARY_NAME := $(BIN_DIR)/sentinel
 BUILD_DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-modified")
-VERSION ?= $(GIT_SHA)$(GIT_DIRTY)
+APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 
 # Go build flags
 GOFLAGS ?= -trimpath
 LDFLAGS := -s -w \
-           -X main.version=$(VERSION) \
+           -X main.version=$(APP_VERSION) \
            -X main.commit=$(GIT_SHA) \
            -X main.date=$(BUILD_DATE)
 
@@ -32,7 +32,7 @@ CONTAINER_TOOL ?= $(shell command -v podman 2>/dev/null || command -v docker 2>/
 PLATFORM ?= linux/amd64
 IMAGE_REGISTRY ?= quay.io/openshift-hyperfleet
 IMAGE_NAME ?= hyperfleet-sentinel
-IMAGE_TAG ?= $(VERSION)
+IMAGE_TAG ?= $(APP_VERSION)
 
 # Dev image configuration - set QUAY_USER to push to personal registry
 # Usage: QUAY_USER=myuser make image-dev
@@ -246,7 +246,7 @@ image: check-container-tool ## Build container image with configurable registry/
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		--build-arg VERSION=$(VERSION) \
+		--build-arg APP_VERSION=$(APP_VERSION) \
 		-t $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG) .
 	@echo "Image built: $(IMAGE_REGISTRY)/$(IMAGE_NAME):$(IMAGE_TAG)"
 
@@ -273,7 +273,7 @@ endif
 		--build-arg GIT_SHA=$(GIT_SHA) \
 		--build-arg GIT_DIRTY=$(GIT_DIRTY) \
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
-		--build-arg VERSION=$(VERSION) \
+		--build-arg APP_VERSION=$(APP_VERSION) \
 		-t quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG) .
 	@echo "Pushing dev image..."
 	$(CONTAINER_TOOL) push quay.io/$(QUAY_USER)/$(IMAGE_NAME):$(DEV_TAG)
