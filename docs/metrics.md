@@ -470,9 +470,11 @@ Alert when Sentinel has not completed a successful poll cycle recently, indicati
   for: 1m
   labels:
     severity: critical
+    component: sentinel
   annotations:
     summary: "Sentinel poll loop is stale"
     description: "Sentinel has not completed a successful poll cycle in over 60 seconds."
+    runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#poll-stale"
 ```
 ---
 
