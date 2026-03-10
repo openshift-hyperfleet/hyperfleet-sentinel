@@ -458,7 +458,7 @@ Alert when too many resources are being skipped, which may indicate configuratio
     description: "{{ $value | humanizePercentage }} of resources are being skipped."
 ```
 
-### Poll Stale (Dead Man's Switch)
+### Poll Stale
 
 Alert when Sentinel has not completed a successful poll cycle recently, indicating the service may be hung.
 
