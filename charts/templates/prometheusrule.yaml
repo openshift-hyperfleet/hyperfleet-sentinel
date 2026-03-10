@@ -90,14 +90,14 @@ spec:
     - alert: SentinelPollStale
       expr: |
         hyperfleet_sentinel_last_successful_poll_timestamp_seconds > 0
-        and time() - hyperfleet_sentinel_last_successful_poll_timestamp_seconds > 60
-      for: 1m
+        and time() - hyperfleet_sentinel_last_successful_poll_timestamp_seconds > {{ .Values.monitoring.prometheusRule.alerts.sentinelPollStale.staleAfterSeconds }}
+      for: {{ .Values.monitoring.prometheusRule.alerts.sentinelPollStale.for | quote }}
       labels:
         severity: critical
         component: sentinel
       annotations:
         summary: "Sentinel poll loop is stale"
-        description: "Sentinel has not completed a successful poll cycle in over 60 seconds. The service may be hung or unable to poll."
+        description: "Sentinel has not completed a successful poll cycle in over {{ .Values.monitoring.prometheusRule.alerts.sentinelPollStale.staleAfterSeconds }} seconds. The service may be hung or unable to poll."
         runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#poll-stale"
 
     # Alert when skip ratio is too high (may indicate configuration issues)
