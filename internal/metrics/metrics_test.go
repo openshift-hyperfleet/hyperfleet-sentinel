@@ -29,23 +29,20 @@ func TestNewSentinelMetrics(t *testing.T) {
 		t.Fatal("Expected non-nil SentinelMetrics")
 	}
 
-	if m.PendingResources == nil {
-		t.Error("Expected PendingResources to be initialized")
+	checks := map[string]bool{
+		"PendingResources":            m.PendingResources != nil,
+		"EventsPublished":             m.EventsPublished != nil,
+		"ResourcesSkipped":            m.ResourcesSkipped != nil,
+		"PollDuration":                m.PollDuration != nil,
+		"APIErrors":                   m.APIErrors != nil,
+		"BrokerErrors":                m.BrokerErrors != nil,
+		"LastSuccessfulPollTimestamp": m.LastSuccessfulPollTimestamp != nil,
 	}
-	if m.EventsPublished == nil {
-		t.Error("Expected EventsPublished to be initialized")
-	}
-	if m.ResourcesSkipped == nil {
-		t.Error("Expected ResourcesSkipped to be initialized")
-	}
-	if m.PollDuration == nil {
-		t.Error("Expected PollDuration to be initialized")
-	}
-	if m.APIErrors == nil {
-		t.Error("Expected APIErrors to be initialized")
-	}
-	if m.BrokerErrors == nil {
-		t.Error("Expected BrokerErrors to be initialized")
+
+	for name, ok := range checks {
+		if !ok {
+			t.Errorf("Expected %s to be initialized", name)
+		}
 	}
 }
 
@@ -256,6 +253,17 @@ func TestUpdateBrokerErrorsMetric(t *testing.T) {
 	}
 }
 
+func TestUpdateLastSuccessfulPollTimestampMetric(t *testing.T) {
+	initTestMetrics(t)
+
+	UpdateLastSuccessfulPollTimestampMetric()
+
+	value := testutil.ToFloat64(lastSuccessfulPollTimestampGauge)
+	if value == 0 {
+		t.Error("Expected LastSuccessfulPollTimestamp to be non-zero after update")
+	}
+}
+
 func TestGetResourceSelectorLabel(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -359,7 +367,7 @@ func TestMetricsLabelsConstants(t *testing.T) {
 
 func TestMetricsNamesConstants(t *testing.T) {
 	// Verify all metric names are in the MetricsNames array
-	expectedCount := 6
+	expectedCount := 7
 	if len(MetricsNames) != expectedCount {
 		t.Errorf("Expected %d metric names, got %d", expectedCount, len(MetricsNames))
 	}
@@ -415,12 +423,13 @@ func TestAllMetricsHaveStandardLabels(t *testing.T) {
 
 	// Verify all metric collectors have the standard ConstLabels
 	collectors := map[string]prometheus.Collector{
-		"pending_resources":       pendingResourcesGauge,
-		"events_published_total":  eventsPublishedCounter,
-		"resources_skipped_total": resourcesSkippedCounter,
-		"poll_duration_seconds":   pollDurationHistogram,
-		"api_errors_total":        apiErrorsCounter,
-		"broker_errors_total":     brokerErrorsCounter,
+		"pending_resources":                      pendingResourcesGauge,
+		"events_published_total":                 eventsPublishedCounter,
+		"resources_skipped_total":                resourcesSkippedCounter,
+		"poll_duration_seconds":                  pollDurationHistogram,
+		"api_errors_total":                       apiErrorsCounter,
+		"broker_errors_total":                    brokerErrorsCounter,
+		"last_successful_poll_timestamp_seconds": lastSuccessfulPollTimestampGauge,
 	}
 
 	for name, collector := range collectors {

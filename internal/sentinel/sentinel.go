@@ -187,6 +187,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	s.mu.Lock()
 	s.lastSuccessfulPoll = time.Now()
 	s.mu.Unlock()
+	metrics.UpdateLastSuccessfulPollTimestampMetric()
 
 	return nil
 }

@@ -198,6 +198,10 @@ monitoring:
     namespace: ""
     # Additional labels for PrometheusRule
     additionalLabels: {}
+    alerts:
+      sentinelPollStale:
+        staleAfterSeconds: 60
+        for: 1m
 
 # Existing secret name (optional)
 # If provided, the chart will not create a Secret and will use this existing one
