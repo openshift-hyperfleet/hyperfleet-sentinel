@@ -185,6 +185,27 @@ sum by (error_type) (rate(hyperfleet_sentinel_broker_errors_total[5m]))
 
 ---
 
+### 7. `hyperfleet_sentinel_last_successful_poll_timestamp_seconds`
+
+**Type:** Gauge
+
+**Description:** Unix timestamp (seconds since epoch) of the last successful poll cycle completion. Used for deadman's switch monitoring to detect when the Sentinel service becomes unresponsive.
+
+**Use Cases:**
+- Detect stale or hung polling loops
+- Implement deadman's switch alerts
+
+**Example Query:**
+```promql
+# Time since last successful poll
+time() - hyperfleet_sentinel_last_successful_poll_timestamp_seconds
+
+# Alert if stale for more than 60 seconds
+time() - hyperfleet_sentinel_last_successful_poll_timestamp_seconds > 60
+AND (hyperfleet_sentinel_last_successful_poll_timestamp_seconds > 0)
+```
+
+---
 ## Broker Metrics
 
 The following metrics are automatically provided by the [hyperfleet-broker](https://github.com/openshift-hyperfleet/hyperfleet-broker) library (v1.1.0+). They are registered in the same Prometheus registry and exposed on the same `/metrics` endpoint.
@@ -197,7 +218,7 @@ The following metrics are automatically provided by the [hyperfleet-broker](http
 | `version` | Version of the component | `1.0.0`, `dev` |
 | `topic` | Broker topic name | `hyperfleet.clusters.reconcile` |
 
-### 7. `hyperfleet_broker_messages_published_total`
+### 1. `hyperfleet_broker_messages_published_total`
 
 **Type:** Counter
 
@@ -217,7 +238,7 @@ rate(hyperfleet_broker_messages_published_total{component="sentinel"}[5m])
 
 ---
 
-### 8. `hyperfleet_broker_errors_total`
+### 2. `hyperfleet_broker_errors_total`
 
 **Type:** Counter
 
@@ -430,6 +451,22 @@ Alert when too many resources are being skipped, which may indicate configuratio
     description: "{{ $value | humanizePercentage }} of resources are being skipped."
 ```
 
+### Poll Stale (Dead Man's Switch)
+
+Alert when Sentinel has not completed a successful poll cycle recently, indicating the service may be hung.
+
+```yaml
+- alert: SentinelPollStale
+  expr: |
+    hyperfleet_sentinel_last_successful_poll_timestamp_seconds > 0
+    and time() - hyperfleet_sentinel_last_successful_poll_timestamp_seconds > 60
+  for: 1m
+  labels:
+    severity: critical
+  annotations:
+    summary: "Sentinel poll loop is stale"
+    description: "Sentinel has not completed a successful poll cycle in over 60 seconds."
+```
 ---
 
 ## Grafana Dashboard

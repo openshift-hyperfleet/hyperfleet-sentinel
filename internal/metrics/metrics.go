@@ -55,12 +55,13 @@ var MetricsLabelsWithErrorType = []string{
 
 // Names of the metrics
 const (
-	pendingResourcesMetric = "pending_resources"
-	eventsPublishedMetric  = "events_published_total"
-	resourcesSkippedMetric = "resources_skipped_total"
-	pollDurationMetric     = "poll_duration_seconds"
-	apiErrorsMetric        = "api_errors_total"
-	brokerErrorsMetric     = "broker_errors_total"
+	pendingResourcesMetric            = "pending_resources"
+	eventsPublishedMetric             = "events_published_total"
+	resourcesSkippedMetric            = "resources_skipped_total"
+	pollDurationMetric                = "poll_duration_seconds"
+	apiErrorsMetric                   = "api_errors_total"
+	brokerErrorsMetric                = "broker_errors_total"
+	lastSuccessfulPollTimestampMetric = "last_successful_poll_timestamp_seconds"
 )
 
 // MetricsNames - Array of names of the metrics
@@ -71,16 +72,18 @@ var MetricsNames = []string{
 	pollDurationMetric,
 	apiErrorsMetric,
 	brokerErrorsMetric,
+	lastSuccessfulPollTimestampMetric,
 }
 
 // Package-level metric collectors, initialized by NewSentinelMetrics with ConstLabels
 var (
-	pendingResourcesGauge  *prometheus.GaugeVec
-	eventsPublishedCounter *prometheus.CounterVec
-	resourcesSkippedCounter *prometheus.CounterVec
-	pollDurationHistogram  *prometheus.HistogramVec
-	apiErrorsCounter       *prometheus.CounterVec
-	brokerErrorsCounter    *prometheus.CounterVec
+	pendingResourcesGauge            *prometheus.GaugeVec
+	eventsPublishedCounter           *prometheus.CounterVec
+	resourcesSkippedCounter          *prometheus.CounterVec
+	pollDurationHistogram            *prometheus.HistogramVec
+	apiErrorsCounter                 *prometheus.CounterVec
+	brokerErrorsCounter              *prometheus.CounterVec
+	lastSuccessfulPollTimestampGauge prometheus.Gauge
 )
 
 // SentinelMetrics holds all Prometheus metrics for the Sentinel service
@@ -102,6 +105,9 @@ type SentinelMetrics struct {
 
 	// BrokerErrors tracks errors when publishing to the message broker
 	BrokerErrors *prometheus.CounterVec
+
+	// Act as a dead man's switch for alerting on a fully stuck Sentinel.
+	LastSuccessfulPollTimestamp prometheus.Gauge
 }
 
 var (
@@ -190,6 +196,15 @@ func NewSentinelMetrics(registry prometheus.Registerer, version string) *Sentine
 			MetricsLabelsWithErrorType,
 		)
 
+		lastSuccessfulPollTimestampGauge = prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Subsystem:   metricsSubsystem,
+				Name:        lastSuccessfulPollTimestampMetric,
+				Help:        "Unix timestamp of the last successful poll cycle completion (dead man's switch)",
+				ConstLabels: constLabels,
+			},
+		)
+
 		// Register all metrics
 		registry.MustRegister(pendingResourcesGauge)
 		registry.MustRegister(eventsPublishedCounter)
@@ -197,14 +212,16 @@ func NewSentinelMetrics(registry prometheus.Registerer, version string) *Sentine
 		registry.MustRegister(pollDurationHistogram)
 		registry.MustRegister(apiErrorsCounter)
 		registry.MustRegister(brokerErrorsCounter)
+		registry.MustRegister(lastSuccessfulPollTimestampGauge)
 
 		metricsInstance = &SentinelMetrics{
-			PendingResources: pendingResourcesGauge,
-			EventsPublished:  eventsPublishedCounter,
-			ResourcesSkipped: resourcesSkippedCounter,
-			PollDuration:     pollDurationHistogram,
-			APIErrors:        apiErrorsCounter,
-			BrokerErrors:     brokerErrorsCounter,
+			PendingResources:            pendingResourcesGauge,
+			EventsPublished:             eventsPublishedCounter,
+			ResourcesSkipped:            resourcesSkippedCounter,
+			PollDuration:                pollDurationHistogram,
+			APIErrors:                   apiErrorsCounter,
+			BrokerErrors:                brokerErrorsCounter,
+			LastSuccessfulPollTimestamp: lastSuccessfulPollTimestampGauge,
 		}
 	})
 
@@ -238,6 +255,9 @@ func ResetSentinelMetrics() {
 	}
 	if brokerErrorsCounter != nil {
 		brokerErrorsCounter.Reset()
+	}
+	if lastSuccessfulPollTimestampGauge != nil {
+		lastSuccessfulPollTimestampGauge.Set(0)
 	}
 	registerOnce = sync.Once{}
 	metricsInstance = nil
@@ -423,6 +443,21 @@ func UpdateBrokerErrorsMetric(resourceType, resourceSelector, errorType string) 
 		metricsErrorTypeLabel:        errorType,
 	}
 	brokerErrorsCounter.With(labels).Inc()
+}
+
+// UpdateLastSuccessfulPollTimestampMetric sets the gauge to the current Unix timestamp.
+//
+// This gauge acts as a dead man's switch: if the value becomes stale relative to
+// the current time, alerting knows the Sentinel has stopped polling.
+//
+// Thread-safe: Can be called concurrently from multiple goroutines.
+func UpdateLastSuccessfulPollTimestampMetric() {
+	if lastSuccessfulPollTimestampGauge == nil {
+		getLogger().Warnf(context.Background(), "Attempted to update last_successful_poll_timestamp metric before initialization")
+		return
+	}
+
+	lastSuccessfulPollTimestampGauge.SetToCurrentTime()
 }
 
 // GetResourceSelectorLabel converts resource selector to a single label value.
