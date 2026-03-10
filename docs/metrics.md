@@ -191,6 +191,13 @@ sum by (error_type) (rate(hyperfleet_sentinel_broker_errors_total[5m]))
 
 **Description:** Unix timestamp (seconds since epoch) of the last successful poll cycle completion. Used for deadman's switch monitoring to detect when the Sentinel service becomes unresponsive.
 
+**Labels:**
+- `component`: Always `sentinel`
+- `version`: Sentinel version
+
+> **Note:** This metric does not carry `resource_type` or `resource_selector` labels as it represents the overall Sentinel health, not a per-resource measurement.
+
+
 **Use Cases:**
 - Detect stale or hung polling loops
 - Implement deadman's switch alerts
