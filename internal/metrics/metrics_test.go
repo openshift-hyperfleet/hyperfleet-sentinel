@@ -29,18 +29,18 @@ func TestNewSentinelMetrics(t *testing.T) {
 		t.Fatal("Expected non-nil SentinelMetrics")
 	}
 
-	fields := map[string]interface{}{
-		"PendingResources":            m.PendingResources,
-		"EventsPublished":             m.EventsPublished,
-		"ResourcesSkipped":            m.ResourcesSkipped,
-		"PollDuration":                m.PollDuration,
-		"APIErrors":                   m.APIErrors,
-		"BrokerErrors":                m.BrokerErrors,
-		"LastSuccessfulPollTimestamp": m.LastSuccessfulPollTimestamp,
+	checks := map[string]bool{
+		"PendingResources":            m.PendingResources != nil,
+		"EventsPublished":             m.EventsPublished != nil,
+		"ResourcesSkipped":            m.ResourcesSkipped != nil,
+		"PollDuration":                m.PollDuration != nil,
+		"APIErrors":                   m.APIErrors != nil,
+		"BrokerErrors":                m.BrokerErrors != nil,
+		"LastSuccessfulPollTimestamp": m.LastSuccessfulPollTimestamp != nil,
 	}
 
-	for name, field := range fields {
-		if field == nil {
+	for name, ok := range checks {
+		if !ok {
 			t.Errorf("Expected %s to be initialized", name)
 		}
 	}
