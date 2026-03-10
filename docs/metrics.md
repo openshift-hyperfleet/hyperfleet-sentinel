@@ -340,6 +340,17 @@ spec:
       annotations:
         summary: "No events published despite pending resources"
         description: "Sentinel has pending resources but hasn't published events in 15 minutes."
+    
+    - alert: SentinelPollStale
+      expr: |
+        hyperfleet_sentinel_last_successful_poll_timestamp_seconds > 0
+        and time() - hyperfleet_sentinel_last_successful_poll_timestamp_seconds > 60
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        summary: "Sentinel poll loop is stale"
+        description: "Sentinel has not completed a successful poll cycle in over 60 seconds."
 ```
 
 To configure these alerts in **Google Cloud Console**:
