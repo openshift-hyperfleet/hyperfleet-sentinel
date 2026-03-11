@@ -1,3 +1,21 @@
+sentinel:
+  name: hyperfleet-sentinel-test
+
+debug_config: false
+
+log:
+  level: "info"
+  format: "json"
+  output: "stdout"
+
+clients:
+  hyperfleet_api:
+    base_url: https://api.hyperfleet.example.com
+    version: "v1"
+    timeout: 10s
+  broker:
+    topic: "test-topic"
+
 resource_type: clusters
 poll_interval: 5s
 max_age_not_ready: 10s
@@ -8,10 +26,6 @@ resource_selector:
     value: us-east
   - label: environment
     value: production
-
-hyperfleet_api:
-  endpoint: https://api.hyperfleet.example.com
-  timeout: 5s
 
 message_data:
   id: "resource.id"

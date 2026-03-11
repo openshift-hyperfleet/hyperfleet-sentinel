@@ -47,14 +47,23 @@ type HyperFleetClient struct {
 	log       logger.HyperFleetLogger
 }
 
-// NewHyperFleetClient creates a new HyperFleet API client using OpenAPI-generated client
-func NewHyperFleetClient(endpoint string, timeout time.Duration) (*HyperFleetClient, error) {
+// NewHyperFleetClient creates a new HyperFleet API client using OpenAPI-generated client.
+// sentinelName and version are used to build the User-Agent header sent with every request.
+func NewHyperFleetClient(endpoint string, timeout time.Duration, sentinelName, version string) (*HyperFleetClient, error) {
 	httpClient := &http.Client{
 		Timeout:   timeout,
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
-	client, err := openapi.NewClientWithResponses(endpoint, openapi.WithHTTPClient(httpClient))
+	userAgent := fmt.Sprintf("hyperfleet-sentinel/%s (%s)", version, sentinelName)
+
+	client, err := openapi.NewClientWithResponses(endpoint,
+		openapi.WithHTTPClient(httpClient),
+		openapi.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
+			req.Header.Set("User-Agent", userAgent)
+			return nil
+		}),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OpenAPI client: %v", err) // This should only fail if the endpoint URL is invalid
 	}

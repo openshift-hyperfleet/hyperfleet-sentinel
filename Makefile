@@ -195,7 +195,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	@echo "Testing template with Google Pub/Sub broker..."
 	helm template test-release $(HELM_CHART_DIR)/ \
 		--set broker.type=googlepubsub \
-		--set broker.googlepubsub.projectId=test-project > /dev/null
+		--set broker.googlepubsub.project_id=test-project > /dev/null
 	@echo "Google Pub/Sub broker template OK"
 	@echo ""
 	@echo "Testing template with PodMonitoring enabled..."

@@ -75,32 +75,56 @@ podDisruptionBudget:
 
 # Sentinel configuration
 config:
+  # Sentinel information
+  sentinel:
+    # Sentinel component name - will be templated with shard value if resource selector is used
+    # Example: hyperfleet-sentinel-clusters-shard-1
+    name: hyperfleet-sentinel-{{ .Values.config.resource_type }}
+
+  # Debug configuration - log merged config on startup
+  debug_config: false
+
+  # Logging configuration
+  log:
+    level: info
+    format: json
+    output: stdout
+
+  # Client configurations
+  clients:
+    # HyperFleet API client configuration
+    hyperfleet_api:
+      # Use in-cluster service name for API endpoint
+      base_url: http://hyperfleet-api:8000
+      version: v1
+      timeout: 10s
+
+    # Broker configuration
+    # Note: broker implementation details (RabbitMQ URL, etc.) are in broker section below
+    broker:
+      # Topic will be set from broker.topic template below
+      topic: ""
+
   # Resource type to watch (clusters, nodepools)
-  resourceType: clusters
+  resource_type: clusters
 
   # How often to poll the API for resource updates
-  pollInterval: 5s
+  poll_interval: 5s
 
   # Max age interval for resources not ready
-  maxAgeNotReady: 10s
+  max_age_not_ready: 10s
 
   # Max age interval for ready resources
-  maxAgeReady: 30m
+  max_age_ready: 30m
 
   # Resource selector for horizontal sharding
   # Deploy multiple Sentinel instances with different shard values
-  resourceSelector:
+  resource_selector:
     - label: shard
       value: "1"
 
-  # HyperFleet API configuration
-  hyperfleetApi:
-    # Use in-cluster service name for API endpoint
-    baseUrl: http://hyperfleet-api:8000
-    timeout: 5s
-
   # CloudEvents data payload configuration
-  messageData:
+  message_data:
     id: resource.id
     kind: resource.kind
     href: resource.href
@@ -125,25 +149,25 @@ broker:
   # Default uses Helm template: {namespace}-{resourceType} for multi-tenant isolation
   # Example result: hyperfleet-dev-clusters, hyperfleet-dev-nodepools
   # Override with a static value if needed: topic: "my-custom-topic"
-  topic: '{{ .Release.Namespace }}-{{ .Values.config.resourceType }}'
+  topic: '{{ .Release.Namespace }}-{{ .Values.config.resource_type }}'
 
   # RabbitMQ configuration
   # Uses BROKER_RABBITMQ_URL environment variable (single connection string)
   rabbitmq:
     # Connection URL format: amqp://user:password@host:port/vhost
     url: amqp://<USER>:<PASSWORD>@rabbitmq.hyperfleet-system.svc.cluster.local:5672/hyperfleet
-    exchangeType: topic
+    exchange_type: topic
 
   # Google Pub/Sub configuration (alternative to RabbitMQ)
-  # projectId is written to broker.yaml ConfigMap (not Secret - it's not sensitive)
+  # project_id is written to broker.yaml ConfigMap (not Secret - it's not sensitive)
   googlepubsub:
     #REQUIRED: Replace with your actual GCP project ID
-    projectId: your-gcp-project-id
-    maxOutstandingMessages: 1000
-    numGoroutines: 10
+    project_id: your-gcp-project-id
+    max_outstanding_messages: 1000
+    num_goroutines: 10
     # Auto-creation flags (default: false - manual creation required)
     # Set to true to automatically create topics/subscriptions if they don't exist
-    createTopicIfMissing: false
+    create_topic_if_missing: false
 
 # Subscriber configuration (optional)
 subscriber:

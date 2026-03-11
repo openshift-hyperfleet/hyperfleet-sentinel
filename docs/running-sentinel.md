@@ -100,6 +100,7 @@ export BROKER_RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
 **For Google Pub/Sub Emulator** (requires `broker.yaml` modification):
 
 1. Edit `broker.yaml` to use `googlepubsub`:
+
    ```yaml
    broker:
      type: googlepubsub
@@ -108,6 +109,7 @@ export BROKER_RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
    ```
 
 2. Set the emulator host (required for the Google SDK):
+
    ```bash
    export PUBSUB_EMULATOR_HOST=localhost:8085
    ```
@@ -118,10 +120,10 @@ Set the topic name for event publishing:
 
 ```bash
 # For clusters
-export BROKER_TOPIC=hyperfleet-dev-${USER}-clusters
+export HYPERFLEET_BROKER_TOPIC=hyperfleet-dev-${USER}-clusters
 
 # For nodepools
-export BROKER_TOPIC=hyperfleet-dev-${USER}-nodepools
+export HYPERFLEET_BROKER_TOPIC=hyperfleet-dev-${USER}-nodepools
 ```
 
 This sets the full topic name where events will be published (e.g., `hyperfleet-dev-rafael-clusters`). See [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) for details.
@@ -148,16 +150,16 @@ make build
 BROKER_CONFIG_FILE=broker.yaml go run ./cmd/sentinel serve --config=configs/dev-example.yaml
 
 # With environment variables for logging
-LOG_LEVEL=debug LOG_FORMAT=json go run ./cmd/sentinel serve --config=configs/dev-example.yaml
+HYPERFLEET_LOG_LEVEL=debug HYPERFLEET_LOG_FORMAT=json go run ./cmd/sentinel serve --config=configs/dev-example.yaml
 ```
 
 #### Logging Configuration
 
 | Flag | Environment Variable | Values | Default |
 |------|---------------------|--------|---------|
-| `--log-level` | `LOG_LEVEL` | debug, info, warn, error | info |
-| `--log-format` | `LOG_FORMAT` | text, json | text |
-| `--log-output` | `LOG_OUTPUT` | stdout, stderr | stdout |
+| `--log-level` | `HYPERFLEET_LOG_LEVEL` | debug, info, warn, error | info |
+| `--log-format` | `HYPERFLEET_LOG_FORMAT` | text, json | text |
+| `--log-output` | `HYPERFLEET_LOG_OUTPUT` | stdout, stderr | stdout |
 
 **Precedence**: flags → environment variables → defaults
 
@@ -222,7 +224,7 @@ Watch console output for startup and broker connection messages.
 2025-12-17T14:07:30.137382Z INFO [sentinel] [dev] [hostname] Starting HyperFleet Sentinel
 ```
 
-> **Note**: Log format can be configured via `--log-format` flag or `LOG_FORMAT` environment variable. Use `json` for production (structured logging) and `text` for development (human-readable).
+> **Note**: Log format can be configured via `--log-format` flag or `HYPERFLEET_LOG_FORMAT` environment variable. Use `json` for production (structured logging) and `text` for development (human-readable).
 
 **For RabbitMQ**, you should also see the broker connection log:
 
@@ -282,6 +284,7 @@ gcloud container clusters get-credentials hyperfleet-dev --zone=us-central1-a --
 ```
 
 **Usage guidelines:**
+
 - For personal work, create a namespace named after yourself to isolate resources
 - For team collaboration, use a designated namespace to separate resources among members
 
@@ -372,7 +375,7 @@ helm upgrade --install sentinel-test ./charts \
   --set image.repository=${USER}/hyperfleet-sentinel \
   --set image.tag=dev-$(git rev-parse --short HEAD) \
   --set broker.type=googlepubsub \
-  --set broker.googlepubsub.projectId=${GCP_PROJECT} \
+  --set broker.googlepubsub.project_id=${GCP_PROJECT} \
   --set monitoring.podMonitoring.enabled=true
 ```
 
@@ -387,7 +390,7 @@ helm upgrade --install sentinel-test ./charts \
   --set image.repository=gcr.io/${GCP_PROJECT}/sentinel \
   --set image.tag=${IMAGE_TAG} \
   --set broker.type=googlepubsub \
-  --set broker.googlepubsub.projectId=${GCP_PROJECT} \
+  --set broker.googlepubsub.project_id=${GCP_PROJECT} \
   --set monitoring.podMonitoring.enabled=true
 
 # For Prometheus Operator environments (OpenShift, vanilla Kubernetes):
@@ -397,7 +400,7 @@ helm upgrade --install sentinel-test ./charts \
   --set image.repository=gcr.io/${GCP_PROJECT}/sentinel \
   --set image.tag=${IMAGE_TAG} \
   --set broker.type=googlepubsub \
-  --set broker.googlepubsub.projectId=${GCP_PROJECT} \
+  --set broker.googlepubsub.project_id=${GCP_PROJECT} \
   --set monitoring.serviceMonitor.enabled=true \
   --set monitoring.serviceMonitor.additionalLabels.release=prometheus
 ```
@@ -538,6 +541,7 @@ podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TA
 **Cause**: Broker is not running or `broker.yaml` is configured for the wrong broker type
 
 **Solution**:
+
 1. Verify the broker is running (RabbitMQ or Pub/Sub emulator)
 2. Ensure `broker.yaml` has the correct `type` (rabbitmq or googlepubsub)
 3. For Pub/Sub emulator, ensure `PUBSUB_EMULATOR_HOST` is set
@@ -550,15 +554,21 @@ podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TA
 **Cause**: PodMonitoring not configured correctly or GMP collector not scraping
 
 **Solution**:
+
 1. Verify PodMonitoring is created:
+
    ```bash
    kubectl get podmonitoring -n ${NAMESPACE}
    ```
+
 2. Check GMP collector logs:
+
    ```bash
    kubectl logs -n gmp-system -l app.kubernetes.io/name=collector
    ```
+
 3. Ensure the metrics endpoint is accessible:
+
    ```bash
    kubectl port-forward -n ${NAMESPACE} svc/sentinel-test 8080:8080
    curl http://localhost:8080/metrics
@@ -571,6 +581,7 @@ podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TA
 **Cause**: Broker credentials must be set via environment variables, not ConfigMap
 
 **Solution**: Use `--set` flags or a values file to set broker credentials:
+
 ```bash
 --set broker.rabbitmq.url="amqp://user:pass@host:5672/"
 ```
@@ -580,12 +591,15 @@ podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TA
 **Problem**: Sentinel cannot connect to HyperFleet API
 
 **Solution**:
+
 1. Verify the API endpoint is correct in your config
 2. For local execution, ensure the API is running
 3. For GKE, use the in-cluster service name:
+
    ```yaml
-   hyperfleet_api:
-     endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+   clients:
+     hyperfleet_api:
+       base_url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
    ```
 
 ### OpenAPI Client Not Generated
@@ -595,6 +609,7 @@ podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TA
 **Cause**: OpenAPI client was not generated
 
 **Solution**: Run the generate target before building:
+
 ```bash
 make generate
 make build

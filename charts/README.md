@@ -78,14 +78,14 @@ The following table lists the configurable parameters of the Sentinel chart and 
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `config.resourceType` | Resource type to watch | `clusters` |
-| `config.pollInterval` | Polling interval | `5s` |
-| `config.maxAgeNotReady` | Max age for not ready resources | `10s` |
-| `config.maxAgeReady` | Max age for ready resources | `30m` |
-| `config.resourceSelector` | Resource selector for sharding | See values.yaml |
-| `config.hyperfleetApi.baseUrl` | HyperFleet API base URL | `http://hyperfleet-api:8000` |
-| `config.hyperfleetApi.timeout` | API timeout | `5s` |
-| `config.messageData` | CloudEvents data payload fields | See values.yaml |
+| `config.resource_type` | Resource type to watch | `clusters` |
+| `config.poll_interval` | Polling interval | `5s` |
+| `config.max_age_not_ready` | Max age for not ready resources | `10s` |
+| `config.max_age_ready` | Max age for ready resources | `30m` |
+| `config.resource_selector` | Resource selector for sharding | See values.yaml |
+| `config.clients.hyperfleet_api.base_url` | HyperFleet API base URL | `http://hyperfleet-api:8000` |
+| `config.clients.hyperfleet_api.timeout` | API timeout | `10s` |
+| `config.message_data` | CloudEvents data payload fields | See values.yaml |
 
 ### Broker Configuration
 
@@ -94,13 +94,13 @@ The following table lists the configurable parameters of the Sentinel chart and 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `broker.type` | Broker type (`rabbitmq` or `googlepubsub`) | `rabbitmq` |
-| `broker.topic` | Topic name for broker publishing (supports Helm templates) | `{{ .Release.Namespace }}-{{ .Values.config.resourceType }}` |
+| `broker.topic` | Topic name for broker publishing (supports Helm templates) | `{{ .Release.Namespace }}-{{ .Values.config.resource_type }}` |
 | `broker.rabbitmq.url` | RabbitMQ connection URL (format: `amqp://user:pass@host:port/vhost`) | `amqp://sentinel-user:change-me-in-production@rabbitmq.hyperfleet-system.svc.cluster.local:5672/hyperfleet` |
-| `broker.rabbitmq.exchangeType` | RabbitMQ exchange type | `topic` |
-| `broker.googlepubsub.projectId` | GCP project ID (for Pub/Sub) | `your-gcp-project-id` |
-| `broker.googlepubsub.maxOutstandingMessages` | Max outstanding messages (for Pub/Sub) | `1000` |
-| `broker.googlepubsub.numGoroutines` | Number of goroutines (for Pub/Sub) | `10` |
-| `broker.googlepubsub.createTopicIfMissing` | Auto-create topic if it doesn't exist (for Pub/Sub) | `false` |
+| `broker.rabbitmq.exchange_type` | RabbitMQ exchange type | `topic` |
+| `broker.googlepubsub.project_id` | GCP project ID (for Pub/Sub) | `your-gcp-project-id` |
+| `broker.googlepubsub.max_outstanding_messages` | Max outstanding messages (for Pub/Sub) | `1000` |
+| `broker.googlepubsub.num_goroutines` | Number of goroutines (for Pub/Sub) | `10` |
+| `broker.googlepubsub.create_topic_if_missing` | Auto-create topic if it doesn't exist (for Pub/Sub) | `false` |
 | `subscriber.parallelism` | Number of parallel workers for message processing | `1` |
 | `existingSecret` | Use existing secret for broker credentials | `""` |
 
@@ -135,10 +135,10 @@ broker:
   rabbitmq:
     # Connection URL with credentials, host, port, and vhost
     url: amqp://sentinel-prod:super-secret-password@rabbitmq.messaging.svc.cluster.local:5672/prod
-    exchangeType: topic
+    exchange_type: topic
 
 config:
-  resourceSelector:
+  resource_selector:
     - label: environment
       value: production
 ```
@@ -156,9 +156,9 @@ helm install sentinel ./charts \
 broker:
   type: googlepubsub
   googlepubsub:
-    projectId: my-gcp-project
-    maxOutstandingMessages: 1000
-    numGoroutines: 10
+    project_id: my-gcp-project
+    max_outstanding_messages: 1000
+    num_goroutines: 10
 ```
 
 ```bash
@@ -179,7 +179,7 @@ kubectl create secret generic my-broker-credentials \
   --from-literal=BROKER_RABBITMQ_URL=amqp://user:pass@rabbitmq.local:5672/
 
 # Note: Google Pub/Sub doesn't require Secret
-# projectId is configured in values.yaml (not sensitive)
+# project_id is configured in values.yaml (not sensitive)
 # Authentication uses Workload Identity in GKE
 ```
 
@@ -190,7 +190,7 @@ Deploy multiple Sentinel instances watching different resource shards:
 ```yaml
 # values-shard-1.yaml
 config:
-  resourceSelector:
+  resource_selector:
     - label: shard
       value: "1"
 ```
@@ -198,7 +198,7 @@ config:
 ```yaml
 # values-shard-2.yaml
 config:
-  resourceSelector:
+  resource_selector:
     - label: shard
       value: "2"
 ```
