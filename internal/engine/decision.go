@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/resource"
 )
 
 // Decision reasons
@@ -17,17 +18,19 @@ const (
 
 // DecisionEngine evaluates whether a resource needs an event published
 type DecisionEngine struct {
-	maxAgeNotReady time.Duration
-	maxAgeReady    time.Duration
+	conditions *CompiledConditions
 }
 
-// NewDecisionEngine creates a new decision engine
-func NewDecisionEngine(maxAgeNotReady, maxAgeReady time.Duration) *DecisionEngine {
+// NewDecisionEngine creates a new decision engine with pre-compiled CEL conditions.
+// If conditions is nil, the engine will never publish (safe default).
+func NewDecisionEngine(conditions *CompiledConditions) *DecisionEngine {
 	return &DecisionEngine{
-		maxAgeNotReady: maxAgeNotReady,
-		maxAgeReady:    maxAgeReady,
+		conditions: conditions,
 	}
 }
+
+// emptyCompiledConditions is a safe sentinel for nil conditions
+var emptyCompiledConditions = &CompiledConditions{}
 
 // Decision represents the result of evaluating a resource
 type Decision struct {
@@ -43,23 +46,21 @@ type Decision struct {
 //  1. Generation-based reconciliation: If resource.Generation > status.ObservedGeneration,
 //     publish immediately (spec has changed, adapter needs to reconcile)
 //  2. Time-based reconciliation: If max age exceeded since last update, publish
-//     - Uses status.LastUpdated as reference timestamp
-//     - If LastUpdated is zero (never processed), falls back to created_time
-//
-// Max Age Intervals:
-//   - Resources with Ready=true: maxAgeReady (default 30m)
-//   - Resources with Ready=false: maxAgeNotReady (default 10s)
+//     - Evaluates the reference_time CEL expression to get the reference timestamp
+//     - If reference_time evaluation fails or returns zero, falls back to created_time
+//     - Evaluates rules in order; first matching rule's max_age is used
+//     - If no rule matches, uses the smallest max_age (most conservative)
 //
 // Adapter Contract:
-//   - Adapters MUST update status.LastUpdated on EVERY evaluation
+//   - Adapters MUST update condition LastUpdatedTime on EVERY evaluation
 //   - Adapters MUST update status.ObservedGeneration to resource.Generation when processing
 //   - This prevents infinite event loops when adapters skip work due to unmet preconditions
 //
 // Returns a Decision indicating whether to publish and why. Returns ShouldPublish=false
 // for invalid inputs (nil resource, zero now time).
-func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Decision {
+func (e *DecisionEngine) Evaluate(r *client.Resource, now time.Time) Decision {
 	// Validate inputs
-	if resource == nil {
+	if r == nil {
 		return Decision{
 			ShouldPublish: false,
 			Reason:        ReasonNilResource,
@@ -75,32 +76,33 @@ func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Deci
 
 	// Check for generation mismatch
 	// This triggers immediate reconciliation regardless of max age
-	if resource.Generation > resource.Status.ObservedGeneration {
+	if r.Generation > r.Status.ObservedGeneration {
 		return Decision{
 			ShouldPublish: true,
 			Reason:        ReasonGenerationChanged,
 		}
 	}
 
-	// Determine the reference timestamp for max age calculation
-	// Use LastUpdated if available (adapter has processed the resource)
-	// Otherwise fall back to created_time (resource is newly created)
-	referenceTime := resource.Status.LastUpdated
-	if referenceTime.IsZero() {
-		referenceTime = resource.CreatedTime
+	// Guard against nil conditions (safe default: never publish)
+	conditions := e.conditions
+	if conditions == nil {
+		conditions = emptyCompiledConditions
 	}
 
-	// Determine the appropriate max age based on resource ready status
-	var maxAge time.Duration
-	if resource.Status.Ready {
-		maxAge = e.maxAgeReady
-	} else {
-		maxAge = e.maxAgeNotReady
+	// Convert resource to map for CEL evaluation
+	resourceMap := resource.ToMap(r)
+
+	// Evaluate reference time from CEL expression
+	referenceTime, ok := conditions.EvalReferenceTime(resourceMap)
+	if !ok || referenceTime.IsZero() {
+		// Fall back to created_time if reference_time evaluation fails or returns zero
+		referenceTime = r.CreatedTime
 	}
+
+	// Determine max age by evaluating rules (first match wins)
+	maxAge := conditions.EvalMaxAge(resourceMap)
 
 	// Calculate the next event time based on reference timestamp
-	// Adapters update LastUpdated on every check, enabling proper max age
-	// calculation even when resources stay in the same status
 	nextEventTime := referenceTime.Add(maxAge)
 
 	// Check if enough time has passed

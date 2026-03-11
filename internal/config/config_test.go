@@ -41,11 +41,19 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 	if cfg.PollInterval != 5*time.Second {
 		t.Errorf("Expected poll_interval 5s, got %v", cfg.PollInterval)
 	}
-	if cfg.MaxAgeNotReady != 10*time.Second {
-		t.Errorf("Expected max_age_not_ready 10s, got %v", cfg.MaxAgeNotReady)
+
+	// Verify conditions
+	if cfg.Conditions.ReferenceTime != `conditionTime(resource, "Ready")` {
+		t.Errorf("Expected reference_time 'conditionTime(resource, \"Ready\")', got '%s'", cfg.Conditions.ReferenceTime)
 	}
-	if cfg.MaxAgeReady != 30*time.Minute {
-		t.Errorf("Expected max_age_ready 30m, got %v", cfg.MaxAgeReady)
+	if len(cfg.Conditions.Rules) != 2 {
+		t.Fatalf("Expected 2 condition rules, got %d", len(cfg.Conditions.Rules))
+	}
+	if cfg.Conditions.Rules[0].Name != "isReady" || cfg.Conditions.Rules[0].MaxAge != 30*time.Minute {
+		t.Errorf("Expected first rule isReady/30m, got %s/%v", cfg.Conditions.Rules[0].Name, cfg.Conditions.Rules[0].MaxAge)
+	}
+	if cfg.Conditions.Rules[1].Name != "isNotReady" || cfg.Conditions.Rules[1].MaxAge != 10*time.Second {
+		t.Errorf("Expected second rule isNotReady/10s, got %s/%v", cfg.Conditions.Rules[1].Name, cfg.Conditions.Rules[1].MaxAge)
 	}
 
 	// Verify resource selector
@@ -86,11 +94,12 @@ func TestLoadConfig_Minimal(t *testing.T) {
 	if cfg.PollInterval != 5*time.Second {
 		t.Errorf("Expected default poll_interval 5s, got %v", cfg.PollInterval)
 	}
-	if cfg.MaxAgeNotReady != 10*time.Second {
-		t.Errorf("Expected default max_age_not_ready 10s, got %v", cfg.MaxAgeNotReady)
+	// Verify default conditions
+	if cfg.Conditions.ReferenceTime != `conditionTime(resource, "Ready")` {
+		t.Errorf("Expected default reference_time, got '%s'", cfg.Conditions.ReferenceTime)
 	}
-	if cfg.MaxAgeReady != 30*time.Minute {
-		t.Errorf("Expected default max_age_ready 30m, got %v", cfg.MaxAgeReady)
+	if len(cfg.Conditions.Rules) != 2 {
+		t.Fatalf("Expected 2 default condition rules, got %d", len(cfg.Conditions.Rules))
 	}
 }
 
@@ -139,14 +148,21 @@ func TestNewSentinelConfig_Defaults(t *testing.T) {
 	if cfg.PollInterval != 5*time.Second {
 		t.Errorf("Expected default poll_interval 5s, got %v", cfg.PollInterval)
 	}
-	if cfg.MaxAgeNotReady != 10*time.Second {
-		t.Errorf("Expected default max_age_not_ready 10s, got %v", cfg.MaxAgeNotReady)
+	// Verify default conditions
+	if cfg.Conditions.ReferenceTime != `conditionTime(resource, "Ready")` {
+		t.Errorf("Expected default reference_time, got '%s'", cfg.Conditions.ReferenceTime)
 	}
-	if cfg.MaxAgeReady != 30*time.Minute {
-		t.Errorf("Expected default max_age_ready 30m, got %v", cfg.MaxAgeReady)
+	if len(cfg.Conditions.Rules) != 2 {
+		t.Fatalf("Expected 2 default condition rules, got %d", len(cfg.Conditions.Rules))
+	}
+	if cfg.Conditions.Rules[0].Name != "isReady" || cfg.Conditions.Rules[0].MaxAge != 30*time.Minute {
+		t.Errorf("Expected first default rule isReady/30m, got %s/%v", cfg.Conditions.Rules[0].Name, cfg.Conditions.Rules[0].MaxAge)
+	}
+	if cfg.Conditions.Rules[1].Name != "isNotReady" || cfg.Conditions.Rules[1].MaxAge != 10*time.Second {
+		t.Errorf("Expected second default rule isNotReady/10s, got %s/%v", cfg.Conditions.Rules[1].Name, cfg.Conditions.Rules[1].MaxAge)
 	}
 	if cfg.HyperFleetAPI.Timeout != 5*time.Second {
-		t.Errorf("Expected default timeout 30s, got %v", cfg.HyperFleetAPI.Timeout)
+		t.Errorf("Expected default timeout 5s, got %v", cfg.HyperFleetAPI.Timeout)
 	}
 	// Endpoint has no default - must be set in config file
 	if cfg.HyperFleetAPI.Endpoint != "" {
@@ -258,15 +274,15 @@ func TestValidate_NegativeDurations(t *testing.T) {
 			},
 		},
 		{
-			name: "negative max_age_not_ready",
+			name: "negative conditions max_age",
 			modifier: func(c *SentinelConfig) {
-				c.MaxAgeNotReady = -10 * time.Second
+				c.Conditions.Rules[0].MaxAge = -10 * time.Second
 			},
 		},
 		{
-			name: "zero max_age_ready",
+			name: "zero conditions max_age",
 			modifier: func(c *SentinelConfig) {
-				c.MaxAgeReady = 0
+				c.Conditions.Rules[0].MaxAge = 0
 			},
 		},
 	}
@@ -274,7 +290,9 @@ func TestValidate_NegativeDurations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := NewSentinelConfig()
+			cfg.ResourceType = "clusters"
 			cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+			cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 			tt.modifier(cfg)
 
 			err := cfg.Validate()
@@ -282,6 +300,78 @@ func TestValidate_NegativeDurations(t *testing.T) {
 				t.Fatal("Expected error for invalid duration, got nil")
 			}
 		})
+	}
+}
+
+// ============================================================================
+// Conditions Validation Tests
+// ============================================================================
+
+func TestValidate_MissingReferenceTime(t *testing.T) {
+	cfg := NewSentinelConfig()
+	cfg.ResourceType = "clusters"
+	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+	cfg.Conditions.ReferenceTime = ""
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Expected error for missing reference_time, got nil")
+	}
+	if err.Error() != "conditions.reference_time is required" {
+		t.Errorf("Expected 'conditions.reference_time is required' error, got: %v", err)
+	}
+}
+
+func TestValidate_EmptyConditionRules(t *testing.T) {
+	cfg := NewSentinelConfig()
+	cfg.ResourceType = "clusters"
+	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+	cfg.Conditions.Rules = []ConditionRule{}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Expected error for empty rules, got nil")
+	}
+	if err.Error() != "conditions.rules must have at least one rule" {
+		t.Errorf("Expected 'conditions.rules must have at least one rule' error, got: %v", err)
+	}
+}
+
+func TestValidate_EmptyRuleName(t *testing.T) {
+	cfg := NewSentinelConfig()
+	cfg.ResourceType = "clusters"
+	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+	cfg.Conditions.Rules = []ConditionRule{
+		{Name: "", Expression: `status(resource, "Ready") == "True"`, MaxAge: 10 * time.Second},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Expected error for empty rule name, got nil")
+	}
+	if !strings.Contains(err.Error(), "name is required") {
+		t.Errorf("Expected error about name, got: %v", err)
+	}
+}
+
+func TestValidate_EmptyRuleExpression(t *testing.T) {
+	cfg := NewSentinelConfig()
+	cfg.ResourceType = "clusters"
+	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+	cfg.Conditions.Rules = []ConditionRule{
+		{Name: "test", Expression: "", MaxAge: 10 * time.Second},
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Expected error for empty rule expression, got nil")
+	}
+	if !strings.Contains(err.Error(), "expression is required") {
+		t.Errorf("Expected error about expression, got: %v", err)
 	}
 }
 

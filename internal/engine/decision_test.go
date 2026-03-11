@@ -6,12 +6,20 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 )
 
 // Test helpers and factories
 
-// newTestResource creates a test resource with the given parameters
-// This follows TRex pattern of using test factories for consistent test data
+// readyStatus converts a bool to a condition status string
+func readyStatus(ready bool) string {
+	if ready {
+		return "True"
+	}
+	return "False"
+}
+
+// newTestResource creates a test resource with a Ready condition
 func newTestResource(ready bool, lastUpdated time.Time) *client.Resource {
 	return &client.Resource{
 		ID:          testResourceID,
@@ -22,6 +30,13 @@ func newTestResource(ready bool, lastUpdated time.Time) *client.Resource {
 			Ready:              ready,
 			LastUpdated:        lastUpdated,
 			ObservedGeneration: 1, // Default: in sync with generation
+			Conditions: []client.Condition{
+				{
+					Type:            "Ready",
+					Status:          readyStatus(ready),
+					LastUpdatedTime: lastUpdated,
+				},
+			},
 		},
 	}
 }
@@ -37,6 +52,13 @@ func newTestResourceWithCreatedTime(id, kind string, ready bool, createdTime, la
 			Ready:              ready,
 			LastUpdated:        lastUpdated,
 			ObservedGeneration: 1, // Default: in sync with generation
+			Conditions: []client.Condition{
+				{
+					Type:            "Ready",
+					Status:          readyStatus(ready),
+					LastUpdatedTime: lastUpdated,
+				},
+			},
 		},
 	}
 }
@@ -52,13 +74,25 @@ func newTestResourceWithGeneration(id, kind string, ready bool, lastUpdated time
 			Ready:              ready,
 			LastUpdated:        lastUpdated,
 			ObservedGeneration: observedGeneration,
+			Conditions: []client.Condition{
+				{
+					Type:            "Ready",
+					Status:          readyStatus(ready),
+					LastUpdatedTime: lastUpdated,
+				},
+			},
 		},
 	}
 }
 
-// newTestEngine creates a decision engine with standard test values
-func newTestEngine() *DecisionEngine {
-	return NewDecisionEngine(testMaxAgeNotReady, testMaxAgeReady)
+// newTestEngine creates a decision engine with standard test values using CEL conditions
+func newTestEngine(t *testing.T) *DecisionEngine {
+	t.Helper()
+	compiled, err := CompileConditions(defaultTestConditions())
+	if err != nil {
+		t.Fatalf("Failed to compile test conditions: %v", err)
+	}
+	return NewDecisionEngine(compiled)
 }
 
 // assertDecision verifies a decision matches expected values
@@ -87,24 +121,24 @@ const (
 )
 
 func TestNewDecisionEngine(t *testing.T) {
-	engine := newTestEngine()
+	engine := newTestEngine(t)
 
 	if engine == nil {
 		t.Fatal("NewDecisionEngine returned nil")
 	}
 
-	if engine.maxAgeNotReady != testMaxAgeNotReady {
-		t.Errorf("maxAgeNotReady = %v, want %v", engine.maxAgeNotReady, testMaxAgeNotReady)
+	if engine.conditions == nil {
+		t.Fatal("conditions should not be nil")
 	}
 
-	if engine.maxAgeReady != testMaxAgeReady {
-		t.Errorf("maxAgeReady = %v, want %v", engine.maxAgeReady, testMaxAgeReady)
+	if len(engine.conditions.RuleNames()) != 2 {
+		t.Errorf("rules count = %d, want 2", len(engine.conditions.RuleNames()))
 	}
 }
 
 func TestDecisionEngine_Evaluate(t *testing.T) {
 	now := time.Now()
-	engine := newTestEngine()
+	engine := newTestEngine(t)
 
 	tests := []struct {
 		name               string
@@ -248,105 +282,91 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 	}
 }
 
-// TestDecisionEngine_Evaluate_ZeroMaxAge tests edge case with zero max age intervals
-func TestDecisionEngine_Evaluate_ZeroMaxAge(t *testing.T) {
-	now := time.Now()
-
+// TestCompileConditions_RejectsZeroMaxAge tests that CompileConditions rejects zero max_age
+func TestCompileConditions_RejectsZeroMaxAge(t *testing.T) {
 	tests := []struct {
-		name              string
-		maxAgeNotReady    time.Duration
-		maxAgeReady       time.Duration
-		ready             bool
-		lastUpdated       time.Time
-		wantShouldPublish bool
+		name       string
+		conditions config.Conditions
 	}{
 		{
-			name:              "zero maxAgeNotReady - not ready",
-			maxAgeNotReady:    0,
-			maxAgeReady:       30 * time.Minute,
-			ready:             false,
-			lastUpdated:       now, // Even with now, should publish due to zero max age
-			wantShouldPublish: true,
+			name: "zero max age for False status",
+			conditions: config.Conditions{
+				ReferenceTime: `conditionTime(resource, "Ready")`,
+				Rules: []config.ConditionRule{
+					{Name: "isReady", Expression: `status(resource, "Ready") == "True"`, MaxAge: 30 * time.Minute},
+					{Name: "isNotReady", Expression: `status(resource, "Ready") == "False"`, MaxAge: 0},
+				},
+			},
 		},
 		{
-			name:              "zero maxAgeReady - ready",
-			maxAgeNotReady:    10 * time.Second,
-			maxAgeReady:       0,
-			ready:             true,
-			lastUpdated:       now, // Even with now, should publish due to zero max age
-			wantShouldPublish: true,
-		},
-		{
-			name:              "both zero max ages - ready",
-			maxAgeNotReady:    0,
-			maxAgeReady:       0,
-			ready:             true,
-			lastUpdated:       now,
-			wantShouldPublish: true,
-		},
-		{
-			name:              "both zero max ages - not ready",
-			maxAgeNotReady:    0,
-			maxAgeReady:       0,
-			ready:             false,
-			lastUpdated:       now,
-			wantShouldPublish: true,
+			name: "zero max age for True status",
+			conditions: config.Conditions{
+				ReferenceTime: `conditionTime(resource, "Ready")`,
+				Rules: []config.ConditionRule{
+					{Name: "isReady", Expression: `status(resource, "Ready") == "True"`, MaxAge: 0},
+					{Name: "isNotReady", Expression: `status(resource, "Ready") == "False"`, MaxAge: 10 * time.Second},
+				},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			engine := NewDecisionEngine(tt.maxAgeNotReady, tt.maxAgeReady)
-			resource := newTestResource(tt.ready, tt.lastUpdated)
-			decision := engine.Evaluate(resource, now)
-
-			assertDecision(t, decision, tt.wantShouldPublish, "")
+			_, err := CompileConditions(tt.conditions)
+			if err == nil {
+				t.Fatal("Expected CompileConditions to reject zero max_age")
+			}
+			if !strings.Contains(err.Error(), "non-positive max_age") {
+				t.Errorf("Expected error about non-positive max_age, got: %v", err)
+			}
 		})
 	}
 }
 
-// TestDecisionEngine_Evaluate_NegativeMaxAge tests edge case with negative max age intervals
-func TestDecisionEngine_Evaluate_NegativeMaxAge(t *testing.T) {
-	now := time.Now()
-	lastUpdated := now.Add(-5 * time.Second)
-
+// TestCompileConditions_RejectsNegativeMaxAge tests that CompileConditions rejects negative max_age
+func TestCompileConditions_RejectsNegativeMaxAge(t *testing.T) {
 	tests := []struct {
-		name              string
-		maxAgeNotReady    time.Duration
-		maxAgeReady       time.Duration
-		ready             bool
-		wantShouldPublish bool
+		name       string
+		conditions config.Conditions
 	}{
 		{
-			name:              "negative maxAgeNotReady",
-			maxAgeNotReady:    -10 * time.Second,
-			maxAgeReady:       30 * time.Minute,
-			ready:             false,
-			wantShouldPublish: true, // Negative max age means nextEventTime is in the past
+			name: "negative max age for not ready",
+			conditions: config.Conditions{
+				ReferenceTime: `conditionTime(resource, "Ready")`,
+				Rules: []config.ConditionRule{
+					{Name: "isReady", Expression: `status(resource, "Ready") == "True"`, MaxAge: 30 * time.Minute},
+					{Name: "isNotReady", Expression: `status(resource, "Ready") == "False"`, MaxAge: -10 * time.Second},
+				},
+			},
 		},
 		{
-			name:              "negative maxAgeReady",
-			maxAgeNotReady:    10 * time.Second,
-			maxAgeReady:       -10 * time.Minute,
-			ready:             true,
-			wantShouldPublish: true,
+			name: "negative max age for ready",
+			conditions: config.Conditions{
+				ReferenceTime: `conditionTime(resource, "Ready")`,
+				Rules: []config.ConditionRule{
+					{Name: "isReady", Expression: `status(resource, "Ready") == "True"`, MaxAge: -10 * time.Minute},
+					{Name: "isNotReady", Expression: `status(resource, "Ready") == "False"`, MaxAge: 10 * time.Second},
+				},
+			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			engine := NewDecisionEngine(tt.maxAgeNotReady, tt.maxAgeReady)
-			resource := newTestResource(tt.ready, lastUpdated)
-			decision := engine.Evaluate(resource, now)
-
-			assertDecision(t, decision, tt.wantShouldPublish, "")
+			_, err := CompileConditions(tt.conditions)
+			if err == nil {
+				t.Fatal("Expected CompileConditions to reject negative max_age")
+			}
+			if !strings.Contains(err.Error(), "non-positive max_age") {
+				t.Errorf("Expected error about non-positive max_age, got: %v", err)
+			}
 		})
 	}
 }
 
 // TestDecisionEngine_Evaluate_ConsistentBehavior tests that multiple calls with same inputs produce same results
 func TestDecisionEngine_Evaluate_ConsistentBehavior(t *testing.T) {
-	engine := newTestEngine()
+	engine := newTestEngine(t)
 	now := time.Now()
 	resource := newTestResource(true, now.Add(-31*time.Minute))
 
@@ -366,7 +386,7 @@ func TestDecisionEngine_Evaluate_ConsistentBehavior(t *testing.T) {
 
 // TestDecisionEngine_Evaluate_InvalidInputs tests handling of invalid inputs
 func TestDecisionEngine_Evaluate_InvalidInputs(t *testing.T) {
-	engine := newTestEngine()
+	engine := newTestEngine(t)
 	now := time.Now()
 
 	tests := []struct {
@@ -407,9 +427,9 @@ func TestDecisionEngine_Evaluate_InvalidInputs(t *testing.T) {
 	}
 }
 
-// TestDecisionEngine_Evaluate_CreatedTimeFallback tests that created_time is used when lastUpdated is zero
+// TestDecisionEngine_Evaluate_CreatedTimeFallback tests that created_time is used when condition LastUpdatedTime is zero
 func TestDecisionEngine_Evaluate_CreatedTimeFallback(t *testing.T) {
-	engine := newTestEngine()
+	engine := newTestEngine(t)
 	now := time.Now()
 
 	tests := []struct {
@@ -487,7 +507,7 @@ func TestDecisionEngine_Evaluate_CreatedTimeFallback(t *testing.T) {
 
 // TestDecisionEngine_Evaluate_GenerationBasedReconciliation tests generation-based reconciliation
 func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
-	engine := newTestEngine()
+	engine := newTestEngine(t)
 	now := time.Now()
 
 	tests := []struct {
@@ -629,4 +649,195 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestDecisionEngine_Evaluate_NoMatchingRule tests fallback when no rule matches the condition status
+func TestDecisionEngine_Evaluate_NoMatchingRule(t *testing.T) {
+	now := time.Now()
+
+	compiled, err := CompileConditions(defaultTestConditions())
+	if err != nil {
+		t.Fatalf("CompileConditions failed: %v", err)
+	}
+	engine := NewDecisionEngine(compiled)
+
+	// Resource with Unknown status - no rule matches
+	resource := &client.Resource{
+		ID:          testResourceID,
+		Kind:        testResourceKind,
+		Generation:  1,
+		CreatedTime: now.Add(-1 * time.Hour),
+		Status: client.ResourceStatus{
+			ObservedGeneration: 1,
+			Conditions: []client.Condition{
+				{
+					Type:            "Ready",
+					Status:          "Unknown",
+					LastUpdatedTime: now.Add(-15 * time.Second), // 15s ago
+				},
+			},
+		},
+	}
+
+	decision := engine.Evaluate(resource, now)
+
+	// Should use smallest max age (10s) as fallback - 15s > 10s so should publish
+	assertDecision(t, decision, true, ReasonMaxAgeExceeded)
+}
+
+// TestDecisionEngine_Evaluate_ConditionNotFound tests behavior when condition type is not found on resource
+func TestDecisionEngine_Evaluate_ConditionNotFound(t *testing.T) {
+	now := time.Now()
+
+	compiled, err := CompileConditions(defaultTestConditions())
+	if err != nil {
+		t.Fatalf("CompileConditions failed: %v", err)
+	}
+	engine := NewDecisionEngine(compiled)
+
+	// Resource with no Ready condition (only Available)
+	resource := &client.Resource{
+		ID:          testResourceID,
+		Kind:        testResourceKind,
+		Generation:  1,
+		CreatedTime: now.Add(-20 * time.Second), // Created 20s ago
+		Status: client.ResourceStatus{
+			ObservedGeneration: 1,
+			Conditions: []client.Condition{
+				{
+					Type:            "Available",
+					Status:          "True",
+					LastUpdatedTime: now.Add(-5 * time.Second),
+				},
+			},
+		},
+	}
+
+	decision := engine.Evaluate(resource, now)
+
+	// Condition not found → falls back to created_time (20s ago) with smallest max age (10s)
+	// 20s > 10s → should publish
+	assertDecision(t, decision, true, ReasonMaxAgeExceeded)
+}
+
+// TestDecisionEngine_Evaluate_CustomConditionType tests using a non-Ready condition type
+func TestDecisionEngine_Evaluate_CustomConditionType(t *testing.T) {
+	now := time.Now()
+
+	conditions := config.Conditions{
+		ReferenceTime: `conditionTime(resource, "Available")`,
+		Rules: []config.ConditionRule{
+			{Name: "isAvailable", Expression: `status(resource, "Available") == "True"`, MaxAge: 1 * time.Hour},
+			{Name: "isNotAvailable", Expression: `status(resource, "Available") == "False"`, MaxAge: 30 * time.Second},
+		},
+	}
+	compiled, err := CompileConditions(conditions)
+	if err != nil {
+		t.Fatalf("CompileConditions failed: %v", err)
+	}
+	engine := NewDecisionEngine(compiled)
+
+	// Resource with both Ready and Available conditions
+	resource := &client.Resource{
+		ID:          testResourceID,
+		Kind:        testResourceKind,
+		Generation:  1,
+		CreatedTime: now.Add(-2 * time.Hour),
+		Status: client.ResourceStatus{
+			ObservedGeneration: 1,
+			Conditions: []client.Condition{
+				{
+					Type:            "Ready",
+					Status:          "True",
+					LastUpdatedTime: now.Add(-5 * time.Minute),
+				},
+				{
+					Type:            "Available",
+					Status:          "False",
+					LastUpdatedTime: now.Add(-45 * time.Second), // 45s ago
+				},
+			},
+		},
+	}
+
+	decision := engine.Evaluate(resource, now)
+
+	// Should use Available condition (False → 30s max age) and its LastUpdatedTime (45s ago)
+	// 45s > 30s → should publish
+	assertDecision(t, decision, true, ReasonMaxAgeExceeded)
+}
+
+// TestDecisionEngine_Evaluate_NoConditions tests resource with empty conditions list
+func TestDecisionEngine_Evaluate_NoConditions(t *testing.T) {
+	now := time.Now()
+	engine := newTestEngine(t)
+
+	resource := &client.Resource{
+		ID:          testResourceID,
+		Kind:        testResourceKind,
+		Generation:  1,
+		CreatedTime: now.Add(-20 * time.Second), // Created 20s ago
+		Status: client.ResourceStatus{
+			ObservedGeneration: 1,
+			Conditions:         nil, // No conditions at all
+		},
+	}
+
+	decision := engine.Evaluate(resource, now)
+
+	// No conditions → falls back to created_time (20s ago) with smallest max age (10s)
+	// 20s > 10s → should publish
+	assertDecision(t, decision, true, ReasonMaxAgeExceeded)
+}
+
+// TestDecisionEngine_Evaluate_CompoundExpression tests compound CEL expressions
+func TestDecisionEngine_Evaluate_CompoundExpression(t *testing.T) {
+	now := time.Now()
+
+	conditions := config.Conditions{
+		ReferenceTime: `conditionTime(resource, "Ready")`,
+		Rules: []config.ConditionRule{
+			{
+				Name:       "readyAndAvailable",
+				Expression: `status(resource, "Ready") == "True" && status(resource, "Available") == "True"`,
+				MaxAge:     1 * time.Hour,
+			},
+			{
+				Name:       "readyOnly",
+				Expression: `status(resource, "Ready") == "True"`,
+				MaxAge:     30 * time.Minute,
+			},
+			{
+				Name:       "notReady",
+				Expression: `status(resource, "Ready") == "False"`,
+				MaxAge:     10 * time.Second,
+			},
+		},
+	}
+	compiled, err := CompileConditions(conditions)
+	if err != nil {
+		t.Fatalf("CompileConditions failed: %v", err)
+	}
+	engine := NewDecisionEngine(compiled)
+
+	// Resource with Ready=True and Available=True, updated 45m ago
+	resource := &client.Resource{
+		ID:          testResourceID,
+		Kind:        testResourceKind,
+		Generation:  1,
+		CreatedTime: now.Add(-2 * time.Hour),
+		Status: client.ResourceStatus{
+			Ready:              true,
+			ObservedGeneration: 1,
+			Conditions: []client.Condition{
+				{Type: "Ready", Status: "True", LastUpdatedTime: now.Add(-45 * time.Minute)},
+				{Type: "Available", Status: "True", LastUpdatedTime: now.Add(-45 * time.Minute)},
+			},
+		},
+	}
+
+	decision := engine.Evaluate(resource, now)
+
+	// First rule matches (readyAndAvailable, 1h max_age), 45m < 1h → should NOT publish
+	assertDecision(t, decision, false, "max age not exceeded")
 }

@@ -146,7 +146,18 @@ func TestIntegration_EndToEnd(t *testing.T) {
 
 	// Setup components with real RabbitMQ broker
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	conditions := config.Conditions{
+		ReferenceTime: `conditionTime(resource, "Ready")`,
+		Rules: []config.ConditionRule{
+			{Name: "isReady", Expression: `status(resource, "Ready") == "True"`, MaxAge: 30 * time.Minute},
+			{Name: "isNotReady", Expression: `status(resource, "Ready") == "False"`, MaxAge: 10 * time.Second},
+		},
+	}
+	compiledConditions, err := engine.CompileConditions(conditions)
+	if err != nil {
+		t.Fatalf("CompileConditions failed: %v", err)
+	}
+	decisionEngine := engine.NewDecisionEngine(compiledConditions)
 	log := logger.NewHyperFleetLogger()
 
 	// Create metrics with a test registry
@@ -156,8 +167,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		PollInterval:   100 * time.Millisecond, // Short interval for testing
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		Conditions: conditions,
 		MessageData: map[string]interface{}{
 			"id":   "resource.id",
 			"kind": "resource.kind",
@@ -220,7 +230,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 				2,
 				2,
 				true,
-				now.Add(-31*time.Minute), // Exceeds max_age_ready (30m)
+				now.Add(-31*time.Minute), // Exceeds max age for "True" status (30m)
 				map[string]string{"shard": "1"},
 			),
 			// This cluster has shard:2 - should NOT match selector
@@ -262,7 +272,18 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 
 	// Setup components with real RabbitMQ broker
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	conditions := config.Conditions{
+		ReferenceTime: `conditionTime(resource, "Ready")`,
+		Rules: []config.ConditionRule{
+			{Name: "isReady", Expression: `status(resource, "Ready") == "True"`, MaxAge: 30 * time.Minute},
+			{Name: "isNotReady", Expression: `status(resource, "Ready") == "False"`, MaxAge: 10 * time.Second},
+		},
+	}
+	compiledConditions, err := engine.CompileConditions(conditions)
+	if err != nil {
+		t.Fatalf("CompileConditions failed: %v", err)
+	}
+	decisionEngine := engine.NewDecisionEngine(compiledConditions)
 	log := logger.NewHyperFleetLogger()
 
 	// Create metrics with a test registry
@@ -272,8 +293,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		PollInterval:   100 * time.Millisecond,
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		Conditions: conditions,
 		ResourceSelector: []config.LabelSelector{
 			{Label: "shard", Value: "1"},
 		},
@@ -373,7 +393,18 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 
 	// Setup components
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	conditions := config.Conditions{
+		ReferenceTime: `conditionTime(resource, "Ready")`,
+		Rules: []config.ConditionRule{
+			{Name: "isReady", Expression: `status(resource, "Ready") == "True"`, MaxAge: 30 * time.Minute},
+			{Name: "isNotReady", Expression: `status(resource, "Ready") == "False"`, MaxAge: 10 * time.Second},
+		},
+	}
+	compiledConditions, err := engine.CompileConditions(conditions)
+	if err != nil {
+		t.Fatalf("CompileConditions failed: %v", err)
+	}
+	decisionEngine := engine.NewDecisionEngine(compiledConditions)
 	log := logger.NewHyperFleetLogger()
 
 	registry := prometheus.NewRegistry()
@@ -382,8 +413,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		PollInterval:   100 * time.Millisecond,
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		Conditions: conditions,
 		ResourceSelector: []config.LabelSelector{
 			{Label: "region", Value: "us-east"},
 			{Label: "env", Value: "production"},
@@ -464,9 +494,9 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 			}
 		}
 		clusters := []map[string]interface{}{
-			// This cluster will trigger max_age_ready exceeded event
+			// This cluster will trigger max age exceeded for "True" status
 			createMockCluster("cluster-old", 2, 2, true, now.Add(-35*time.Minute)), // Exceeds 30min
-			// This cluster will trigger max_age_not_ready exceeded event
+			// This cluster will trigger max age exceeded for "False" status
 			createMockCluster("cluster-not-ready", 1, 1, false, now.Add(-15*time.Second)), // Exceeds 10sec
 		}
 		response := createMockClusterList(clusters)
@@ -476,14 +506,24 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	conditions := config.Conditions{
+		ReferenceTime: `conditionTime(resource, "Ready")`,
+		Rules: []config.ConditionRule{
+			{Name: "isReady", Expression: `status(resource, "Ready") == "True"`, MaxAge: 30 * time.Minute},
+			{Name: "isNotReady", Expression: `status(resource, "Ready") == "False"`, MaxAge: 10 * time.Second},
+		},
+	}
+	compiledConditions, err := engine.CompileConditions(conditions)
+	if err != nil {
+		t.Fatalf("CompileConditions failed: %v", err)
+	}
+	decisionEngine := engine.NewDecisionEngine(compiledConditions)
 
 	sentinelConfig := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		Topic:          TEST_TOPIC,
 		PollInterval:   100 * time.Millisecond,
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		Conditions: conditions,
 		ResourceSelector: []config.LabelSelector{
 			{Label: "region", Value: "us-east"},
 			{Label: "env", Value: "production"},

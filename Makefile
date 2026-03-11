@@ -219,7 +219,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release $(HELM_CHART_DIR)/ \
 		--set config.resourceType=nodepools \
 		--set config.pollInterval=10s \
-		--set config.maxAgeReady=1h > /dev/null
+		--set config.conditions.rules[0].maxAge=1h > /dev/null
 	@echo "Custom resource selector template OK"
 	@echo ""
 	@echo "All Helm chart tests passed!"

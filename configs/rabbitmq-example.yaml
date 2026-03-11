@@ -18,13 +18,22 @@ resource_type: clusters
 # Accepts Go duration format: ns, us/µs, ms, s, m, h.
 poll_interval: 5s
 
-# Max age interval for resources that are not ready.
-# Resources in transitional states are re-checked more frequently.
-max_age_not_ready: 10s
-
-# Max age interval for resources that are ready and stable.
-# Stable resources are checked less frequently to reduce API load.
-max_age_ready: 30m
+# Condition rules for decision making.
+# Uses CEL expressions for flexible condition matching.
+#
+# Available CEL helper functions:
+#   condition(resource, type) → map     - returns full condition map
+#   status(resource, type)    → string  - returns condition status
+#   conditionTime(resource, type) → string - returns last_updated_time (RFC3339)
+conditions:
+  reference_time: 'conditionTime(resource, "Ready")'
+  rules:
+    - name: isReady
+      expression: 'status(resource, "Ready") == "True"'
+      max_age: 30m    # Stable resources checked less frequently
+    - name: isNotReady
+      expression: 'status(resource, "Ready") == "False"'
+      max_age: 10s    # Transitional resources re-checked more frequently
 
 # Resource selector (optional) - filter resources by labels.
 # If empty or omitted, all resources of the specified type are watched.

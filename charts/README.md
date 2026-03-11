@@ -80,8 +80,8 @@ The following table lists the configurable parameters of the Sentinel chart and 
 |-----------|-------------|---------|
 | `config.resourceType` | Resource type to watch | `clusters` |
 | `config.pollInterval` | Polling interval | `5s` |
-| `config.maxAgeNotReady` | Max age for not ready resources | `10s` |
-| `config.maxAgeReady` | Max age for ready resources | `30m` |
+| `config.conditions.referenceTime` | CEL expression for reference timestamp | `conditionTime(resource, "Ready")` |
+| `config.conditions.rules` | CEL expression rules with name, expression, and max_age | See values.yaml |
 | `config.resourceSelector` | Resource selector for sharding | See values.yaml |
 | `config.hyperfleetApi.baseUrl` | HyperFleet API base URL | `http://hyperfleet-api:8000` |
 | `config.hyperfleetApi.timeout` | API timeout | `5s` |

@@ -1,7 +1,15 @@
 resource_type: nodepools
 poll_interval: 3s
-max_age_not_ready: 5s
-max_age_ready: 15m
+
+conditions:
+  reference_time: 'conditionTime(resource, "Ready")'
+  rules:
+    - name: isReady
+      expression: 'status(resource, "Ready") == "True"'
+      max_age: 15m
+    - name: isNotReady
+      expression: 'status(resource, "Ready") == "False"'
+      max_age: 5s
 
 resource_selector:
   - label: cluster-id

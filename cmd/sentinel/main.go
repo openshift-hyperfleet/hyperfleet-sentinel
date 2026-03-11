@@ -171,7 +171,12 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 		return fmt.Errorf("failed to initialize OpenAPI client: %w", err)
 
 	}
-	decisionEngine := engine.NewDecisionEngine(cfg.MaxAgeNotReady, cfg.MaxAgeReady)
+	compiledConditions, err := engine.CompileConditions(cfg.Conditions)
+	if err != nil {
+		log.Errorf(ctx, "Failed to compile condition expressions: %v", err)
+		return fmt.Errorf("failed to compile condition expressions: %w", err)
+	}
+	decisionEngine := engine.NewDecisionEngine(compiledConditions)
 
 	// Initialize broker metrics recorder
 	// Broker metrics (messages_published_total, errors_total, etc.) are registered

@@ -111,6 +111,25 @@ func (m *MockPublisherWithLogger) Close() error { return nil }
 
 func (m *MockPublisherWithLogger) Health(ctx context.Context) error { return nil }
 
+// testConditions is the standard conditions used across sentinel tests
+var testConditions = config.Conditions{
+	ReferenceTime: `conditionTime(resource, "Ready")`,
+	Rules: []config.ConditionRule{
+		{Name: "isReady", Expression: `status(resource, "Ready") == "True"`, MaxAge: 30 * time.Minute},
+		{Name: "isNotReady", Expression: `status(resource, "Ready") == "False"`, MaxAge: 10 * time.Second},
+	},
+}
+
+// newTestDecisionEngine creates a decision engine with standard test conditions
+func newTestDecisionEngine(t *testing.T) *engine.DecisionEngine {
+	t.Helper()
+	compiled, err := engine.CompileConditions(testConditions)
+	if err != nil {
+		t.Fatalf("CompileConditions failed: %v", err)
+	}
+	return engine.NewDecisionEngine(compiled)
+}
+
 // TestTrigger_Success tests successful event publishing
 func TestTrigger_Success(t *testing.T) {
 	ctx := context.Background()
@@ -129,7 +148,7 @@ func TestTrigger_Success(t *testing.T) {
 
 	// Setup components
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
 
@@ -140,8 +159,7 @@ func TestTrigger_Success(t *testing.T) {
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		Topic:          "test-topic",
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		Conditions: testConditions,
 		MessageData: map[string]interface{}{
 			"id":   "resource.id",
 			"kind": "resource.kind",
@@ -203,7 +221,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 
 	// Setup components
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
 
@@ -214,8 +232,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		Topic:          "test-topic",
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		Conditions: testConditions,
 		MessageData: map[string]interface{}{
 			"id":   "resource.id",
 			"kind": "resource.kind",
@@ -254,7 +271,7 @@ func TestTrigger_FetchError(t *testing.T) {
 
 	// Setup components
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 1*time.Second) // Short timeout
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
 
@@ -265,8 +282,7 @@ func TestTrigger_FetchError(t *testing.T) {
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		Topic:          "test-topic",
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		Conditions: testConditions,
 		MessageData: map[string]interface{}{
 			"id":   "resource.id",
 			"kind": "resource.kind",
@@ -308,7 +324,7 @@ func TestTrigger_PublishError(t *testing.T) {
 
 	// Setup components
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{
 		publishError: errors.New("broker connection failed"),
 	}
@@ -321,8 +337,7 @@ func TestTrigger_PublishError(t *testing.T) {
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		Topic:          "test-topic",
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		Conditions: testConditions,
 		MessageData: map[string]interface{}{
 			"id":   "resource.id",
 			"kind": "resource.kind",
@@ -365,7 +380,7 @@ func TestTrigger_MixedResources(t *testing.T) {
 
 	// Setup components
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
 
@@ -376,8 +391,7 @@ func TestTrigger_MixedResources(t *testing.T) {
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		Topic:          "test-topic",
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		Conditions: testConditions,
 		MessageData: map[string]interface{}{
 			"id":   "resource.id",
 			"kind": "resource.kind",
@@ -428,7 +442,7 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
 
@@ -438,8 +452,7 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		Topic:          "test-topic",
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		Conditions: testConditions,
 		MessageData: map[string]interface{}{
 			"id":     "resource.id",
 			"kind":   "resource.kind",
@@ -494,7 +507,7 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
 
@@ -504,8 +517,7 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
 		Topic:          "test-topic",
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		Conditions: testConditions,
 		MessageData: map[string]interface{}{
 			"id": "resource.id",
 			"resource": map[string]interface{}{
@@ -547,9 +559,8 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 // TestBuildEventData_WithBuilder tests buildEventData directly with a configured builder.
 func TestBuildEventData_WithBuilder(t *testing.T) {
 	cfg := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
+		ResourceType: "clusters",
+		Conditions:   testConditions,
 		MessageData: map[string]interface{}{
 			"id":   "resource.id",
 			"kind": "resource.kind",

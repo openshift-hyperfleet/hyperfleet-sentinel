@@ -124,8 +124,8 @@ Create a configuration file based on the examples in the `configs/` directory:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `poll_interval` | duration | `5s` | How often to poll the API for resource updates |
-| `max_age_not_ready` | duration | `10s` | Max age interval for resources not ready |
-| `max_age_ready` | duration | `30m` | Max age interval for ready resources |
+| `conditions.reference_time` | string | `conditionTime(resource, "Ready")` | CEL expression for reference timestamp |
+| `conditions.rules` | array | See below | CEL expression rules with name, expression, and max_age |
 | `hyperfleet_api.timeout` | duration | `5s` | Request timeout for API calls |
 | `resource_selector` | array | `[]` | Label selectors for filtering resources (enables sharding) |
 | `message_data` | map | `{}` | Template fields for CloudEvents data payload |
@@ -229,8 +229,16 @@ This uses all defaults. Broker configuration is managed via `broker.yaml` or env
 ```yaml
 resource_type: clusters
 poll_interval: 5s
-max_age_not_ready: 10s
-max_age_ready: 30m
+
+conditions:
+  reference_time: 'conditionTime(resource, "Ready")'
+  rules:
+    - name: isReady
+      expression: 'status(resource, "Ready") == "True"'
+      max_age: 30m
+    - name: isNotReady
+      expression: 'status(resource, "Ready") == "False"'
+      max_age: 10s
 
 resource_selector:
   - label: shard

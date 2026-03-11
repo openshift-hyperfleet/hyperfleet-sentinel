@@ -9,8 +9,14 @@ data:
     # Sentinel configuration
     resource_type: {{ .Values.config.resourceType }}
     poll_interval: {{ .Values.config.pollInterval }}
-    max_age_not_ready: {{ .Values.config.maxAgeNotReady }}
-    max_age_ready: {{ .Values.config.maxAgeReady }}
+    conditions:
+      reference_time: {{ .Values.config.conditions.referenceTime | quote }}
+      rules:
+        {{- range .Values.config.conditions.rules }}
+        - name: {{ .name | quote }}
+          expression: {{ .expression | quote }}
+          max_age: {{ .maxAge }}
+        {{- end }}
 
     {{- if .Values.config.resourceSelector }}
     # Resource selector for horizontal sharding

@@ -65,8 +65,12 @@ func (s *Sentinel) LastSuccessfulPoll() time.Time {
 
 // Start starts the polling loop
 func (s *Sentinel) Start(ctx context.Context) error {
-	s.logger.Infof(ctx, "Starting sentinel resource_type=%s poll_interval=%s max_age_not_ready=%s max_age_ready=%s",
-		s.config.ResourceType, s.config.PollInterval, s.config.MaxAgeNotReady, s.config.MaxAgeReady)
+	ruleNames := make([]string, len(s.config.Conditions.Rules))
+	for i, r := range s.config.Conditions.Rules {
+		ruleNames[i] = r.Name
+	}
+	s.logger.Infof(ctx, "Starting sentinel resource_type=%s poll_interval=%s reference_time=%s rules=%v",
+		s.config.ResourceType, s.config.PollInterval, s.config.Conditions.ReferenceTime, ruleNames)
 
 	ticker := time.NewTicker(s.config.PollInterval)
 	defer ticker.Stop()

@@ -81,11 +81,20 @@ config:
   # How often to poll the API for resource updates
   pollInterval: 5s
 
-  # Max age interval for resources not ready
-  maxAgeNotReady: 10s
-
-  # Max age interval for ready resources
-  maxAgeReady: 30m
+  # Condition rules for decision making using CEL expressions
+  # Available CEL helper functions:
+  #   condition(resource, type) → map     - returns full condition map
+  #   status(resource, type)    → string  - returns condition status
+  #   conditionTime(resource, type) → string - returns last_updated_time (RFC3339)
+  conditions:
+    referenceTime: 'conditionTime(resource, "Ready")'
+    rules:
+      - name: isReady
+        expression: 'status(resource, "Ready") == "True"'
+        maxAge: 30m
+      - name: isNotReady
+        expression: 'status(resource, "Ready") == "False"'
+        maxAge: 10s
 
   # Resource selector for horizontal sharding
   # Deploy multiple Sentinel instances with different shard values
