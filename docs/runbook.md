@@ -173,10 +173,10 @@ Sentinel supports OpenTelemetry distributed tracing, which is useful for debuggi
 
 ### Enabling Tracing
 
-Tracing is enabled by default. If not, it can be enabled by setting the `TRACING_ENABLED` environment variable:
+Tracing is enabled by default. If not, it can be enabled by setting the `HYPERFLEET_TRACING_ENABLED` environment variable:
 
 ```bash
-TRACING_ENABLED=true
+HYPERFLEET_TRACING_ENABLED=true
 ```
 
 Configure the exporter endpoint to send traces to your collector:

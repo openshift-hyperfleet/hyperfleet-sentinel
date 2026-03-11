@@ -104,7 +104,10 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	// Get metric labels
 	resourceType := s.config.ResourceType
 	resourceSelector := metrics.GetResourceSelectorLabel(s.config.ResourceSelector)
-	topic := s.config.Topic
+	topic := ""
+	if s.config.Clients.Broker != nil {
+		topic = s.config.Clients.Broker.Topic
+	}
 
 	// Add subset to context for structured logging
 	ctx = logger.WithSubset(ctx, resourceType)

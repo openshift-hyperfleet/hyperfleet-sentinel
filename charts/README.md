@@ -78,12 +78,19 @@ The following table lists the configurable parameters of the Sentinel chart and 
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
+| `config.sentinel.name` | Sentinel component name (supports Helm templates) | `hyperfleet-sentinel-{{ .Values.config.resourceType }}` |
+| `config.debugConfig` | Log the full merged configuration after load | `false` |
+| `config.tracingEnabled` | Enable OpenTelemetry tracing | `true` |
+| `config.log.level` | Log level: `debug`, `info`, `warn`, `error` | `info` |
+| `config.log.format` | Log format: `text`, `json` | `json` |
+| `config.log.output` | Log output: `stdout`, `stderr` | `stdout` |
 | `config.resourceType` | Resource type to watch | `clusters` |
 | `config.pollInterval` | Polling interval | `5s` |
 | `config.messageDecision` | CEL-based decision logic (params + result) | See values.yaml |
 | `config.resourceSelector` | Resource selector for sharding | See values.yaml |
-| `config.hyperfleetApi.baseUrl` | HyperFleet API base URL | `http://hyperfleet-api:8000` |
-| `config.hyperfleetApi.timeout` | API timeout | `5s` |
+| `config.clients.hyperfleetApi.baseUrl` | HyperFleet API base URL | `http://hyperfleet-api:8000` |
+| `config.clients.hyperfleetApi.version` | HyperFleet API version | `v1` |
+| `config.clients.hyperfleetApi.timeout` | API timeout | `10s` |
 | `config.messageData` | CloudEvents data payload fields | See values.yaml |
 
 ### Broker Configuration
@@ -100,7 +107,6 @@ The following table lists the configurable parameters of the Sentinel chart and 
 | `broker.googlepubsub.maxOutstandingMessages` | Max outstanding messages (for Pub/Sub) | `1000` |
 | `broker.googlepubsub.numGoroutines` | Number of goroutines (for Pub/Sub) | `10` |
 | `broker.googlepubsub.createTopicIfMissing` | Auto-create topic if it doesn't exist (for Pub/Sub) | `false` |
-| `subscriber.parallelism` | Number of parallel workers for message processing | `1` |
 | `existingSecret` | Use existing secret for broker credentials | `""` |
 
 ### Monitoring Configuration
@@ -129,14 +135,14 @@ The following table lists the configurable parameters of the Sentinel chart and 
 
 ```yaml
 # values-rabbitmq.yaml
-broker:
-  type: rabbitmq
-  rabbitmq:
-    # Connection URL with credentials, host, port, and vhost
-    url: amqp://sentinel-prod:super-secret-password@rabbitmq.messaging.svc.cluster.local:5672/prod
-    exchangeType: topic
-
 config:
+  clients:
+    broker:
+      type: rabbitmq
+      rabbitmq:
+        # Connection URL with credentials, host, port, and vhost
+        url: amqp://sentinel-prod:super-secret-password@rabbitmq.messaging.svc.cluster.local:5672/prod
+        exchangeType: topic
   resourceSelector:
     - label: environment
       value: production

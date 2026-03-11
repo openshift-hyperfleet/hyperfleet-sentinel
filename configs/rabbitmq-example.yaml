@@ -11,7 +11,37 @@
 #
 # For more details, see: https://github.com/openshift-hyperfleet/hyperfleet-broker
 
-# Resource type to watch - must be one of: clusters, nodepools.
+# Sentinel information
+sentinel:
+  name: hyperfleet-sentinel-clusters-shard-1
+
+# Debug configuration - log merged config on startup
+debug_config: false
+
+# Enable or disable distributed tracing
+tracing_enabled: false
+
+# Logging configuration (can be overridden by HYPERFLEET_LOG_* env vars or --log-* flags)
+log:
+  level: "info"
+  format: "json"  # Use JSON format for production
+  output: "stdout"
+
+# Client configurations
+clients:
+  # HyperFleet API client configuration
+  hyperfleet_api:
+    # API base URL (required)
+    base_url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+    version: "v1"
+    timeout: 10s
+
+  # Broker configuration
+  # Note: broker implementation details (RabbitMQ URL, etc.) are in broker.yaml
+  broker:
+    topic: ""  # Can be overridden by HYPERFLEET_BROKER_TOPIC
+
+# Resource type to watch - must be one of: clusters, nodepools
 resource_type: clusters
 
 # How often to poll the HyperFleet API for resource updates.
@@ -46,14 +76,6 @@ resource_selector:
     value: "1"
   - label: datacenter
     value: dc-east
-
-# HyperFleet API configuration.
-hyperfleet_api:
-  # API base URL (required).
-  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
-
-  # Request timeout for API calls.
-  timeout: 5s
 
 # CloudEvent payload configuration.
 #
