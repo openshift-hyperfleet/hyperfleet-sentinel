@@ -64,7 +64,7 @@ spec:
           - name: BROKER_CONFIG_FILE
             value: /etc/sentinel/broker.yaml
           # Topic name for broker publishing
-          - name: BROKER_TOPIC
+          - name: HYPERFLEET_BROKER_TOPIC
             value: {{ tpl .Values.broker.topic . | quote }}
           # Broker credentials can be overridden via environment variables from Secret
           {{- if eq .Values.broker.type "rabbitmq" }}

@@ -12,20 +12,20 @@ Deploy multiple Sentinel instances by installing the Helm chart multiple times w
 # Instance 1: Watch clusters in us-east region
 helm install sentinel-us-east ./charts \
   --namespace hyperfleet-system \
-  --set config.resourceSelector[0].label=region \
-  --set config.resourceSelector[0].value=us-east
+  --set config.resource_selector[0].label=region \
+  --set config.resource_selector[0].value=us-east
 
 # Instance 2: Watch clusters in us-west region
 helm install sentinel-us-west ./charts \
   --namespace hyperfleet-system \
-  --set config.resourceSelector[0].label=region \
-  --set config.resourceSelector[0].value=us-west
+  --set config.resource_selector[0].label=region \
+  --set config.resource_selector[0].value=us-west
 
 # Instance 3: Watch clusters in eu-central region
 helm install sentinel-eu-central ./charts \
   --namespace hyperfleet-system \
-  --set config.resourceSelector[0].label=region \
-  --set config.resourceSelector[0].value=eu-central
+  --set config.resource_selector[0].label=region \
+  --set config.resource_selector[0].value=eu-central
 ```
 
 ## Using Values Files for Complex Configurations
@@ -35,8 +35,8 @@ For more complex setups, create separate values files for each instance:
 **values-us-east.yaml:**
 ```yaml
 config:
-  resourceType: clusters
-  resourceSelector:
+  resource_type: clusters
+  resource_selector:
     - label: region
       value: us-east
     - label: environment
@@ -46,8 +46,8 @@ config:
 **values-us-west.yaml:**
 ```yaml
 config:
-  resourceType: clusters
-  resourceSelector:
+  resource_type: clusters
+  resource_selector:
     - label: region
       value: us-west
     - label: environment
@@ -84,15 +84,15 @@ When deploying multiple Sentinel instances, consider using separate broker topic
 # Instance for us-east with dedicated topic
 helm install sentinel-us-east ./charts \
   --namespace hyperfleet-system \
-  --set config.resourceSelector[0].label=region \
-  --set config.resourceSelector[0].value=us-east \
+  --set config.resource_selector[0].label=region \
+  --set config.resource_selector[0].value=us-east \
   --set broker.topic=hyperfleet-clusters-us-east
 
 # Instance for us-west with dedicated topic
 helm install sentinel-us-west ./charts \
   --namespace hyperfleet-system \
-  --set config.resourceSelector[0].label=region \
-  --set config.resourceSelector[0].value=us-west \
+  --set config.resource_selector[0].label=region \
+  --set config.resource_selector[0].value=us-west \
   --set broker.topic=hyperfleet-clusters-us-west
 ```
 
@@ -104,8 +104,8 @@ For initial deployments, start with a **single Sentinel instance** watching all 
 
 ```yaml
 config:
-  resourceType: clusters
-  resourceSelector: []  # Empty = watch all resources
+  resource_type: clusters
+  resource_selector: []  # Empty = watch all resources
 ```
 
 Scale to multiple instances as your cluster count grows or when you need regional isolation.

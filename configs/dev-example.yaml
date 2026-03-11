@@ -10,33 +10,55 @@
 #   export BROKER_RABBITMQ_URL=amqp://guest:guest@localhost:5672/
 #   ./bin/sentinel serve --config=configs/dev-example.yaml
 #
-# For multi-tenant isolation (optional):
-#   export BROKER_TOPIC_PREFIX=my-namespace
-#   Topics will be named: my-namespace-Cluster, my-namespace-NodePool
-#
 # Or configure via broker.yaml (see broker.yaml in project root)
 
-# Resource type to watch - must be one of: clusters, nodepools.
+# Sentinel information
+sentinel:
+  name: hyperfleet-sentinel-clusters
+
+# Debug configuration - log merged config on startup
+debug_config: false
+
+# Logging configuration (can be overridden by HYPERFLEET_LOG_* env vars or --log-* flags)
+log:
+  level: "info"
+  format: "text"
+  output: "stdout"
+
+# Client configurations
+clients:
+  # HyperFleet API client configuration
+  hyperfleet_api:
+    # Local development API endpoint
+    # Adjust this to match your local HyperFleet API instance
+    base_url: http://localhost:8000
+    version: "v1"
+    timeout: 10s
+    retry_attempts: 3
+    retry_backoff: "exponential"
+    base_delay: "1s"
+    max_delay: "30s"
+    # Optional default headers
+    # default_headers:
+    #   X-Custom-Header: "value"
+
+  # Broker configuration
+  # Note: broker implementation details (RabbitMQ URL, etc.) are in broker.yaml
+  broker:
+    topic: ""  # Can be overridden by HYPERFLEET_BROKER_TOPIC
+
+# Resource type to watch - must be one of: clusters, nodepools
 resource_type: clusters
 
-# Faster polling for development - see changes quickly.
+# Faster polling for development - see changes quickly
 poll_interval: 2s
 
-# Shorter max age intervals for development.
+# Shorter max age intervals for development
 max_age_not_ready: 5s
 max_age_ready: 2m
 
-# No resource selector - watch all resources in development.
+# No resource selector - watch all resources in development
 # resource_selector: []
-
-# HyperFleet API configuration.
-hyperfleet_api:
-  # Local development API endpoint.
-  # Adjust this to match your local HyperFleet API instance.
-  endpoint: http://localhost:8000
-
-  # Shorter timeout for faster failure detection in dev.
-  timeout: 10s
 
 # CloudEvent payload configuration.
 #
