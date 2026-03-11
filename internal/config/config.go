@@ -20,12 +20,24 @@ type LabelSelector struct {
 // LabelSelectorList is a list of label selectors
 type LabelSelectorList []LabelSelector
 
+// ConditionRule defines a CEL expression that, when matched, determines the max age for a resource
+type ConditionRule struct {
+	Name       string        `mapstructure:"name"`
+	Expression string        `mapstructure:"expression"`
+	MaxAge     time.Duration `mapstructure:"max_age"`
+}
+
+// Conditions configures CEL-based condition evaluation for the decision engine
+type Conditions struct {
+	ReferenceTime string          `mapstructure:"reference_time"`
+	Rules         []ConditionRule `mapstructure:"rules"`
+}
+
 // SentinelConfig represents the Sentinel configuration
 type SentinelConfig struct {
 	ResourceType     string                 `mapstructure:"resource_type"`
 	PollInterval     time.Duration          `mapstructure:"poll_interval"`
-	MaxAgeNotReady   time.Duration          `mapstructure:"max_age_not_ready"`
-	MaxAgeReady      time.Duration          `mapstructure:"max_age_ready"`
+	Conditions       Conditions             `mapstructure:"conditions"`
 	ResourceSelector LabelSelectorList      `mapstructure:"resource_selector"`
 	HyperFleetAPI    *HyperFleetAPIConfig   `mapstructure:"hyperfleet_api"`
 	MessageData      map[string]interface{} `mapstructure:"message_data"`
@@ -57,9 +69,14 @@ func (ls LabelSelectorList) ToMap() map[string]string {
 func NewSentinelConfig() *SentinelConfig {
 	return &SentinelConfig{
 		// ResourceType is required and must be set in config file
-		PollInterval:     5 * time.Second,
-		MaxAgeNotReady:   10 * time.Second,
-		MaxAgeReady:      30 * time.Minute,
+		PollInterval: 5 * time.Second,
+		Conditions: Conditions{
+			ReferenceTime: `conditionTime(resource, "Ready")`,
+			Rules: []ConditionRule{
+				{Name: "isReady", Expression: `status(resource, "Ready") == "True"`, MaxAge: 30 * time.Minute},
+				{Name: "isNotReady", Expression: `status(resource, "Ready") == "False"`, MaxAge: 10 * time.Second},
+			},
+		},
 		ResourceSelector: []LabelSelector{}, // Empty means watch all resources
 		HyperFleetAPI: &HyperFleetAPIConfig{
 			// Endpoint is required and must be set in config file
@@ -138,12 +155,24 @@ func (c *SentinelConfig) Validate() error {
 		return fmt.Errorf("poll_interval must be positive")
 	}
 
-	if c.MaxAgeNotReady <= 0 {
-		return fmt.Errorf("max_age_not_ready must be positive")
+	if strings.TrimSpace(c.Conditions.ReferenceTime) == "" {
+		return fmt.Errorf("conditions.reference_time is required")
 	}
 
-	if c.MaxAgeReady <= 0 {
-		return fmt.Errorf("max_age_ready must be positive")
+	if len(c.Conditions.Rules) == 0 {
+		return fmt.Errorf("conditions.rules must have at least one rule")
+	}
+
+	for i, rule := range c.Conditions.Rules {
+		if strings.TrimSpace(rule.Name) == "" {
+			return fmt.Errorf("conditions.rules[%d].name is required", i)
+		}
+		if strings.TrimSpace(rule.Expression) == "" {
+			return fmt.Errorf("conditions.rules[%d].expression is required", i)
+		}
+		if rule.MaxAge <= 0 {
+			return fmt.Errorf("conditions.rules[%d].max_age must be positive", i)
+		}
 	}
 
 	if c.MessageData == nil {

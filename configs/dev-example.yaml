@@ -22,9 +22,22 @@ resource_type: clusters
 # Faster polling for development - see changes quickly.
 poll_interval: 2s
 
-# Shorter max age intervals for development.
-max_age_not_ready: 5s
-max_age_ready: 2m
+# Condition rules for development - shorter intervals for faster feedback.
+# Uses CEL expressions for flexible condition matching.
+#
+# Available CEL helper functions:
+#   condition(resource, type) → map     - returns full condition map
+#   status(resource, type)    → string  - returns condition status
+#   conditionTime(resource, type) → string - returns last_updated_time (RFC3339)
+conditions:
+  reference_time: 'conditionTime(resource, "Ready")'
+  rules:
+    - name: isReady
+      expression: 'status(resource, "Ready") == "True"'
+      max_age: 2m
+    - name: isNotReady
+      expression: 'status(resource, "Ready") == "False"'
+      max_age: 5s
 
 # No resource selector - watch all resources in development.
 # resource_selector: []
