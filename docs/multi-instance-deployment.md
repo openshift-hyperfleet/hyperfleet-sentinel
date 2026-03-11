@@ -1,4 +1,5 @@
 # Deploying Multiple Sentinel Instances
+
 **Status**: Active
 **Owner**: HyperFleet Team
 **Last Updated**: 2026-03-12
@@ -37,6 +38,7 @@ helm install sentinel-eu-central ./charts \
 For more complex setups, create separate values files for each instance:
 
 **values-us-east.yaml:**
+
 ```yaml
 config:
   resourceType: clusters
@@ -48,6 +50,7 @@ config:
 ```
 
 **values-us-west.yaml:**
+
 ```yaml
 config:
   resourceType: clusters
@@ -59,6 +62,7 @@ config:
 ```
 
 Deploy using values files:
+
 ```bash
 helm install sentinel-us-east ./charts \
   --namespace hyperfleet-system \
@@ -121,6 +125,7 @@ Scale to multiple instances as your cluster count grows or when you need regiona
 **What**: Ensures minimum Sentinel availability during cluster maintenance.
 
 **Configuration for Single-Replica Deployments** (typical topology):
+
 ```yaml
 apiVersion: policy/v1
 kind: PodDisruptionBudget
@@ -135,6 +140,7 @@ spec:
 ```
 
 **Operational Impact**:
+
 - **Single replica protection**: `minAvailable: 1` blocks voluntary pod eviction when only 1 replica exists
 - **Maintenance blocking**: Node drains will be delayed until Sentinel pods are manually drained or scaled up
 - **Multiple Sentinels**: Each Sentinel deployment (per resource selector) can have its own PDB
@@ -149,6 +155,7 @@ spec:
 ### Resource Requirements
 
 #### Production Recommendations
+
 ```yaml
 resources:
   requests:
@@ -164,16 +171,19 @@ resources:
 #### Scaling Guidelines
 
 **CPU Scaling**:
+
 - **Base load**: 50-100m for basic polling
 - **Per 1000 resources**: Additional 50m CPU
 - **High churn environments**: Additional 100m for frequent events
 
 **Memory Scaling**:
+
 - **Base load**: 64Mi for service overhead
 - **Per 1000 resources**: Additional 32Mi memory
 - **Complex resource selectors**: Additional 16Mi per selector rule
 
 **Example Calculation**:
+
 ```
 5000 resources + complex selectors:
 CPU: 100m + (5 × 50m) + 100m = 450m
@@ -187,12 +197,14 @@ Memory: 64Mi + (5 × 32Mi) + 16Mi = 240Mi
 **Approach**: Deploy multiple Sentinel instances with different `resource_selector` configurations.
 
 **Benefits**:
+
 - Linear performance scaling
 - Fault isolation (one failure doesn't affect all resources)
 - Regional deployment (Sentinel near managed resources)
 - Different configurations per environment
 
 **Example Multi-Instance Deployment**:
+
 ```
                             ┌───────────────────┐
                             │  HyperFleet API   │
@@ -201,18 +213,17 @@ Memory: 64Mi + (5 × 32Mi) + 16Mi = 240Mi
                               Step 1: fetch resources
                                       │
                                       ▼
-┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
-│   Sentinel US-East  │  │   Sentinel US-West  │  │   Sentinel EU-West  │
-│  resource_selector: │  │  resource_selector: │  │  resource_selector: │
-│  - label: region    │  │  - label: region    │  │  - label: region    │
-│    value: us-east   │  │    value: us-west   │  │    value: eu-west   │
-│  ready_stale=30m    │  │  ready_stale=1h     │  │  ready_stale=45m    │
-└──────────┬──────────┘  └──────────┬──────────┘  └──────────┬──────────┘
-           │                        │                        │
-           │                        ▼                        │
-           └────────────► Step 2: publish events ◄───────────┘
-                                    │
-                                    ▼
+┌──────────────────────┐  ┌──────────────────────┐  ┌──────────────────────┐
+│   Sentinel US-East   │  │   Sentinel US-West   │  │   Sentinel EU-West   │
+│  resource_selector:  │  │  resource_selector:  │  │  resource_selector:  │
+│  - label: region     │  │  - label: region     │  │  - label: region     │
+│    value: us-east    │  │    value: us-west    │  │    value: eu-west    │
+└──────────┬───────────┘  └──────────┬───────────┘  └──────────┬───────────┘
+           │                         │                         │
+           │                         ▼                         │
+           └─────────────► Step 2: publish events ◄────────────┘
+                                     │
+                                     ▼
                             ┌───────────────────┐
                             │  Message Broker   │
                             └───────────────────┘
@@ -223,6 +234,7 @@ Memory: 64Mi + (5 × 32Mi) + 16Mi = 240Mi
 #### Resource Selector Strategies
 
 **Regional Partitioning**:
+
 ```yaml
 # Sentinel A
 resource_selector:
@@ -236,6 +248,7 @@ resource_selector:
 ```
 
 **Environment Partitioning**:
+
 ```yaml
 # Production Sentinel
 resource_selector:
@@ -249,6 +262,7 @@ resource_selector:
 ```
 
 **Hybrid Partitioning**:
+
 ```yaml
 # Production US-East
 resource_selector:
@@ -257,7 +271,6 @@ resource_selector:
   - label: environment
     value: production
 ```
-
 
 ## Architecture Reference
 

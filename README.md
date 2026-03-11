@@ -190,9 +190,9 @@ Broker configuration is managed by the [hyperfleet-broker library](https://githu
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `BROKER_TOPIC` | Topic name for publishing events | `hyperfleet-dev-clusters` |
+| `HYPERFLEET_BROKER_TOPIC` | Topic name for publishing events | `hyperfleet-dev-clusters` |
 
-The `BROKER_TOPIC` environment variable sets the full topic name where events will be published. When using Helm, the default topic is `{namespace}-{resourceType}` (e.g., `hyperfleet-dev-clusters`, `hyperfleet-dev-nodepools`). This enables isolation between different environments or tenants sharing the same broker. See [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) for details.
+The `HYPERFLEET_BROKER_TOPIC` environment variable sets the full topic name where events will be published. When using Helm, the default topic is `{namespace}-{resourceType}` (e.g., `hyperfleet-dev-clusters`, `hyperfleet-dev-nodepools`). This enables isolation between different environments or tenants sharing the same broker. See [Naming Strategy](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/sentinel/sentinel-naming-strategy.md) for details.
 
 For detailed broker configuration options, see the [hyperfleet-broker documentation](https://github.com/openshift-hyperfleet/hyperfleet-broker).
 

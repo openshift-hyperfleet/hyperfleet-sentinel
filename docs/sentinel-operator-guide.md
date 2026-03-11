@@ -1,4 +1,5 @@
 # HyperFleet Sentinel Operator Guide
+
 **Status**: Active
 **Owner**: HyperFleet Team
 **Last Updated**: 2026-03-12
@@ -29,6 +30,7 @@ This comprehensive guide teaches operators how to deploy, configure, and operate
 5. [Additional Resources](#additional-resources)
 
 **Appendices:**
+
 - [Appendix A: Troubleshooting](#appendix-a-troubleshooting)
 
 ---
@@ -66,6 +68,7 @@ graph LR
 ```
 
 Sentinel publishes events to a message broker, which fans out messages to downstream adapters. It uses a **three-part decision strategy**:
+
 - **Never-processed**: Publish immediately for new resources that have never been processed
 - **State-based**: Publish immediately when resource state indicates unprocessed spec changes
 - **Time-based**: Publish periodically based on max age intervals to ensure eventual consistency
@@ -271,7 +274,6 @@ broker:
 For multi-region deployment examples using `resource_selector`, see [Resource Selector
 Strategies](multi-instance-deployment.md#resource-filtering-strategies).
 
-
 For detailed deployment examples, see [docs/multi-instance-deployment.md](multi-instance-deployment.md).
 
 ---
@@ -400,6 +402,7 @@ message_data:
 ```
 
 **Cluster Pattern:**
+
 ```yaml
 message_data:
   id: "resource.id"
@@ -409,6 +412,7 @@ message_data:
 ```
 
 **NodePool Pattern with Owner References:**
+
 ```yaml
 message_data:
   id: "resource.id"
@@ -422,6 +426,7 @@ message_data:
 
 - All leaf values MUST be non-empty CEL expression strings
 - Empty values or `nil` will cause configuration validation failure:
+
   ```text
   Error: invalid config: message_data.id: empty CEL expression is not allowed
   ```
@@ -479,19 +484,20 @@ broker:
 | `BROKER_RABBITMQ_URL` | RabbitMQ | Complete connection URL with credentials | `amqp://user:pass@localhost:5672/vhost` |
 | `BROKER_GOOGLEPUBSUB_PROJECT_ID` | Pub/Sub | GCP project ID | `my-gcp-project` |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Pub/Sub | Service account key path (local dev/testing only, production GKE uses Workload Identity) | `/path/to/key.json` |
-| `BROKER_TOPIC` | Both | Topic name for publishing events | `hyperfleet-prod-clusters` |
+| `HYPERFLEET_BROKER_TOPIC` | Both | Topic name for publishing events | `hyperfleet-prod-clusters` |
 | `BROKER_CONFIG_FILE` | Both | Path to broker config file | `/app/broker.yaml` |
 | `PUBSUB_EMULATOR_HOST` | Pub/Sub | Pub/Sub emulator endpoint (local dev/testing only) | `localhost:8085` |
 
 **Topic Naming:**
 
-The `BROKER_TOPIC` environment variable sets the topic name where events are published. You can use any naming convention that fits your deployment requirements.
+The `HYPERFLEET_BROKER_TOPIC` environment variable sets the topic name where events are published. You can use any naming convention that fits your deployment requirements.
 
 Example topic names:
+
 - `hyperfleet-prod-clusters`
 - `us-east-clusters`
 
-When using the provided Helm chart, the default template uses `{namespace}-{resource_type}` (e.g., `hyperfleet-dev-clusters`), but this can be overridden by setting the `BROKER_TOPIC` environment variable or the `broker.topic` Helm value.
+When using the provided Helm chart, the default template uses `{namespace}-{resource_type}` (e.g., `hyperfleet-dev-clusters`), but this can be overridden by setting the `HYPERFLEET_BROKER_TOPIC` environment variable or the `broker.topic` Helm value.
 
 **Broker Type: RabbitMQ**
 
@@ -506,7 +512,7 @@ broker:
 ```bash
 # Environment variables
 export BROKER_RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
-export BROKER_TOPIC="hyperfleet-dev-clusters"
+export HYPERFLEET_BROKER_TOPIC="hyperfleet-dev-clusters"
 ```
 
 **Broker Type: Google Pub/Sub**
@@ -525,7 +531,7 @@ For local development and testing, use one of these authentication methods:
 
 ```bash
 # Set the topic name
-export BROKER_TOPIC="hyperfleet-dev-clusters"
+export HYPERFLEET_BROKER_TOPIC="hyperfleet-dev-clusters"
 
 # Option 1: Use personal Application Default Credentials (local development)
 gcloud auth application-default login
@@ -540,7 +546,7 @@ When deploying to production GKE, use **Workload Identity Federation** for authe
 
 ```bash
 # Only the topic name is required via environment variable
-export BROKER_TOPIC="hyperfleet-prod-clusters"
+export HYPERFLEET_BROKER_TOPIC="hyperfleet-prod-clusters"
 
 # No GOOGLE_APPLICATION_CREDENTIALS needed - Workload Identity handles authentication
 ```
@@ -582,8 +588,8 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
 **Configure HyperFleet API Connection**
 
 - [ ] **Ensure HyperFleet API is deployed and accessible**
-    - **Critical:** Sentinel performs connectivity verification at startup and **will fail to start if the API is unavailable**
-    - **Rolling updates will not succeed** until API connectivity is restored
+  - **Critical:** Sentinel performs connectivity verification at startup and **will fail to start if the API is unavailable**
+  - **Rolling updates will not succeed** until API connectivity is restored
 - [ ] Set `hyperfleet_api.endpoint` to HyperFleet API URL
 - [ ] Adjust `hyperfleet_api.timeout` if needed (default: `5s`)
 - [ ] Reference: [Required Fields](#required-fields)
@@ -625,16 +631,20 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
   - Broker configuration (`broker` section)
   - Sensitive credentials in `secrets` or reference to existing secrets
 - [ ] Install Sentinel using Helm chart:
+
   ```bash
   helm install sentinel ./charts \
     --namespace hyperfleet-system \
     --values values.yaml
   ```
+
 - [ ] Verify deployment:
+
   ```bash
   kubectl get deployment -n hyperfleet-system sentinel
   kubectl get pods -n hyperfleet-system -l app.kubernetes.io/name=sentinel
   ```
+
 - [ ] Reference: [Helm Chart README](../charts/README.md)
 
 ### Phase 4: Post-Deployment Validation
@@ -646,18 +656,24 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
   - **Note:** The `/readyz` endpoint returns `false` until the first successful poll completes and broker health checks pass. Pods intentionally stay unready during initial startup.
   - If startup latency causes false-positive readiness probe failures, tune the Kubernetes readiness probe timing (e.g., increase `initialDelaySeconds` or `periodSeconds`) in your Helm values.
 - [ ] Review pod logs for startup errors:
+
   ```bash
   kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel
   ```
+
 - [ ] Verify Sentinel is publishing events:
+
   ```bash
   kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel | grep -E "Fetched resources|Trigger cycle completed"
   ```
+
   Expected log output when Sentinel is operating correctly:
+
   ```text
   Fetched resources count=15 label_selectors=1 topic=hyperfleet-dev-clusters subset=clusters
   Trigger cycle completed total=15 published=3 skipped=12 duration=0.125s topic=hyperfleet-dev-clusters subset=clusters
   ```
+
   - `count` - Number of resources fetched from the API matching the resource selector
   - `published` - Number of events published (generation changed, never processed, or max age exceeded)
   - `skipped` - Number of resources skipped (no reconciliation needed)
