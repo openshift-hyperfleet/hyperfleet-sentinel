@@ -664,3 +664,128 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
 	}
 }
+
+// TestBuildSearchString tests combining label selectors and additional filters
+func TestBuildSearchString(t *testing.T) {
+	tests := []struct {
+		name              string
+		labelSelector     map[string]string
+		additionalFilters []string
+		want              string
+	}{
+		{
+			name:              "labels only",
+			labelSelector:     map[string]string{"shard": "1"},
+			additionalFilters: nil,
+			want:              "labels.shard='1'",
+		},
+		{
+			name:              "filter only",
+			labelSelector:     nil,
+			additionalFilters: []string{"status.conditions.Ready='False'"},
+			want:              "status.conditions.Ready='False'",
+		},
+		{
+			name:              "both labels and filter",
+			labelSelector:     map[string]string{"shard": "1"},
+			additionalFilters: []string{"status.conditions.Ready='False'"},
+			want:              "labels.shard='1' and status.conditions.Ready='False'",
+		},
+		{
+			name:              "multiple filters",
+			labelSelector:     map[string]string{"shard": "1"},
+			additionalFilters: []string{"status.conditions.Ready='True'", "status.conditions.Ready.last_updated_time<='2025-01-01T00:00:00Z'"},
+			want:              "labels.shard='1' and status.conditions.Ready='True' and status.conditions.Ready.last_updated_time<='2025-01-01T00:00:00Z'",
+		},
+		{
+			name:              "both empty",
+			labelSelector:     nil,
+			additionalFilters: nil,
+			want:              "",
+		},
+		{
+			name:              "empty string filter ignored",
+			labelSelector:     nil,
+			additionalFilters: []string{"", "status.conditions.Ready='False'", ""},
+			want:              "status.conditions.Ready='False'",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := buildSearchString(tt.labelSelector, tt.additionalFilters)
+			if got != tt.want {
+				t.Errorf("buildSearchString() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestFetchResources_WithAdditionalFilters tests FetchResources with combined label selectors and condition filters
+func TestFetchResources_WithAdditionalFilters(t *testing.T) {
+	var receivedSearchParam string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedSearchParam = r.URL.Query().Get("search")
+
+		response := map[string]interface{}{
+			"kind":  "ClusterList",
+			"page":  1,
+			"size":  0,
+			"total": 0,
+			"items": []map[string]interface{}{},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Logf("Error encoding response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	labelSelector := map[string]string{"shard": "1"}
+
+	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, labelSelector, "status.conditions.Ready='False'")
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	expectedSearch := "labels.shard='1' and status.conditions.Ready='False'"
+	if receivedSearchParam != expectedSearch {
+		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
+	}
+}
+
+// TestFetchResources_WithConditionFilterOnly tests FetchResources with only condition filters (no labels)
+func TestFetchResources_WithConditionFilterOnly(t *testing.T) {
+	var receivedSearchParam string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedSearchParam = r.URL.Query().Get("search")
+
+		response := map[string]interface{}{
+			"kind":  "ClusterList",
+			"page":  1,
+			"size":  0,
+			"total": 0,
+			"items": []map[string]interface{}{},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Logf("Error encoding response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+
+	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil, "status.conditions.Ready='True'")
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	expectedSearch := "status.conditions.Ready='True'"
+	if receivedSearchParam != expectedSearch {
+		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
+	}
+}
