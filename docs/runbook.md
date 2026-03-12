@@ -11,7 +11,9 @@
 ## Purpose
 
 This runbook provides operational guidance for teams deploying and managing HyperFleet Sentinel in production environments. It serves as the primary reference for:
-
+- Understanding built-in reliability features
+- Configuring health probes and monitoring
+- Diagnosing and recovering from common failure modes
 ---
 
 ## Reliability Features
@@ -44,7 +46,6 @@ The Sentinel service is designed with multiple layers of reliability to ensure c
 - Listens for termination signals during main polling loop
 - Completes current polling cycle before exiting
 - Maximum shutdown time: 20 seconds for HTTP server shutdown
-- Publishes any pending events before shutdown
 - Cleans up broker connections gracefully
 
 **Configuration**:
@@ -112,7 +113,7 @@ BROKER_PROJECT_ID: "hyperfleet-prod"
 - Each resource evaluated independently in the polling loop
 - Decision engine errors logged but processing continues
 - Event publishing failures logged but don't stop the polling cycle
-- API errors for specific resources don't abort the entire fetch operation
+- A single API fetch failure affects the entire cycle, but the next cycle retries automatically
 
 **Example Flow**:
 ```
@@ -133,16 +134,16 @@ Polling Cycle:
 **Implementation**:
 
 **Liveness Probe** (`/healthz`):
-- Verifies main polling goroutine is running
-- Checks broker connection status
-- Returns 200 OK if service can perform reconciliation
+- Checks poll staleness (dead man's switch)
+- Returns 200 OK if last successful poll is within threshold (3 × poll_interval)
+- Returns 200 OK before first poll completes (grace period)
 - **Failure threshold**: 3 consecutive failures
 - **Period**: 20 seconds
 
 **Readiness Probe** (`/readyz`):
-- Verifies configuration loaded successfully
-- Validates HyperFleet API connectivity
-- Confirms broker configuration is valid
+- Checks broker connection health
+- Verifies at least one successful poll cycle has completed
+- Returns 200 OK when both checks pass
 - Returns 200 OK when ready to process traffic
 - **Period**: 10 seconds
 

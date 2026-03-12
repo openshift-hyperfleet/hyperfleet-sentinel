@@ -187,6 +187,7 @@ spec:
       for: 10m
       labels:
         severity: warning
+        component: sentinel
       annotations:
         summary: "High number of pending resources"
         description: "{{ $value }} resources are pending reconciliation for more than 10 minutes."
@@ -197,6 +198,7 @@ spec:
       for: 5m
       labels:
         severity: critical
+        component: sentinel
       annotations:
         summary: "High API error rate detected"
         description: "API error rate is {{ $value | humanize }} errors/sec for resource_type {{ $labels.resource_type }}."
@@ -207,6 +209,7 @@ spec:
       for: 5m
       labels:
         severity: critical
+        component: sentinel
       annotations:
         summary: "High broker error rate detected"
         description: "Broker error rate is {{ $value | humanize }} errors/sec for resource_type {{ $labels.resource_type }}."
@@ -218,17 +221,20 @@ spec:
       for: 10m
       labels:
         severity: warning
+        component: sentinel
       annotations:
         summary: "Polling cycles are slow"
         description: "95th percentile poll duration is {{ $value | humanize }}s for {{ $labels.resource_type }}."
 
     - alert: SentinelNoEventsPublished
       expr: |
-        rate(hyperfleet_sentinel_events_published_total[15m]) == 0
-        AND hyperfleet_sentinel_pending_resources > 0
+        hyperfleet_sentinel_pending_resources > 0
+        unless on(resource_type, resource_selector)
+        rate(hyperfleet_sentinel_events_published_total[15m]) > 0s
       for: 15m
       labels:
         severity: warning
+        component: sentinel
       annotations:
         summary: "No events published despite pending resources"
         description: "Sentinel has pending resources but hasn't published events in 15 minutes."
@@ -240,9 +246,33 @@ spec:
       for: 1m
       labels:
         severity: critical
+        component: sentinel
       annotations:
         summary: "Sentinel poll loop is stale"
         description: "Sentinel has not completed a successful poll cycle in over 60 seconds."
+    - alert: SentinelDown
+      expr: absent(up{service="sentinel"}) or up{service="sentinel"} == 0
+      for: 5m
+      labels:
+        severity: critical
+        component: sentinel
+      annotations:
+        summary: "Sentinel service is down"
+        description: "Sentinel metrics endpoint is not responding. Service may be down or unreachable."
+    - alert: SentinelHighSkipRatio
+      expr: |
+        (
+          rate(hyperfleet_sentinel_resources_skipped_total[10m]) /
+          (rate(hyperfleet_sentinel_resources_skipped_total[10m]) +
+          rate(hyperfleet_sentinel_events_published_total[10m]))
+        ) > 0.95
+      for: 30m
+      labels:
+        severity: info
+        component: sentinel
+      annotations:
+        summary: "High resource skip ratio in Sentinel"
+        description: "{{ $value | humanizePercentage }} of resources are being skipped. This may indicate max_age configuration issues."
 ```
 
 To configure these alerts in **Google Cloud Console**:
