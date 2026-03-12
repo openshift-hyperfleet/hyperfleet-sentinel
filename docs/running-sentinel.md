@@ -1,4 +1,8 @@
 # Running Sentinel
+**Status**: Active
+**Owner**: HyperFleet Team
+**Last Updated**: 2026-03-12
+> **Audience:** Developers running Sentinel for development and testing purposes.
 
 > **IMPORTANT**: This documentation covers running Sentinel for **development and testing purposes**. Production deployments are handled via CI/CD pipelines.
 
@@ -22,6 +26,10 @@ This guide enables developers to run Sentinel both locally (for development) and
   - [Helm Deployment](#6-helm-deployment)
   - [Verification Steps](#7-verification-steps)
   - [Cleanup](#8-cleanup)
+- [Deployment Configuration](#deployment-configuration)
+  - [Basic Production Configuration](#basic-production-configuration)
+  - [Multi-Region Configuration](#multi-region-configuration)
+  - [Development Environment Configuration](#development-environment-configuration)
 - [Troubleshooting](#troubleshooting)
 
 ---
@@ -513,6 +521,79 @@ If you configured Workload Identity, remove the IAM binding:
 gcloud projects remove-iam-policy-binding ${GCP_PROJECT} \
   --role="roles/pubsub.publisher" \
   --member="principal://iam.googleapis.com/projects/${GCP_PROJECT_NUMBER}/locations/global/workloadIdentityPools/${GCP_PROJECT}.svc.id.goog/subject/ns/${NAMESPACE}/sa/sentinel-test"
+```
+---
+
+
+## Deployment Configuration
+
+### Basic Production Configuration
+```yaml
+# sentinel-config.yaml
+resource_type: clusters
+poll_interval: 5s
+max_age_not_ready: 10s
+max_age_ready: 30m
+
+# Watch all clusters (no filtering)
+resource_selector: []
+
+hyperfleet_api:
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
+  timeout: 5s
+
+# CloudEvent data payload using CEL expressions
+message_data:
+  resource_id: "resource.id"        # CEL expression accessing resource.id field
+  resource_type: "resource.kind"   # CEL expression accessing resource.kind field
+  generation: "resource.generation" # CEL expression accessing resource.generation field
+  region: "resource.labels.region" # CEL expression accessing nested labels.region field
+```
+
+### Multi-Region Configuration
+```yaml
+# sentinel-us-east-config.yaml
+resource_type: clusters
+poll_interval: 5s
+max_age_not_ready: 10s
+max_age_ready: 30m
+
+resource_selector:
+  - label: region
+    value: us-east
+
+hyperfleet_api:
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
+  timeout: 5s
+
+message_data:
+  resource_id: "resource.id"
+  resource_type: "resource.kind"
+  generation: "resource.generation"
+  region: "resource.labels.region"
+```
+
+### Development Environment Configuration
+```yaml
+# sentinel-dev-config.yaml
+resource_type: clusters
+poll_interval: 10s      # Slower polling for dev
+max_age_not_ready: 30s  # Longer intervals for dev
+max_age_ready: 2h
+
+resource_selector:
+  - label: environment
+    value: development
+
+hyperfleet_api:
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
+  timeout: 5s
+
+message_data:
+  resource_id: "resource.id"
+  resource_type: "resource.kind"
+  generation: "resource.generation"
+  environment: "resource.labels.environment"
 ```
 
 ---
