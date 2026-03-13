@@ -171,6 +171,25 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 	return resources, nil
 }
 
+// VerifyConnectivity checks the client connectivity by calling the /clusters endpoint
+func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context) error {
+	params := &openapi.GetClustersParams{}
+	search := labelSelectorToSearchString(map[string]string{"non_existing_label": "value"})
+	params.Search = &search
+
+	response, err := c.apiClient.GetClustersWithResponse(ctx, params)
+	if err != nil {
+		return fmt.Errorf("an error occurred while fetching clusters: %w", err)
+	}
+	if response == nil {
+		return fmt.Errorf("could not verify connectivity: received nil response")
+	}
+	if response.StatusCode() == http.StatusOK {
+		return nil
+	}
+	return fmt.Errorf("could not verify connectivity: response status code %d", response.StatusCode())
+}
+
 // labelSelectorToSearchString converts a label selector map to TSL (Tree Search Language) search parameter string
 // Format: "labels.key1='value1' and labels.key2='value2'"
 // TSL syntax requires:
