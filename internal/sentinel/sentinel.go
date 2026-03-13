@@ -15,6 +15,9 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/payload"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 )
 
 // Sentinel polls the HyperFleet API and triggers reconciliation events
@@ -27,7 +30,7 @@ type Sentinel struct {
 
 	mu                 sync.RWMutex
 	lastSuccessfulPoll time.Time
-	payloadBuilder *payload.Builder
+	payloadBuilder     *payload.Builder
 }
 
 // NewSentinel creates a new sentinel
@@ -93,6 +96,11 @@ func (s *Sentinel) Start(ctx context.Context) error {
 func (s *Sentinel) trigger(ctx context.Context) error {
 	startTime := time.Now()
 
+	// span: sentinel.poll
+	ctx, pollSpan := telemetry.StartSpan(ctx, "sentinel.poll",
+		attribute.String("hyperfleet.resource_type", s.config.ResourceType))
+	defer pollSpan.End()
+
 	// Get metric labels
 	resourceType := s.config.ResourceType
 	resourceSelector := metrics.GetResourceSelectorLabel(s.config.ResourceSelector)
@@ -111,6 +119,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	resources, err := s.client.FetchResources(ctx, client.ResourceType(s.config.ResourceType), labelSelector)
 	if err != nil {
 		// Record API error
+		pollSpan.RecordError(err)
+		pollSpan.SetStatus(codes.Error, "fetch resources failed")
 		metrics.UpdateAPIErrorsMetric(resourceType, resourceSelector, "fetch_error")
 		return fmt.Errorf("failed to fetch resources: %w", err)
 	}
@@ -125,14 +135,20 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	// Evaluate each resource
 	for i := range resources {
 		resource := &resources[i]
+		// span: sentinel.evaluate
+		evalCtx, evalSpan := telemetry.StartSpan(ctx, "sentinel.evaluate",
+			attribute.String("hyperfleet.resource_type", s.config.ResourceType),
+			attribute.String("hyperfleet.resource_id", resource.ID),
+		)
 
 		decision := s.decisionEngine.Evaluate(resource, now)
+		evalSpan.SetAttributes(attribute.String("hyperfleet.decision_reason", decision.Reason))
 
 		if decision.ShouldPublish {
 			pending++
 
 			// Add decision reason to context for structured logging
-			eventCtx := logger.WithDecisionReason(ctx, decision.Reason)
+			eventCtx := logger.WithDecisionReason(evalCtx, decision.Reason)
 
 			eventData := s.buildEventData(eventCtx, resource, decision)
 
@@ -144,16 +160,37 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			event.SetID(uuid.New().String())
 			if err := event.SetData(cloudevents.ApplicationJSON, eventData); err != nil {
 				s.logger.Errorf(eventCtx, "Failed to set event data resource_id=%s error=%v", resource.ID, err)
+				evalSpan.RecordError(err)
+				evalSpan.SetStatus(codes.Error, "set event data failed")
+				evalSpan.End()
 				continue
 			}
 
+			// span: publish (child of sentinel.evaluate)
+			publishCtx, publishSpan := telemetry.StartSpan(eventCtx, fmt.Sprintf("%s publish", topic),
+				attribute.String("messaging.system", s.config.MessagingSystem),
+				attribute.String("messaging.operation.type", "publish"),
+				attribute.String("messaging.destination.name", topic),
+				attribute.String("messaging.message.id", event.ID()),
+			)
+
+			if publishSpan.SpanContext().IsValid() {
+				telemetry.SetTraceContext(&event, publishSpan)
+			}
+
 			// Publish to broker using configured topic
-			if err := s.publisher.Publish(eventCtx, topic, &event); err != nil {
+			if err := s.publisher.Publish(publishCtx, topic, &event); err != nil {
+				publishSpan.RecordError(err)
+				publishSpan.SetStatus(codes.Error, "publish failed")
 				// Record broker error
 				metrics.UpdateBrokerErrorsMetric(resourceType, resourceSelector, "publish_error")
-				s.logger.Errorf(eventCtx, "Failed to publish event resource_id=%s error=%v", resource.ID, err)
+				s.logger.Errorf(publishCtx, "Failed to publish event resource_id=%s error=%v", resource.ID, err)
+				publishSpan.End()
+				evalSpan.End()
 				continue
 			}
+
+			publishSpan.End()
 
 			// Record successful event publication
 			metrics.UpdateEventsPublishedMetric(resourceType, resourceSelector, decision.Reason)
@@ -163,7 +200,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			published++
 		} else {
 			// Add decision reason to context for structured logging
-			skipCtx := logger.WithDecisionReason(ctx, decision.Reason)
+			skipCtx := logger.WithDecisionReason(evalCtx, decision.Reason)
 
 			// Record skipped resource
 			metrics.UpdateResourcesSkippedMetric(resourceType, resourceSelector, decision.Reason)
@@ -172,6 +209,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				resource.ID, resource.Status.Ready)
 			skipped++
 		}
+
+		evalSpan.End()
 	}
 
 	// Record pending resources count

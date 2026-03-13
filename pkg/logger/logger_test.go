@@ -520,6 +520,7 @@ func TestLoggerCorrelationFields(t *testing.T) {
 		Component: "test",
 		Version:   "1.0.0",
 		Hostname:  "testhost",
+		OTel:      OTelConfig{Enabled: true},
 	}
 	log := NewHyperFleetLoggerWithConfig(cfg)
 
@@ -553,6 +554,7 @@ func TestLoggerSentinelFieldsTextFormat(t *testing.T) {
 		Component: "sentinel",
 		Version:   "1.0.0",
 		Hostname:  "testhost",
+		OTel:      OTelConfig{Enabled: true},
 	}
 	log := NewHyperFleetLoggerWithConfig(cfg)
 

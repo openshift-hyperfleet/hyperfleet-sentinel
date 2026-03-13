@@ -6,13 +6,16 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
+	"go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
@@ -143,6 +146,15 @@ func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, e
 		cfg.Output = output
 	}
 
+	// TRACING_ENABLED=true enables tracing
+	if otelEnabled := os.Getenv("TRACING_ENABLED"); otelEnabled != "" {
+		enabled, err := strconv.ParseBool(otelEnabled)
+		if err != nil {
+			return nil, fmt.Errorf("invalid TRACING_ENABLED value %q: %w", otelEnabled, err)
+		}
+		cfg.OTel.Enabled = enabled
+	}
+
 	// Set global config so all loggers use the same configuration
 	logger.SetGlobalConfig(cfg)
 
@@ -153,6 +165,31 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 	// Initialize context and logger
 	ctx := context.Background()
 	log := logger.NewHyperFleetLoggerWithConfig(logCfg)
+
+	serviceName := "hyperfleet-sentinel"
+	// Use OTEL_SERVICE_NAME if set, otherwise default
+	if envServiceName := os.Getenv("OTEL_SERVICE_NAME"); envServiceName != "" {
+		serviceName = envServiceName
+	}
+
+	var tp *trace.TracerProvider
+	if logCfg.OTel.Enabled {
+		traceProvider, err := telemetry.InitTraceProvider(ctx, serviceName, version)
+		if err != nil {
+			log.Extra("error", err).Warn(ctx, "Failed to initialize OpenTelemetry")
+		} else {
+			tp = traceProvider
+			defer func() {
+				otelShutdownCtx, otelShutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer otelShutdownCancel()
+				if err := telemetry.Shutdown(otelShutdownCtx, tp); err != nil {
+					log.Extra("error", err).Error(otelShutdownCtx, "Failed to shutdown OpenTelemetry")
+				}
+			}()
+		}
+	} else {
+		log.Extra("tracing_enabled", false).Info(ctx, "OpenTelemetry disabled")
+	}
 
 	log.Extra("commit", commit).
 		Extra("log_level", logCfg.Level.String()).

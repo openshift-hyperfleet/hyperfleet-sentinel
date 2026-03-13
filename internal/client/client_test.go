@@ -9,6 +9,10 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // createMockCluster creates a mock cluster response with all required fields
@@ -751,4 +755,181 @@ func newTestClient(t *testing.T, url string, timeout time.Duration) *HyperFleetC
 		t.Fatalf("Failed to create client: %v", err)
 	}
 	return client
+}
+
+func TestNewHyperFleetClient_HTTPInstrumentation(t *testing.T) {
+	// Capture the previous global tracer provider
+	previousProvider := otel.GetTracerProvider()
+
+	// Setup in-memory trace exporter
+	exporter := tracetest.NewInMemoryExporter()
+	tp := trace.NewTracerProvider(
+		trace.WithSampler(trace.AlwaysSample()),
+		trace.WithBatcher(exporter),
+	)
+	otel.SetTracerProvider(tp)
+	defer func(tp *trace.TracerProvider, ctx context.Context) {
+		err := tp.Shutdown(ctx)
+		if err != nil {
+			t.Errorf("Error shutting down tracer: %v", err)
+		}
+		// Restore the previous global tracer provider
+		otel.SetTracerProvider(previousProvider)
+	}(tp, context.Background())
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("Expected GET request, got %s", r.Method)
+		}
+		if r.URL.Path != "/api/hyperfleet/v1/clusters" {
+			t.Errorf("Expected path /api/hyperfleet/v1/clusters, got %s", r.URL.Path)
+		}
+
+		cluster := createMockCluster("test-cluster-1")
+		response := createMockClusterList([]map[string]interface{}{cluster})
+
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	// Verify client was created
+	if client == nil {
+		t.Fatal("Expected client to be created")
+	}
+
+	// Make actual HTTP call to test instrumentation
+	ctx := context.Background()
+	resources, err := client.FetchResources(ctx, ResourceTypeClusters, nil)
+
+	// Verify functional behavior
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if len(resources) != 1 {
+		t.Fatalf("Expected 1 resource, got %d", len(resources))
+	}
+	if resources[0].ID != "test-cluster-1" {
+		t.Errorf("Expected ID test-cluster-1, got %s", resources[0].ID)
+	}
+
+	// Force flush to get spans
+	err = tp.ForceFlush(ctx)
+	if err != nil {
+		t.Fatalf("Error force flush: %v", err)
+	}
+
+	// Verify HTTP spans were created by instrumentation
+	spans := exporter.GetSpans()
+	if len(spans) == 0 {
+		t.Fatal("Expected HTTP spans to be created, got none")
+	}
+
+	// Look for HTTP GET span
+	var httpSpan *tracetest.SpanStub
+	for i := range spans {
+		if strings.Contains(spans[i].Name, "GET") {
+			httpSpan = &spans[i]
+			break
+		}
+	}
+
+	if httpSpan == nil {
+		spanNames := make([]string, len(spans))
+		for i, span := range spans {
+			spanNames[i] = span.Name
+		}
+		t.Fatalf("Expected HTTP GET span, got spans: %v", spanNames)
+	}
+
+	// Verify HTTP span attributes (following OpenTelemetry HTTP conventions)
+	foundMethodAttr := false
+	foundURLAttr := false
+	for _, attr := range httpSpan.Attributes {
+		switch string(attr.Key) {
+		case "http.request.method", "http.method": // Different versions of OTel use different names
+			if attr.Value.AsString() == "GET" {
+				foundMethodAttr = true
+			}
+		case "url.full", "http.url": // Different versions of OTel use different names
+			if strings.Contains(attr.Value.AsString(), "/api/hyperfleet/v1/clusters") {
+				foundURLAttr = true
+			}
+		}
+	}
+
+	if !foundMethodAttr {
+		t.Error("Expected HTTP method attribute in span")
+	}
+	if !foundURLAttr {
+		t.Error("Expected URL attribute in span")
+	}
+
+	// Verify span completed successfully (no error status)
+	if httpSpan.Status.Code.String() == "ERROR" {
+		t.Errorf("Expected successful HTTP span, got error status: %s", httpSpan.Status.Description)
+	}
+}
+
+func TestNewHyperFleetClient_HTTPInstrumentation_ErrorCase(t *testing.T) {
+	// Capture the previous global tracer provider
+	previousProvider := otel.GetTracerProvider()
+
+	// Setup tracing
+	exporter := tracetest.NewInMemoryExporter()
+	tp := trace.NewTracerProvider(
+		trace.WithSampler(trace.AlwaysSample()),
+		trace.WithBatcher(exporter),
+	)
+	otel.SetTracerProvider(tp)
+	defer func(tp *trace.TracerProvider, ctx context.Context) {
+		err := tp.Shutdown(ctx)
+		if err != nil {
+			t.Errorf("Error shutting down tracer: %v", err)
+		}
+		// Restore the previous global tracer provider
+		otel.SetTracerProvider(previousProvider)
+	}(tp, context.Background())
+
+	// Server returns 500
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, err := w.Write([]byte(`{"error": "internal server error"}`))
+		if err != nil {
+			t.Errorf("Failed to write response: %v", err)
+			return
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	ctx := context.Background()
+	_, err = client.FetchResources(ctx, ResourceTypeClusters, nil)
+
+	// Verify error behavior (like existing tests)
+	if err == nil {
+		t.Fatal("Expected error, got nil")
+	}
+
+	// Verify spans still created on error
+	err = tp.ForceFlush(ctx)
+	if err != nil {
+		t.Fatalf("Error force flush: %v", err)
+	}
+	spans := exporter.GetSpans()
+
+	if len(spans) == 0 {
+		t.Fatal("Expected HTTP spans even on error")
+	}
 }
