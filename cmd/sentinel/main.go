@@ -179,11 +179,13 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 			log.Extra("error", err).Warn(ctx, "Failed to initialize OpenTelemetry")
 		} else {
 			tp = traceProvider
-			otelShutdownCtx, otelShutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer otelShutdownCancel()
-			if err := telemetry.Shutdown(otelShutdownCtx, tp); err != nil {
-				log.Extra("error", err).Error(otelShutdownCtx, "Failed to shutdown OpenTelemetry")
-			}
+			defer func() {
+				otelShutdownCtx, otelShutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer otelShutdownCancel()
+				if err := telemetry.Shutdown(otelShutdownCtx, tp); err != nil {
+					log.Extra("error", err).Error(otelShutdownCtx, "Failed to shutdown OpenTelemetry")
+				}
+			}()
 		}
 	} else {
 		log.Extra("tracing_enabled", false).Info(ctx, "OpenTelemetry disabled")
