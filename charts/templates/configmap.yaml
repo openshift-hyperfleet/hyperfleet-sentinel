@@ -24,7 +24,6 @@ data:
     # HyperFleet API configuration
     hyperfleet_api:
       endpoint: {{ .Values.config.hyperfleetApi.baseUrl }}
-      health_endpoint: {{ .Values.config.hyperfleetApi.healthBaseUrl }}
       timeout: {{ .Values.config.hyperfleetApi.timeout }}
 
     {{- if .Values.config.messageData }}

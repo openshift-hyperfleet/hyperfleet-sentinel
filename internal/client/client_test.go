@@ -669,8 +669,8 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 func TestVerifyConnectivity_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify correct endpoint called
-		if r.URL.Path != "/healthz" {
-			t.Errorf("Expected /healthz endpoint, got %s", r.URL.Path)
+		if r.URL.Path != "/api/hyperfleet/v1/clusters" {
+			t.Errorf("Expected /clusters endpoint, got %s", r.URL.Path)
 		}
 		if r.Method != http.MethodGet {
 			t.Errorf("Expected GET request, got %s", r.Method)
@@ -692,7 +692,7 @@ func TestVerifyConnectivity_Success(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = client.VerifyConnectivity(ctx, server.URL, 5*time.Second)
+	err = client.VerifyConnectivity(ctx)
 	if err != nil {
 		t.Errorf("Expected successful health check, got error: %v", err)
 	}
@@ -739,7 +739,7 @@ func TestVerifyConnectivity_NonOKStatus(t *testing.T) {
 				t.Fatalf("Failed to create client: %v", err)
 			}
 
-			err = client.VerifyConnectivity(ctx, server.URL, 5*time.Second)
+			err = client.VerifyConnectivity(ctx)
 
 			if err == nil {
 				t.Errorf("Expected error for status %d, got nil", tc.statusCode)
@@ -780,7 +780,7 @@ func TestVerifyConnectivity_NetworkError(t *testing.T) {
 				t.Fatalf("Failed to create client: %v", err)
 			}
 
-			err = client.VerifyConnectivity(ctx, tc.healthEndpoint, 1*time.Second) // Short timeout
+			err = client.VerifyConnectivity(ctx) // Short timeout
 
 			if err == nil {
 				t.Errorf("Expected network error for %s, got nil", tc.name)

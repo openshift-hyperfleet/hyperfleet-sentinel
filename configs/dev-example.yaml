@@ -35,9 +35,6 @@ hyperfleet_api:
   # Adjust this to match your local HyperFleet API instance.
   endpoint: http://localhost:8000
 
-  # HyperFleet API endpoint for /heathz and /readyz.
-  health_endpoint: http://localhost:8080
-
   # Shorter timeout for faster failure detection in dev.
   timeout: 10s
 

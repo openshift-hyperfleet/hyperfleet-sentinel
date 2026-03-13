@@ -34,9 +34,8 @@ type SentinelConfig struct {
 
 // HyperFleetAPIConfig defines the HyperFleet API client configuration
 type HyperFleetAPIConfig struct {
-	Endpoint       string        `mapstructure:"endpoint"`
-	HealthEndpoint string        `mapstructure:"health_endpoint"`
-	Timeout        time.Duration `mapstructure:"timeout"`
+	Endpoint string        `mapstructure:"endpoint"`
+	Timeout  time.Duration `mapstructure:"timeout"`
 }
 
 // ToMap converts label selectors to a map for filtering
@@ -133,10 +132,6 @@ func (c *SentinelConfig) Validate() error {
 
 	if c.HyperFleetAPI.Endpoint == "" {
 		return fmt.Errorf("hyperfleet_api.endpoint is required")
-	}
-
-	if c.HyperFleetAPI.HealthEndpoint == "" {
-		return fmt.Errorf("hyperfleet_api.health_endpoint is required")
 	}
 
 	if c.PollInterval <= 0 {

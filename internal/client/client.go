@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -171,30 +170,20 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 }
 
 // VerifyConnectivity checks the client connectivity by calling the /healthz endpoint
-func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context, healthEndpoint string, timeout time.Duration) error {
-	healthURL := healthEndpoint + "/healthz"
-	client := http.Client{
-		Timeout: timeout,
-	}
-	if healthEndpoint == "" {
-		return fmt.Errorf("empty health endpoint")
-	}
+func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context) error {
+	params := &openapi.GetClustersParams{}
+	search := labelSelectorToSearchString(map[string]string{"non_existing_label": "value"})
+	params.Search = &search
 
-	// call the hyperfleet client /healthz endpoint
-	response, err := client.Get(healthURL)
+	response, err := c.apiClient.GetClustersWithResponse(ctx, params)
+	if response != nil && response.StatusCode() == http.StatusOK {
+		return nil
+	}
 	if err != nil {
-		return fmt.Errorf("health check request failed: %v", err)
+		return fmt.Errorf("an error occurred while fetching clusters: %w", err)
 	}
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			c.log.Errorf(ctx, "An error occured closing the response body: %v", err)
-		}
-	}(response.Body)
-
-	// It should return 200 OK if the application is alive
-	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("health check request failed with code %d", response.StatusCode)
+	if response.StatusCode() != http.StatusOK {
+		return fmt.Errorf("could not verify connectivity: response status code %d", response.StatusCode())
 	}
 	return nil
 }
