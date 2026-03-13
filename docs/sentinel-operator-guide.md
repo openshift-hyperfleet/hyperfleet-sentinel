@@ -1,4 +1,8 @@
 # HyperFleet Sentinel Operator Guide
+**Status**: Active
+**Owner**: HyperFleet Team
+**Last Updated**: 2026-03-12
+> **Audience:** Operators deploying and configuring Sentinel service.
 
 This comprehensive guide teaches operators how to deploy, configure, and operate the HyperFleet Sentinel service—a polling-based event publisher that drives cluster lifecycle orchestration.
 

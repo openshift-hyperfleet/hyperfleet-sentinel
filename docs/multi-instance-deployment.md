@@ -1,4 +1,8 @@
 # Deploying Multiple Sentinel Instances
+**Status**: Active
+**Owner**: HyperFleet Team
+**Last Updated**: 2026-03-12
+> **Audience:** Operations teams deploying Sentinel at scale.
 
 Sentinel supports horizontal scaling through multiple dimensions: by resource type (separate instances for clusters vs nodepools) and by label-based resource filtering within the same resource type. Deploy multiple Sentinel instances with different `resource_selector` values to distribute the workload.
 
@@ -109,6 +113,151 @@ config:
 ```
 
 Scale to multiple instances as your cluster count grows or when you need regional isolation.
+
+---
+
+## PodDisruptionBudget
+
+**What**: Ensures minimum Sentinel availability during cluster maintenance.
+
+**Configuration for Single-Replica Deployments** (typical topology):
+```yaml
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sentinel-pdb
+  namespace: hyperfleet-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hyperfleet-sentinel
+```
+
+**Operational Impact**:
+- **Single replica protection**: `minAvailable: 1` blocks voluntary pod eviction when only 1 replica exists
+- **Maintenance blocking**: Node drains will be delayed until Sentinel pods are manually drained or scaled up
+- **Multiple Sentinels**: Each Sentinel deployment (per resource selector) can have its own PDB
+- **Trade-off**: Maintenance operations may require manual intervention for single-replica Sentinels
+
+> **Note**: Cluster maintenance operations respect Sentinel availability requirements.
+
+---
+
+## Operational Guidance
+
+### Resource Requirements
+
+#### Production Recommendations
+```yaml
+resources:
+  requests:
+    cpu: 100m      # Baseline for polling every 5s
+    memory: 128Mi  # Baseline for ~1000 resources
+  limits:
+    cpu: 500m      # Handle traffic spikes
+    memory: 512Mi  # Memory for large resource sets
+```
+
+> **Note**: Resource requirements will be validated and updated based on actual consumption profiling in HYPERFLEET-556.
+
+#### Scaling Guidelines
+
+**CPU Scaling**:
+- **Base load**: 50-100m for basic polling
+- **Per 1000 resources**: Additional 50m CPU
+- **High churn environments**: Additional 100m for frequent events
+
+**Memory Scaling**:
+- **Base load**: 64Mi for service overhead
+- **Per 1000 resources**: Additional 32Mi memory
+- **Complex resource selectors**: Additional 16Mi per selector rule
+
+**Example Calculation**:
+```
+5000 resources + complex selectors:
+CPU: 100m + (5 × 50m) + 100m = 450m
+Memory: 64Mi + (5 × 32Mi) + 16Mi = 240Mi
+```
+
+### Scaling Strategy
+
+#### Horizontal Scaling (Label Partitioning)
+
+**Approach**: Deploy multiple Sentinel instances with different `resource_selector` configurations.
+
+**Benefits**:
+- Linear performance scaling
+- Fault isolation (one failure doesn't affect all resources)
+- Regional deployment (Sentinel near managed resources)
+- Different configurations per environment
+
+**Example Multi-Instance Deployment**:
+```
+                            ┌───────────────────┐
+                            │  HyperFleet API   │
+                            └─────────┬─────────┘
+                                      │
+                              Step 1: fetch resources
+                                      │
+                                      ▼
+┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
+│   Sentinel US-East  │  │   Sentinel US-West  │  │   Sentinel EU-West  │
+│  resource_selector: │  │  resource_selector: │  │  resource_selector: │
+│  - label: region    │  │  - label: region    │  │  - label: region    │
+│    value: us-east   │  │    value: us-west   │  │    value: eu-west   │
+│  max_age_ready=30m  │  │  max_age_ready=1h   │  │  max_age_ready=45m  │
+└──────────┬──────────┘  └──────────┬──────────┘  └──────────┬──────────┘
+           │                        │                        │
+           │                        ▼                        │
+           └────────────► Step 2: publish events ◄───────────┘
+                                    │
+                                    ▼
+                            ┌───────────────────┐
+                            │  Message Broker   │
+                            └───────────────────┘
+```
+
+**Important**: This is **NOT leader election**. Multiple Sentinels can overlap resource selectors if needed. Operators must ensure appropriate coverage.
+
+#### Resource Selector Strategies
+
+**Regional Partitioning**:
+```yaml
+# Sentinel A
+resource_selector:
+  - label: region
+    value: us-east
+
+# Sentinel B
+resource_selector:
+  - label: region
+    value: us-west
+```
+
+**Environment Partitioning**:
+```yaml
+# Production Sentinel
+resource_selector:
+  - label: environment
+    value: production
+
+# Development Sentinel
+resource_selector:
+  - label: environment
+    value: development
+```
+
+**Hybrid Partitioning**:
+```yaml
+# Production US-East
+resource_selector:
+  - label: region
+    value: us-east
+  - label: environment
+    value: production
+```
+
 
 ## Architecture Reference
 
