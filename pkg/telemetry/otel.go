@@ -24,12 +24,14 @@ import (
 const (
 	samplerAlwaysOn             = "always_on"
 	samplerAlwaysOff            = "always_off"
-	samplerTraceIdRatio         = "traceidratio"
+	samplerTraceIDRatio         = "traceidratio"
 	envOtelTracesSampler        = "OTEL_TRACES_SAMPLER"
 	envOtelTracesSamplerArg     = "OTEL_TRACES_SAMPLER_ARG"
 	envOtelExporterOtlpEndpoint = "OTEL_EXPORTER_OTLP_ENDPOINT"
 	envOtelExporterOtlpProtocol = "OTEL_EXPORTER_OTLP_PROTOCOL"
-	parentBasedTraceIdRatio     = "parentbased_traceidratio"
+	parentBasedTraceIDRatio     = "parentbased_traceidratio"
+	parentBasedAlwaysOn         = "parentbased_always_on"
+	parentBasedAlwaysOff        = "parentbased_always_off"
 	defaultSamplingRate         = 1.0
 )
 
@@ -56,7 +58,7 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 		}
 		if err != nil {
 			log.Errorf(ctx, "Failed to create OTLP exporter (protocol=%s): %v", protocol, err)
-			return nil, err
+			return nil, fmt.Errorf("failed to create OTLP exporter (protocol=%s): %w", protocol, err)
 		}
 	} else {
 		// Create stdout exporter
@@ -65,7 +67,7 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 		)
 		if err != nil {
 			log.Errorf(ctx, "Failed to create OpenTelemetry stdout exporter: %v", err)
-			return nil, err
+			return nil, fmt.Errorf("failed to create OpenTelemetry stdout exporter: %w", err)
 		}
 	}
 
@@ -82,7 +84,7 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 			log.Warnf(ctx, "Failed to shutdown exporter: %v", shutdownErr)
 		}
 		log.Extra("service_name", serviceName).Extra("service_version", serviceVersion).Errorf(ctx, "Failed to create OpenTelemetry resource: %v", err)
-		return nil, err
+		return nil, fmt.Errorf("failed to create OTel resource: %w", err)
 	}
 
 	var sampler trace.Sampler
@@ -93,11 +95,15 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 		sampler = trace.AlwaysSample()
 	case samplerAlwaysOff:
 		sampler = trace.NeverSample()
-	case samplerTraceIdRatio:
+	case samplerTraceIDRatio:
 		sampler = trace.TraceIDRatioBased(parseSamplingRate(ctx, log))
-	case parentBasedTraceIdRatio, "":
+	case parentBasedTraceIDRatio, "":
 		// Default per tracing standard
 		sampler = trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx, log)))
+	case parentBasedAlwaysOn:
+		sampler = trace.ParentBased(trace.AlwaysSample())
+	case parentBasedAlwaysOff:
+		sampler = trace.ParentBased(trace.NeverSample())
 	default:
 		log.Warnf(ctx, "Unrecognized sampler %q, using default", samplerType)
 		sampler = trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx, log)))

@@ -168,9 +168,6 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 
 			// span: publish (child of sentinel.evaluate)
 			publishCtx, publishSpan := telemetry.StartSpan(eventCtx, fmt.Sprintf("%s publish", topic),
-				attribute.String("hyperfleet.resource_type", s.config.ResourceType),
-				attribute.String("hyperfleet.resource_id", resource.ID),
-				attribute.String("hyperfleet.decision_reason", decision.Reason),
 				attribute.String("messaging.system", s.config.MessagingSystem),
 				attribute.String("messaging.operation.type", "publish"),
 				attribute.String("messaging.destination.name", topic),
@@ -187,7 +184,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				publishSpan.SetStatus(codes.Error, "publish failed")
 				// Record broker error
 				metrics.UpdateBrokerErrorsMetric(resourceType, resourceSelector, "publish_error")
-				s.logger.Errorf(eventCtx, "Failed to publish event resource_id=%s error=%v", resource.ID, err)
+				s.logger.Errorf(publishCtx, "Failed to publish event resource_id=%s error=%v", resource.ID, err)
 				publishSpan.End()
 				evalSpan.End()
 				continue

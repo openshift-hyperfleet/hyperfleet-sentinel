@@ -181,7 +181,7 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 			tp = traceProvider
 		}
 	} else {
-		log.Extra("TRACING_ENABLED", false).Info(ctx, "OpenTelemetry disabled")
+		log.Extra("tracing_enabled", false).Info(ctx, "OpenTelemetry disabled")
 	}
 
 	log.Extra("commit", commit).

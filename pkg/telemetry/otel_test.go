@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	t2 "go.opentelemetry.io/otel/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 func TestInitTraceProvider_StdoutExporter(t *testing.T) {
@@ -315,7 +315,7 @@ func TestSetTraceContext_InvalidSpan(t *testing.T) {
 
 	// Create a no-op span with invalid span context
 	// trace.SpanFromContext() with background context returns a no-op span
-	span := t2.SpanFromContext(context.Background())
+	span := oteltrace.SpanFromContext(context.Background())
 
 	// Verify the span context is actually invalid
 	if span.SpanContext().IsValid() {
