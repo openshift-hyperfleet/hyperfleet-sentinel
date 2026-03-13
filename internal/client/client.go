@@ -169,7 +169,7 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 	return resources, nil
 }
 
-// VerifyConnectivity checks the client connectivity by calling the /healthz endpoint
+// VerifyConnectivity checks the client connectivity by calling the /clusters endpoint
 func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context) error {
 	params := &openapi.GetClustersParams{}
 	search := labelSelectorToSearchString(map[string]string{"non_existing_label": "value"})
