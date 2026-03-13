@@ -171,7 +171,7 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 		return fmt.Errorf("failed to initialize OpenAPI client: %w", err)
 	}
 
-	// verify HyperFleet API health through /healthz endpoint
+	// verify HyperFleet client connectivity
 	if err = hyperfleetClient.VerifyConnectivity(ctx); err != nil {
 		log.Errorf(ctx, "Failed to verify HyperFleet client connectivity: %v", err)
 		return fmt.Errorf("failed to verify HyperFleet client connectivity: %w", err)

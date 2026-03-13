@@ -574,7 +574,10 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
 
 **Configure HyperFleet API Connection**
 
-- [ ] Set `hyperfleet_api.endpoint` to HyperFleet API URL
+- [ ] **Ensure HyperFleet API is deployed and accessible**
+    - **Critical:** Sentinel performs connectivity verification at startup and **will crash if the API is unavailable**
+    - **Rolling updates will not succeed** until API connectivity is restored
+  [ ] Set `hyperfleet_api.endpoint` to HyperFleet API URL
 - [ ] Adjust `hyperfleet_api.timeout` if needed (default: `5s`)
 - [ ] Reference: [Required Fields](#required-fields)
 

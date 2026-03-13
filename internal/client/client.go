@@ -176,16 +176,16 @@ func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context) error {
 	params.Search = &search
 
 	response, err := c.apiClient.GetClustersWithResponse(ctx, params)
-	if response != nil && response.StatusCode() == http.StatusOK {
-		return nil
-	}
 	if err != nil {
 		return fmt.Errorf("an error occurred while fetching clusters: %w", err)
 	}
-	if response.StatusCode() != http.StatusOK {
-		return fmt.Errorf("could not verify connectivity: response status code %d", response.StatusCode())
+	if response == nil {
+		return fmt.Errorf("could not verify connectivity: received nil response")
 	}
-	return nil
+	if response.StatusCode() == http.StatusOK {
+		return nil
+	}
+	return fmt.Errorf("could not verify connectivity: response status code %d", response.StatusCode())
 }
 
 // labelSelectorToSearchString converts a label selector map to TSL (Tree Search Language) search parameter string
