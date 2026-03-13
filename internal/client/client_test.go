@@ -82,7 +82,7 @@ func TestFetchResources_Success(t *testing.T) {
 	defer server.Close()
 
 	// Create client
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 
 	// Fetch resources
 	ctx := context.Background()
@@ -117,7 +117,7 @@ func TestFetchResources_EmptyList(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 
 	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 	if err != nil {
@@ -138,7 +138,7 @@ func TestFetchResources_404NotFound(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 
 	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 
@@ -168,7 +168,7 @@ func TestFetchResources_500ServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -213,7 +213,7 @@ func TestFetchResources_503ServiceUnavailable_ThenSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 
 	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 	if err != nil {
@@ -251,7 +251,7 @@ func TestFetchResources_429RateLimited(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 
 	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 	if err != nil {
@@ -272,7 +272,7 @@ func TestFetchResources_Timeout(t *testing.T) {
 	defer server.Close()
 
 	// Create client with very short timeout
-	client, _ := NewHyperFleetClient(server.URL, 100*time.Millisecond)
+	client, _ := NewHyperFleetClient(server.URL, 100*time.Millisecond, "test-sentinel", "test")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -295,7 +295,7 @@ func TestFetchResources_ContextCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -324,7 +324,7 @@ func TestFetchResources_MalformedJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 
 	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 
@@ -337,7 +337,7 @@ func TestFetchResources_MalformedJSON(t *testing.T) {
 
 // TestFetchResources_NilContext tests handling of nil context
 func TestFetchResources_NilContext(t *testing.T) {
-	client, _ := NewHyperFleetClient("http://localhost", 10*time.Second)
+	client, _ := NewHyperFleetClient("http://localhost", 10*time.Second, "test-sentinel", "test")
 
 	// Intentionally pass nil context to test validation
 	// nolint:staticcheck // Testing nil context validation
@@ -354,7 +354,7 @@ func TestFetchResources_NilContext(t *testing.T) {
 
 // TestFetchResources_InvalidResourceType tests handling of invalid resource type
 func TestFetchResources_InvalidResourceType(t *testing.T) {
-	client, _ := NewHyperFleetClient("http://localhost", 10*time.Second)
+	client, _ := NewHyperFleetClient("http://localhost", 10*time.Second, "test-sentinel", "test")
 
 	testCases := []struct {
 		name         string
@@ -406,7 +406,7 @@ func TestFetchResources_NilStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 
 	// Note: A warning will be logged for cluster-1, but we can't easily
 	// verify log output in tests. In production, logs are captured for monitoring.
@@ -596,7 +596,7 @@ func TestFetchResources_NodePools(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	resources, err := client.FetchResources(context.Background(), ResourceTypeNodePools, nil)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -627,6 +627,36 @@ func TestFetchResources_NodePools(t *testing.T) {
 	}
 }
 
+// TestNewHyperFleetClient_UserAgent verifies that every request carries the expected
+// User-Agent header built from the sentinel name and version.
+func TestNewHyperFleetClient_UserAgent(t *testing.T) {
+	var receivedUA string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedUA = r.Header.Get("User-Agent")
+		response := createMockClusterList([]map[string]interface{}{})
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "my-sentinel", "v1.2.3")
+	if err != nil {
+		t.Fatalf("NewHyperFleetClient: %v", err)
+	}
+
+	if _, err := c.FetchResources(context.Background(), ResourceTypeClusters, nil); err != nil {
+		t.Fatalf("FetchResources: %v", err)
+	}
+
+	expected := "hyperfleet-sentinel/v1.2.3 (my-sentinel)"
+	if receivedUA != expected {
+		t.Errorf("User-Agent = %q, want %q", receivedUA, expected)
+	}
+}
+
 // TestFetchResources_WithLabelSelector tests search parameter functionality
 func TestFetchResources_WithLabelSelector(t *testing.T) {
 	var receivedSearchParam string
@@ -644,7 +674,7 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 
 	labelSelector := map[string]string{
 		"region": "us-east",

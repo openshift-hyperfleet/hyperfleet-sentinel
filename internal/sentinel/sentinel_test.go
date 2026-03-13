@@ -128,7 +128,7 @@ func TestTrigger_Success(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -138,8 +138,11 @@ func TestTrigger_Success(t *testing.T) {
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		ResourceType: "clusters",
+		Clients: config.ClientsConfig{
+			HyperfleetAPI: &config.HyperFleetAPIConfig{},
+			Broker:        &config.BrokerConfig{Topic: "test-topic"},
+		},
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -202,7 +205,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -212,8 +215,11 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		ResourceType: "clusters",
+		Clients: config.ClientsConfig{
+			HyperfleetAPI: &config.HyperFleetAPIConfig{},
+			Broker:        &config.BrokerConfig{Topic: "test-topic"},
+		},
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -253,7 +259,7 @@ func TestTrigger_FetchError(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 1*time.Second) // Short timeout
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 1*time.Second, "test-sentinel", "test") // Short timeout
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -263,8 +269,11 @@ func TestTrigger_FetchError(t *testing.T) {
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		ResourceType: "clusters",
+		Clients: config.ClientsConfig{
+			HyperfleetAPI: &config.HyperFleetAPIConfig{},
+			Broker:        &config.BrokerConfig{Topic: "test-topic"},
+		},
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -307,7 +316,7 @@ func TestTrigger_PublishError(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{
 		publishError: errors.New("broker connection failed"),
@@ -319,8 +328,11 @@ func TestTrigger_PublishError(t *testing.T) {
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		ResourceType: "clusters",
+		Clients: config.ClientsConfig{
+			HyperfleetAPI: &config.HyperFleetAPIConfig{},
+			Broker:        &config.BrokerConfig{Topic: "test-topic"},
+		},
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -364,7 +376,7 @@ func TestTrigger_MixedResources(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -374,8 +386,11 @@ func TestTrigger_MixedResources(t *testing.T) {
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		ResourceType: "clusters",
+		Clients: config.ClientsConfig{
+			HyperfleetAPI: &config.HyperFleetAPIConfig{},
+			Broker:        &config.BrokerConfig{Topic: "test-topic"},
+		},
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -427,7 +442,7 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 	}))
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -436,8 +451,11 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		ResourceType: "clusters",
+		Clients: config.ClientsConfig{
+			HyperfleetAPI: &config.HyperFleetAPIConfig{},
+			Broker:        &config.BrokerConfig{Topic: "test-topic"},
+		},
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -493,7 +511,7 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 	}))
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -502,8 +520,11 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		ResourceType: "clusters",
+		Clients: config.ClientsConfig{
+			HyperfleetAPI: &config.HyperFleetAPIConfig{},
+			Broker:        &config.BrokerConfig{Topic: "test-topic"},
+		},
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{

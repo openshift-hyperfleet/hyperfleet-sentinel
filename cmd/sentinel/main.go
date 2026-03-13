@@ -13,6 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+	"gopkg.in/yaml.v3"
 
 	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
@@ -40,6 +42,7 @@ reconciliation events to a message broker based on configurable max age interval
 	}
 
 	rootCmd.AddCommand(newServeCommand())
+	rootCmd.AddCommand(newConfigDumpCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		// Print error to stderr since SilenceErrors is true and logging may not be initialized
@@ -55,9 +58,6 @@ reconciliation events to a message broker based on configurable max age interval
 func newServeCommand() *cobra.Command {
 	var (
 		configFile         string
-		logLevel           string
-		logFormat          string
-		logOutput          string
 		healthBindAddress  string
 		metricsBindAddress string
 	)
@@ -69,81 +69,122 @@ func newServeCommand() *cobra.Command {
 		SilenceUsage:  true, // Don't print usage on error
 		SilenceErrors: true, // Don't print errors - we handle logging ourselves
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Initialize logging configuration
-			// Precedence: flags → environment variables → defaults
-			logCfg, err := initLogging(logLevel, logFormat, logOutput)
+			// Load configuration with CLI flags, env vars, and file
+			// Precedence: flags → environment variables → config file → defaults
+			cfg, err := config.LoadConfig(configFile, cmd.Flags())
+			if err != nil {
+				return err
+			}
+
+			// Initialize logging with merged configuration
+			logCfg, err := initLogging(&cfg.Log)
 			if err != nil {
 				return fmt.Errorf("failed to initialize logging: %w", err)
 			}
 
-			// Load and validate configuration from YAML and env vars
-			cfg, err := config.LoadConfig(configFile)
-			if err != nil {
-				return err
-			}
 			return runServe(cfg, logCfg, healthBindAddress, metricsBindAddress)
 		},
 	}
 
-	// Add --config flag for YAML file path
+	// Config file path
 	cmd.Flags().StringVarP(&configFile, "config", "c", "", "Path to configuration file (YAML)")
 
-	// Add logging flags per HyperFleet logging specification
-	cmd.Flags().StringVar(&logLevel, "log-level", "", "Log level: debug, info, warn, error (default: info)")
-	cmd.Flags().StringVar(&logFormat, "log-format", "", "Log format: text, json (default: text)")
-	cmd.Flags().StringVar(&logOutput, "log-output", "", "Log output: stdout, stderr (default: stdout)")
-
-	// Server bind address flags (consistent with hyperfleet-api)
+	// Server bind address flags
 	cmd.Flags().StringVar(&healthBindAddress, "health-server-bindaddress", ":8080", "Health server bind address")
 	cmd.Flags().StringVar(&metricsBindAddress, "metrics-server-bindaddress", ":9090", "Metrics server bind address")
+
+	// Add config override flags
+	addConfigOverrideFlags(cmd)
 
 	return cmd
 }
 
-// getConfigValue returns the flag value if set, otherwise falls back to the environment variable.
-// This implements the precedence: flags → environment variables → defaults
-func getConfigValue(flag, envVar string) string {
-	if flag != "" {
-		return flag
+func newConfigDumpCommand() *cobra.Command {
+	var configFile string
+
+	cmd := &cobra.Command{
+		Use:   "config-dump",
+		Short: "Load and print the merged sentinel configuration as YAML",
+		Long: `Load the sentinel configuration from config file, environment variables,
+and CLI flags, then print the merged result as YAML to stdout.
+Exits with code 0 on success, non-zero on error.
+
+Priority order (lowest to highest): config file < env vars < CLI flags`,
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runConfigDump(configFile, cmd.Flags())
+		},
 	}
-	return os.Getenv(envVar)
+
+	cmd.Flags().StringVarP(&configFile, "config", "c", "", "Path to configuration file (YAML)")
+	addConfigOverrideFlags(cmd)
+
+	return cmd
 }
 
-// initLogging initializes the logging configuration following the precedence:
-// flags → environment variables → defaults
-func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, error) {
+// addConfigOverrideFlags adds CLI flags for overriding configuration values
+func addConfigOverrideFlags(cmd *cobra.Command) {
+	// General
+	cmd.Flags().Bool("debug-config", false, "Log the full merged configuration after load. Env: HYPERFLEET_DEBUG_CONFIG")
+
+	// Sentinel
+	cmd.Flags().String("sentinel-name", "", "Sentinel component name. Env: HYPERFLEET_SENTINEL_NAME")
+
+	cmd.Flags().String("log-level", "", "Log level: debug, info, warn, error. Env: HYPERFLEET_LOG_LEVEL")
+	cmd.Flags().String("log-format", "", "Log format: text, json. Env: HYPERFLEET_LOG_FORMAT")
+	cmd.Flags().String("log-output", "", "Log output: stdout, stderr. Env: HYPERFLEET_LOG_OUTPUT")
+
+	// HyperFleet API
+	cmd.Flags().String("hyperfleet-api-base-url", "", "HyperFleet API base URL. Env: HYPERFLEET_API_BASE_URL")
+	cmd.Flags().String("hyperfleet-api-version", "", "HyperFleet API version. Env: HYPERFLEET_API_VERSION")
+	cmd.Flags().String("hyperfleet-api-timeout", "", "HyperFleet API timeout (e.g., 10s). Env: HYPERFLEET_API_TIMEOUT")
+	cmd.Flags().Int("hyperfleet-api-retry-attempts", 0, "HyperFleet API retry attempts. Env: HYPERFLEET_API_RETRY_ATTEMPTS")
+	cmd.Flags().String("hyperfleet-api-retry-backoff", "", "HyperFleet API retry backoff strategy. Env: HYPERFLEET_API_RETRY_BACKOFF")
+	cmd.Flags().String("hyperfleet-api-base-delay", "", "HyperFleet API base retry delay. Env: HYPERFLEET_API_BASE_DELAY")
+	cmd.Flags().String("hyperfleet-api-max-delay", "", "HyperFleet API max retry delay. Env: HYPERFLEET_API_MAX_DELAY")
+
+	// Broker
+	cmd.Flags().String("broker-topic", "", "Broker topic. Env: HYPERFLEET_BROKER_TOPIC")
+
+	// Sentinel-specific
+	cmd.Flags().String("resource-type", "", "Resource type to watch (clusters, nodepools). Env: HYPERFLEET_RESOURCE_TYPE")
+	cmd.Flags().String("poll-interval", "", "Poll interval (e.g., 5s). Env: HYPERFLEET_POLL_INTERVAL")
+	cmd.Flags().String("max-age-not-ready", "", "Max age for not-ready resources. Env: HYPERFLEET_MAX_AGE_NOT_READY")
+	cmd.Flags().String("max-age-ready", "", "Max age for ready resources. Env: HYPERFLEET_MAX_AGE_READY")
+}
+
+// initLogging initializes the logging configuration from the already-merged LogConfig.
+// Precedence (config file < env vars < CLI flags) is resolved by LoadConfig via viper.
+func initLogging(logCfg *config.LogConfig) (*logger.LogConfig, error) {
 	cfg := logger.DefaultConfig()
 	cfg.Version = version
 	cfg.Component = "sentinel"
 
-	// Apply log level
-	if levelStr := getConfigValue(flagLevel, "LOG_LEVEL"); levelStr != "" {
-		level, err := logger.ParseLogLevel(levelStr)
+	if logCfg.Level != "" {
+		parsed, err := logger.ParseLogLevel(logCfg.Level)
 		if err != nil {
 			return nil, err
 		}
-		cfg.Level = level
+		cfg.Level = parsed
 	}
 
-	// Apply log format
-	if formatStr := getConfigValue(flagFormat, "LOG_FORMAT"); formatStr != "" {
-		format, err := logger.ParseLogFormat(formatStr)
+	if logCfg.Format != "" {
+		parsed, err := logger.ParseLogFormat(logCfg.Format)
 		if err != nil {
 			return nil, err
 		}
-		cfg.Format = format
+		cfg.Format = parsed
 	}
 
-	// Apply log output
-	if outputStr := getConfigValue(flagOutput, "LOG_OUTPUT"); outputStr != "" {
-		output, err := logger.ParseLogOutput(outputStr)
+	if logCfg.Output != "" {
+		parsed, err := logger.ParseLogOutput(logCfg.Output)
 		if err != nil {
 			return nil, err
 		}
-		cfg.Output = output
+		cfg.Output = parsed
 	}
 
-	// Set global config so all loggers use the same configuration
 	logger.SetGlobalConfig(cfg)
 
 	return cfg, nil
@@ -159,13 +200,23 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 		Extra("log_format", logCfg.Format.String()).
 		Info(ctx, "Starting HyperFleet Sentinel")
 
+	// Log full merged configuration if debug_config is enabled; sensitive values are redacted
+	if cfg.DebugConfig {
+		data, err := yaml.Marshal(cfg.RedactedCopy())
+		if err != nil {
+			log.Warnf(ctx, "Failed to marshal config for debug logging: %v", err)
+		} else {
+			log.Infof(ctx, "Debug config enabled - merged configuration:\n%s", string(data))
+		}
+	}
+
 	// Initialize Prometheus metrics registry
 	registry := prometheus.NewRegistry()
 	// Register metrics once (uses sync.Once internally)
 	metrics.NewSentinelMetrics(registry, version)
 
 	// Initialize components
-	hyperfleetClient, err := client.NewHyperFleetClient(cfg.HyperFleetAPI.Endpoint, cfg.HyperFleetAPI.Timeout)
+	hyperfleetClient, err := client.NewHyperFleetClient(cfg.Clients.HyperfleetAPI.BaseURL, cfg.Clients.HyperfleetAPI.Timeout, cfg.Sentinel.Name, version)
 	if err != nil {
 		log.Errorf(ctx, "Failed to initialize OpenAPI client: %v", err)
 		return fmt.Errorf("failed to initialize OpenAPI client: %w", err)
@@ -290,5 +341,20 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 	}
 
 	log.Info(ctx, "Sentinel stopped gracefully")
+	return nil
+}
+
+// runConfigDump loads the full sentinel configuration and prints it as YAML to stdout.
+func runConfigDump(configFile string, flags *pflag.FlagSet) error {
+	cfg, err := config.LoadConfig(configFile, flags)
+	if err != nil {
+		return err
+	}
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	fmt.Print(string(data))
 	return nil
 }

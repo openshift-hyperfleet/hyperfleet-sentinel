@@ -27,7 +27,7 @@ func createTempConfigFile(t *testing.T, content string) string {
 func TestLoadConfig_ValidComplete(t *testing.T) {
 	configPath := filepath.Join("testdata", "valid-complete.yaml")
 
-	cfg, err := LoadConfig(configPath)
+	cfg, err := LoadConfig(configPath, nil)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -54,11 +54,11 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 	}
 
 	// Verify HyperFleet API config
-	if cfg.HyperFleetAPI.Endpoint != "https://api.hyperfleet.example.com" {
-		t.Errorf("Expected endpoint 'https://api.hyperfleet.example.com', got '%s'", cfg.HyperFleetAPI.Endpoint)
+	if cfg.Clients.HyperfleetAPI.BaseURL != "https://api.hyperfleet.example.com" {
+		t.Errorf("Expected base_url 'https://api.hyperfleet.example.com', got '%s'", cfg.Clients.HyperfleetAPI.BaseURL)
 	}
-	if cfg.HyperFleetAPI.Timeout != 5*time.Second {
-		t.Errorf("Expected timeout 5s, got %v", cfg.HyperFleetAPI.Timeout)
+	if cfg.Clients.HyperfleetAPI.Timeout != 10*time.Second {
+		t.Errorf("Expected timeout 10s, got %v", cfg.Clients.HyperfleetAPI.Timeout)
 	}
 
 	// Verify message data
@@ -77,7 +77,7 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 func TestLoadConfig_Minimal(t *testing.T) {
 	configPath := filepath.Join("testdata", "minimal.yaml")
 
-	cfg, err := LoadConfig(configPath)
+	cfg, err := LoadConfig(configPath, nil)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -95,19 +95,48 @@ func TestLoadConfig_Minimal(t *testing.T) {
 }
 
 func TestLoadConfig_FileNotFound(t *testing.T) {
-	_, err := LoadConfig("/nonexistent/path/config.yaml")
+	_, err := LoadConfig("/nonexistent/path/config.yaml", nil)
 	if err == nil {
 		t.Fatal("Expected error for nonexistent file, got nil")
 	}
 }
 
-func TestLoadConfig_EmptyPath(t *testing.T) {
-	_, err := LoadConfig("")
+func TestLoadConfig_EmptyPath_FallsBackToDefault(t *testing.T) {
+	t.Setenv("HYPERFLEET_CONFIG", "")
+	_, err := LoadConfig("", nil)
 	if err == nil {
-		t.Fatal("Expected error for empty config path, got nil")
+		t.Fatal("Expected error for missing default config file, got nil")
 	}
-	if err.Error() != "config file is required" {
-		t.Errorf("Expected 'config file is required' error, got: %v", err)
+	if !strings.Contains(err.Error(), "/etc/sentinel/config.yaml") {
+		t.Errorf("Expected error to mention default path /etc/sentinel/config.yaml, got: %v", err)
+	}
+}
+
+func TestLoadConfig_HyperfleetConfigEnvVar(t *testing.T) {
+	yaml := `
+sentinel:
+  name: env-var-sentinel
+resource_type: clusters
+message_data:
+  id: "resource.id"
+  kind: "resource.kind"
+poll_interval: 5s
+max_age_not_ready: 10s
+max_age_ready: 30m
+clients:
+  hyperfleet_api:
+    base_url: https://example.com
+    timeout: 10s
+`
+	configPath := createTempConfigFile(t, yaml)
+	t.Setenv("HYPERFLEET_CONFIG", configPath)
+
+	cfg, err := LoadConfig("", nil)
+	if err != nil {
+		t.Fatalf("Expected config to load from HYPERFLEET_CONFIG env var, got error: %v", err)
+	}
+	if cfg.Sentinel.Name != "env-var-sentinel" {
+		t.Errorf("Expected sentinel name 'env-var-sentinel', got: %s", cfg.Sentinel.Name)
 	}
 }
 
@@ -119,7 +148,7 @@ invalid yaml here: [
 `
 	configPath := createTempConfigFile(t, yaml)
 
-	_, err := LoadConfig(configPath)
+	_, err := LoadConfig(configPath, nil)
 	if err == nil {
 		t.Fatal("Expected error for invalid YAML, got nil")
 	}
@@ -145,12 +174,12 @@ func TestNewSentinelConfig_Defaults(t *testing.T) {
 	if cfg.MaxAgeReady != 30*time.Minute {
 		t.Errorf("Expected default max_age_ready 30m, got %v", cfg.MaxAgeReady)
 	}
-	if cfg.HyperFleetAPI.Timeout != 5*time.Second {
-		t.Errorf("Expected default timeout 30s, got %v", cfg.HyperFleetAPI.Timeout)
+	if cfg.Clients.HyperfleetAPI.Timeout != 10*time.Second {
+		t.Errorf("Expected default timeout 10s, got %v", cfg.Clients.HyperfleetAPI.Timeout)
 	}
-	// Endpoint has no default - must be set in config file
-	if cfg.HyperFleetAPI.Endpoint != "" {
-		t.Errorf("Expected no default endpoint (empty string), got '%s'", cfg.HyperFleetAPI.Endpoint)
+	// BaseURL has no default - must be set in config file
+	if cfg.Clients.HyperfleetAPI.BaseURL != "" {
+		t.Errorf("Expected no default base_url (empty string), got '%s'", cfg.Clients.HyperfleetAPI.BaseURL)
 	}
 	if len(cfg.ResourceSelector) != 0 {
 		t.Errorf("Expected empty resource_selector, got %d items", len(cfg.ResourceSelector))
@@ -164,10 +193,25 @@ func TestNewSentinelConfig_Defaults(t *testing.T) {
 // Validation Tests - Required Fields
 // ============================================================================
 
+func TestValidate_MissingSentinelName(t *testing.T) {
+	cfg := NewSentinelConfig()
+	cfg.Sentinel.Name = ""
+	cfg.ResourceType = "clusters"
+	cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Expected error for missing sentinel.name, got nil")
+	}
+	if err.Error() != "sentinel.name is required" {
+		t.Errorf("Expected 'sentinel.name is required' error, got: %v", err)
+	}
+}
+
 func TestValidate_MissingResourceType(t *testing.T) {
 	cfg := NewSentinelConfig()
 	cfg.ResourceType = ""
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
 
 	err := cfg.Validate()
 	if err == nil {
@@ -178,17 +222,17 @@ func TestValidate_MissingResourceType(t *testing.T) {
 	}
 }
 
-func TestValidate_MissingEndpoint(t *testing.T) {
+func TestValidate_MissingBaseURL(t *testing.T) {
 	cfg := NewSentinelConfig()
-	cfg.ResourceType = "clusters" // Set valid resource_type to test endpoint validation
-	cfg.HyperFleetAPI.Endpoint = ""
+	cfg.ResourceType = "clusters" // Set valid resource_type to test base_url validation
+	cfg.Clients.HyperfleetAPI.BaseURL = ""
 
 	err := cfg.Validate()
 	if err == nil {
-		t.Fatal("Expected error for missing endpoint, got nil")
+		t.Fatal("Expected error for missing base_url, got nil")
 	}
-	if err.Error() != "hyperfleet_api.endpoint is required" {
-		t.Errorf("Expected 'hyperfleet_api.endpoint is required' error, got: %v", err)
+	if err.Error() != "clients.hyperfleet_api.base_url is required" {
+		t.Errorf("Expected 'clients.hyperfleet_api.base_url is required' error, got: %v", err)
 	}
 }
 
@@ -199,7 +243,7 @@ func TestValidate_MissingEndpoint(t *testing.T) {
 func TestValidate_InvalidResourceType(t *testing.T) {
 	cfg := NewSentinelConfig()
 	cfg.ResourceType = "invalid-type"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
 
 	err := cfg.Validate()
 	if err == nil {
@@ -226,7 +270,7 @@ func TestValidate_InvalidResourceTypes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := NewSentinelConfig()
 			cfg.ResourceType = tt.resourceType
-			cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+			cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
 			cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 
 			err := cfg.Validate()
@@ -235,6 +279,40 @@ func TestValidate_InvalidResourceTypes(t *testing.T) {
 			}
 			if !tt.shouldFail && err != nil {
 				t.Errorf("Expected no error for resource_type '%s', got: %v", tt.resourceType, err)
+			}
+		})
+	}
+}
+
+func TestValidate_InvalidRetryBackoffs(t *testing.T) {
+	tests := []struct {
+		name         string
+		retryBackoff string
+		shouldFail   bool
+	}{
+		{"valid exponential", "exponential", false},
+		{"valid linear", "linear", false},
+		{"valid constant", "constant", false},
+		{"empty (uses default)", "", false},
+		{"invalid random", "random", true},
+		{"invalid jitter", "jitter", true},
+		{"invalid none", "none", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewSentinelConfig()
+			cfg.ResourceType = "clusters"
+			cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
+			cfg.Clients.HyperfleetAPI.RetryBackoff = tt.retryBackoff
+			cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+
+			err := cfg.Validate()
+			if tt.shouldFail && err == nil {
+				t.Errorf("Expected error for retry_backoff '%s', got nil", tt.retryBackoff)
+			}
+			if !tt.shouldFail && err != nil {
+				t.Errorf("Expected no error for retry_backoff '%s', got: %v", tt.retryBackoff, err)
 			}
 		})
 	}
@@ -274,7 +352,9 @@ func TestValidate_NegativeDurations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := NewSentinelConfig()
-			cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+			cfg.ResourceType = "clusters"
+			cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
+			cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 			tt.modifier(cfg)
 
 			err := cfg.Validate()
@@ -339,7 +419,7 @@ func TestLabelSelectorList_ToMap_EmptyLabel(t *testing.T) {
 func TestValidate_ValidMessageDataFlat(t *testing.T) {
 	cfg := NewSentinelConfig()
 	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
 	cfg.MessageData = map[string]interface{}{
 		"id":     "resource.id",
 		"kind":   "resource.kind",
@@ -354,7 +434,7 @@ func TestValidate_ValidMessageDataFlat(t *testing.T) {
 func TestValidate_ValidMessageDataNested(t *testing.T) {
 	cfg := NewSentinelConfig()
 	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
 	cfg.MessageData = map[string]interface{}{
 		"origin": `"sentinel"`,
 		"ref": map[string]interface{}{
@@ -371,7 +451,7 @@ func TestValidate_ValidMessageDataNested(t *testing.T) {
 func TestValidate_NilMessageData(t *testing.T) {
 	cfg := NewSentinelConfig()
 	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
 	// MessageData is nil by default — message_data is required so this must fail
 
 	if err := cfg.Validate(); err == nil {
@@ -383,7 +463,7 @@ func TestValidate_NilLeafInMessageData(t *testing.T) {
 	// Mirrors YAML: `id:` — viper may drop the key, but if it doesn't the nil leaf must be rejected.
 	cfg := NewSentinelConfig()
 	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
 	cfg.MessageData = map[string]interface{}{
 		"id":   nil,
 		"kind": "resource.kind",
@@ -398,7 +478,7 @@ func TestValidate_EmptyStringLeafInMessageData(t *testing.T) {
 	// Mirrors YAML: `id: ""` — an explicitly-set empty CEL expression.
 	cfg := NewSentinelConfig()
 	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
 	cfg.MessageData = map[string]interface{}{
 		"id":   "",
 		"kind": "resource.kind",
@@ -413,7 +493,7 @@ func TestValidate_NilLeafInNestedMessageData(t *testing.T) {
 	// Ensures the recursive check reaches nested objects.
 	cfg := NewSentinelConfig()
 	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.Clients.HyperfleetAPI.BaseURL = "http://api.example.com"
 	cfg.MessageData = map[string]interface{}{
 		"ref": map[string]interface{}{
 			"id":   nil,
@@ -435,7 +515,7 @@ func TestLoadConfig_BlankMessageDataLeafReturnsError(t *testing.T) {
 	// parser. mapstructure then silently drops nil-valued keys during Unmarshal,
 	// so the key disappears from cfg.MessageData before Validate() runs.
 	// LoadConfig must catch this via the raw viper value.
-	_, err := LoadConfig(filepath.Join("testdata", "message-data-blank-id.yaml"))
+	_, err := LoadConfig(filepath.Join("testdata", "message-data-blank-id.yaml"), nil)
 	if err == nil {
 		t.Fatal("expected error for blank message_data leaf, got nil")
 	}
@@ -447,7 +527,7 @@ func TestLoadConfig_BlankMessageDataLeafReturnsError(t *testing.T) {
 func TestLoadConfig_FullWorkflow(t *testing.T) {
 	configPath := filepath.Join("testdata", "full-workflow.yaml")
 
-	cfg, err := LoadConfig(configPath)
+	cfg, err := LoadConfig(configPath, nil)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
@@ -469,123 +549,143 @@ func TestLoadConfig_FullWorkflow(t *testing.T) {
 }
 
 // ============================================================================
+// RedactedCopy Tests
+// ============================================================================
+
+func TestRedactedCopy_NilBrokerHandled(t *testing.T) {
+	cfg := NewSentinelConfig()
+	cfg.Clients.Broker = nil
+
+	redacted := cfg.RedactedCopy()
+
+	if redacted.Clients.Broker != nil {
+		t.Errorf("Expected nil Broker to stay nil after redaction")
+	}
+}
+
+func TestRedactedCopy_DoesNotMutateOriginal(t *testing.T) {
+	cfg := NewSentinelConfig()
+	cfg.Clients.Broker = &BrokerConfig{Topic: "my-topic"}
+
+	_ = cfg.RedactedCopy()
+
+	if cfg.Clients.Broker.Topic != "my-topic" {
+		t.Errorf("RedactedCopy must not mutate the original; got '%s'", cfg.Clients.Broker.Topic)
+	}
+}
+
+// ============================================================================
+// Unknown Field Tests
+// ============================================================================
+
+func TestLoadConfig_UnknownFieldReturnsError(t *testing.T) {
+	_, err := LoadConfig(filepath.Join("testdata", "unknown-field.yaml"), nil)
+	if err == nil {
+		t.Fatal("Expected error for unknown field 'resouce_type', got nil")
+	}
+}
+
+func TestLoadConfig_UnknownFieldInline(t *testing.T) {
+	yaml := `
+sentinel:
+  name: test-sentinel
+clients:
+  hyperfleet_api:
+    base_url: http://localhost:8000
+resource_type: clusters
+message_data:
+  id: resource.id
+hyperfleet_api:
+  endpoint: http://old-format.example.com
+`
+	configPath := createTempConfigFile(t, yaml)
+
+	_, err := LoadConfig(configPath, nil)
+	if err == nil {
+		t.Fatal("Expected error for unknown field 'hyperfleet_api', got nil")
+	}
+}
+
+// ============================================================================
 // Topic Tests
 // ============================================================================
 
 func TestLoadConfig_TopicFromEnvVar(t *testing.T) {
-	// Set environment variable (t.Setenv auto-cleans after test)
-	t.Setenv("BROKER_TOPIC", "test-namespace-clusters")
+	t.Setenv("HYPERFLEET_BROKER_TOPIC", "test-namespace-clusters")
 
 	configPath := filepath.Join("testdata", "minimal.yaml")
 
-	cfg, err := LoadConfig(configPath)
+	cfg, err := LoadConfig(configPath, nil)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	if cfg.Topic != "test-namespace-clusters" {
-		t.Errorf("Expected topic 'test-namespace-clusters', got '%s'", cfg.Topic)
+	if cfg.Clients.Broker.Topic != "test-namespace-clusters" {
+		t.Errorf("Expected topic 'test-namespace-clusters', got '%s'", cfg.Clients.Broker.Topic)
 	}
 }
 
 func TestLoadConfig_TopicEnvVarOverridesConfig(t *testing.T) {
-	// Set environment variable (t.Setenv auto-cleans after test)
-	t.Setenv("BROKER_TOPIC", "env-topic")
+	t.Setenv("HYPERFLEET_BROKER_TOPIC", "env-topic")
 
-	// Create config with topic set
 	yaml := `
+sentinel:
+  name: test-sentinel
+clients:
+  hyperfleet_api:
+    base_url: http://localhost:8000
+  broker:
+    topic: config-topic
 resource_type: clusters
-hyperfleet_api:
-  endpoint: http://localhost:8000
-topic: config-topic
 message_data:
   id: resource.id
 `
 	configPath := createTempConfigFile(t, yaml)
 
-	cfg, err := LoadConfig(configPath)
+	cfg, err := LoadConfig(configPath, nil)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	// Environment variable should override config file
-	if cfg.Topic != "env-topic" {
-		t.Errorf("Expected topic 'env-topic' (from env), got '%s'", cfg.Topic)
+	if cfg.Clients.Broker.Topic != "env-topic" {
+		t.Errorf("Expected topic 'env-topic' (from env), got '%s'", cfg.Clients.Broker.Topic)
 	}
 }
 
 func TestLoadConfig_TopicFromConfigFile(t *testing.T) {
-	// Save and restore original value, then unset for test
-	origValue, wasSet := os.LookupEnv("BROKER_TOPIC")
-	if wasSet {
-		defer func() { _ = os.Setenv("BROKER_TOPIC", origValue) }()
-	}
-	_ = os.Unsetenv("BROKER_TOPIC")
-
 	yaml := `
+sentinel:
+  name: test-sentinel
+clients:
+  hyperfleet_api:
+    base_url: http://localhost:8000
+  broker:
+    topic: my-namespace-clusters
 resource_type: clusters
-hyperfleet_api:
-  endpoint: http://localhost:8000
-topic: my-namespace-clusters
 message_data:
   id: resource.id
 `
 	configPath := createTempConfigFile(t, yaml)
 
-	cfg, err := LoadConfig(configPath)
+	cfg, err := LoadConfig(configPath, nil)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	if cfg.Topic != "my-namespace-clusters" {
-		t.Errorf("Expected topic 'my-namespace-clusters', got '%s'", cfg.Topic)
+	if cfg.Clients.Broker.Topic != "my-namespace-clusters" {
+		t.Errorf("Expected topic 'my-namespace-clusters', got '%s'", cfg.Clients.Broker.Topic)
 	}
 }
 
 func TestLoadConfig_TopicEmpty(t *testing.T) {
-	// Save and restore original value, then unset for test
-	origValue, wasSet := os.LookupEnv("BROKER_TOPIC")
-	if wasSet {
-		defer func() { _ = os.Setenv("BROKER_TOPIC", origValue) }()
-	}
-	_ = os.Unsetenv("BROKER_TOPIC")
-
 	configPath := filepath.Join("testdata", "minimal.yaml")
 
-	cfg, err := LoadConfig(configPath)
+	cfg, err := LoadConfig(configPath, nil)
 	if err != nil {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	// Topic should be empty when not configured
-	if cfg.Topic != "" {
-		t.Errorf("Expected empty topic, got '%s'", cfg.Topic)
-	}
-}
-
-func TestLoadConfig_TopicEnvVarEmptyClearsConfig(t *testing.T) {
-	// Set environment variable to empty string (explicitly clears config value)
-	// t.Setenv auto-cleans after test
-	t.Setenv("BROKER_TOPIC", "")
-
-	// Create config with topic set
-	yaml := `
-resource_type: clusters
-hyperfleet_api:
-  endpoint: http://localhost:8000
-topic: config-topic
-message_data:
-  id: resource.id
-`
-	configPath := createTempConfigFile(t, yaml)
-
-	cfg, err := LoadConfig(configPath)
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	// Empty env var should clear the config value (using os.LookupEnv)
-	if cfg.Topic != "" {
-		t.Errorf("Expected empty topic (cleared by env var), got '%s'", cfg.Topic)
+	if cfg.Clients.Broker.Topic != "" {
+		t.Errorf("Expected empty topic, got '%s'", cfg.Clients.Broker.Topic)
 	}
 }

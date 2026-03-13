@@ -145,7 +145,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	defer server.Close()
 
 	// Setup components with real RabbitMQ broker
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	log := logger.NewHyperFleetLogger()
 
@@ -261,7 +261,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	defer server.Close()
 
 	// Setup components with real RabbitMQ broker
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	log := logger.NewHyperFleetLogger()
 
@@ -372,7 +372,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	log := logger.NewHyperFleetLogger()
 
@@ -475,12 +475,15 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	}))
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 
 	sentinelConfig := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		Topic:          TEST_TOPIC,
+		ResourceType: "clusters",
+		Clients: config.ClientsConfig{
+			HyperfleetAPI: &config.HyperFleetAPIConfig{},
+			Broker:        &config.BrokerConfig{Topic: TEST_TOPIC},
+		},
 		PollInterval:   100 * time.Millisecond,
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,

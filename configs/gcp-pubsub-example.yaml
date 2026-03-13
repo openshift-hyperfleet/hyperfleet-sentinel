@@ -11,38 +11,61 @@
 #
 # For more details, see: https://github.com/openshift-hyperfleet/hyperfleet-broker
 
-# Resource type to watch - must be one of: clusters, nodepools.
+# Sentinel information
+sentinel:
+  name: hyperfleet-sentinel-clusters-shard-1
+
+# Debug configuration - log merged config on startup
+debug_config: false
+
+# Logging configuration (can be overridden by LOG_* env vars or --log-* flags)
+log:
+  level: "info"
+  format: "json"  # Use JSON format for production
+  output: "stdout"
+
+# Client configurations
+clients:
+  # HyperFleet API client configuration
+  hyperfleet_api:
+    # API base URL (required)
+    base_url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+    version: "v1"
+    timeout: 10s
+    retry_attempts: 3
+    retry_backoff: "exponential"
+    base_delay: "1s"
+    max_delay: "30s"
+
+  # Broker configuration
+  # Note: broker implementation details (GCP project ID, etc.) are in broker.yaml
+  broker:
+    topic: ""  # Can be overridden by HYPERFLEET_BROKER_TOPIC
+
+# Resource type to watch - must be one of: clusters, nodepools
 resource_type: clusters
 
-# How often to poll the HyperFleet API for resource updates.
-# Accepts Go duration format: ns, us/µs, ms, s, m, h.
+# How often to poll the HyperFleet API for resource updates
+# Accepts Go duration format: ns, us/µs, ms, s, m, h
 poll_interval: 5s
 
-# Max age interval for resources that are not ready.
-# Resources in transitional states are re-checked more frequently.
+# Max age interval for resources that are not ready
+# Resources in transitional states are re-checked more frequently
 max_age_not_ready: 10s
 
-# Max age interval for resources that are ready and stable.
-# Stable resources are checked less frequently to reduce API load.
+# Max age interval for resources that are ready and stable
+# Stable resources are checked less frequently to reduce API load
 max_age_ready: 30m
 
-# Resource selector (optional) - filter resources by labels.
-# If empty or omitted, all resources of the specified type are watched.
-# This enables horizontal scaling by having multiple Sentinels watch different resource subsets.
-# Multiple selectors use AND logic (all labels must match).
+# Resource selector (optional) - filter resources by labels
+# If empty or omitted, all resources of the specified type are watched
+# This enables horizontal scaling by having multiple Sentinels watch different resource subsets
+# Multiple selectors use AND logic (all labels must match)
 resource_selector:
   - label: shard
     value: "1"
   - label: region
     value: us-east-1
-
-# HyperFleet API configuration.
-hyperfleet_api:
-  # API base URL (required).
-  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
-
-  # Request timeout for API calls.
-  timeout: 5s
 
 # CloudEvent payload configuration.
 #
