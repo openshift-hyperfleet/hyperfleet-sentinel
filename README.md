@@ -211,6 +211,7 @@ The service validates configuration at startup and will fail fast on errors:
 - **Valid durations**: All interval fields must be positive
 - **Valid CEL expressions**: All `message_data` values must be valid CEL expressions
 - **Broker configuration**: Managed by hyperfleet-broker library (see broker.yaml)
+- **API connectivity**: HyperFleet API must be reachable at startup (fails fast via `/clusters` endpoint verification)
 
 ### Configuration Examples
 
