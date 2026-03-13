@@ -172,7 +172,7 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 	}
 
 	// verify HyperFleet API health through /healthz endpoint
-	if err = hyperfleetClient.VerifyConnectivity(cfg.HyperFleetAPI.HealthEndpoint, cfg.HyperFleetAPI.Timeout); err != nil {
+	if err = hyperfleetClient.VerifyConnectivity(ctx, cfg.HyperFleetAPI.HealthEndpoint, cfg.HyperFleetAPI.Timeout); err != nil {
 		log.Errorf(ctx, "Failed to verify HyperFleet client connectivity: %v", err)
 		return fmt.Errorf("failed to verify HyperFleet client connectivity: %w", err)
 	}

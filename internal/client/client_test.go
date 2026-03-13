@@ -691,7 +691,8 @@ func TestVerifyConnectivity_Success(t *testing.T) {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 
-	err = client.VerifyConnectivity(server.URL, 5*time.Second)
+	ctx := context.Background()
+	err = client.VerifyConnectivity(ctx, server.URL, 5*time.Second)
 	if err != nil {
 		t.Errorf("Expected successful health check, got error: %v", err)
 	}
@@ -699,6 +700,7 @@ func TestVerifyConnectivity_Success(t *testing.T) {
 
 // TestVerifyConnectivity_NonOKStatus tests handling of non-200 status codes
 func TestVerifyConnectivity_NonOKStatus(t *testing.T) {
+	ctx := context.Background()
 	testCases := []struct {
 		name       string
 		statusCode int
@@ -737,7 +739,7 @@ func TestVerifyConnectivity_NonOKStatus(t *testing.T) {
 				t.Fatalf("Failed to create client: %v", err)
 			}
 
-			err = client.VerifyConnectivity(server.URL, 5*time.Second)
+			err = client.VerifyConnectivity(ctx, server.URL, 5*time.Second)
 
 			if err == nil {
 				t.Errorf("Expected error for status %d, got nil", tc.statusCode)
@@ -748,6 +750,7 @@ func TestVerifyConnectivity_NonOKStatus(t *testing.T) {
 
 // TestVerifyConnectivity_NetworkError tests handling of network connectivity errors
 func TestVerifyConnectivity_NetworkError(t *testing.T) {
+	ctx := context.Background()
 	testCases := []struct {
 		name           string
 		healthEndpoint string
@@ -777,7 +780,7 @@ func TestVerifyConnectivity_NetworkError(t *testing.T) {
 				t.Fatalf("Failed to create client: %v", err)
 			}
 
-			err = client.VerifyConnectivity(tc.healthEndpoint, 1*time.Second) // Short timeout
+			err = client.VerifyConnectivity(ctx, tc.healthEndpoint, 1*time.Second) // Short timeout
 
 			if err == nil {
 				t.Errorf("Expected network error for %s, got nil", tc.name)

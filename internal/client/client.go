@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -170,7 +171,7 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 }
 
 // VerifyConnectivity checks the client connectivity by calling the /healthz endpoint
-func (c *HyperFleetClient) VerifyConnectivity(healthEndpoint string, timeout time.Duration) error {
+func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context, healthEndpoint string, timeout time.Duration) error {
 	healthURL := healthEndpoint + "/healthz"
 	client := http.Client{
 		Timeout: timeout,
@@ -184,6 +185,12 @@ func (c *HyperFleetClient) VerifyConnectivity(healthEndpoint string, timeout tim
 	if err != nil {
 		return fmt.Errorf("health check request failed: %v", err)
 	}
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			c.log.Errorf(ctx, "An error occured closing the response body: %w", err)
+		}
+	}(response.Body)
 
 	// It should return 200 OK if the application is alive
 	if response.StatusCode != http.StatusOK {
