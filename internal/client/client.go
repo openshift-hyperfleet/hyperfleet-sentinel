@@ -188,7 +188,7 @@ func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context, healthEndpoin
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
-			c.log.Errorf(ctx, "An error occured closing the response body: %w", err)
+			c.log.Errorf(ctx, "An error occured closing the response body: %v", err)
 		}
 	}(response.Body)
 

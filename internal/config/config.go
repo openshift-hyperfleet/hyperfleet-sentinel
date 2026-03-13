@@ -135,6 +135,10 @@ func (c *SentinelConfig) Validate() error {
 		return fmt.Errorf("hyperfleet_api.endpoint is required")
 	}
 
+	if c.HyperFleetAPI.HealthEndpoint == "" {
+		return fmt.Errorf("hyperfleet_api.health_endpoint is required")
+	}
+
 	if c.PollInterval <= 0 {
 		return fmt.Errorf("poll_interval must be positive")
 	}
