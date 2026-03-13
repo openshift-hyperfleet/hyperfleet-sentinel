@@ -664,3 +664,124 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
 	}
 }
+
+// TestVerifyConnectivity_Success tests successful health check
+func TestVerifyConnectivity_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify correct endpoint called
+		if r.URL.Path != "/healthz" {
+			t.Errorf("Expected /healthz endpoint, got %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("Expected GET request, got %s", r.Method)
+		}
+
+		// Return successful health check response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		response := map[string]string{"status": "ok"}
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client, err := NewHyperFleetClient(server.URL, 5*time.Second)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	err = client.VerifyConnectivity(server.URL, 5*time.Second)
+	if err != nil {
+		t.Errorf("Expected successful health check, got error: %v", err)
+	}
+}
+
+// TestVerifyConnectivity_NonOKStatus tests handling of non-200 status codes
+func TestVerifyConnectivity_NonOKStatus(t *testing.T) {
+	testCases := []struct {
+		name       string
+		statusCode int
+		response   string
+	}{
+		{
+			name:       "ServiceUnavailable",
+			statusCode: http.StatusServiceUnavailable,
+			response:   `{"error": "service unavailable"}`,
+		},
+		{
+			name:       "InternalServerError",
+			statusCode: http.StatusInternalServerError,
+			response:   `{"error": "internal server error"}`,
+		},
+		{
+			name:       "NotFound",
+			statusCode: http.StatusNotFound,
+			response:   `{"error": "endpoint not found"}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.statusCode)
+				if _, err := w.Write([]byte(tc.response)); err != nil {
+					t.Errorf("Failed to write response: %v", err)
+				}
+			}))
+			defer server.Close()
+
+			client, err := NewHyperFleetClient(server.URL, 5*time.Second)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			err = client.VerifyConnectivity(server.URL, 5*time.Second)
+
+			if err == nil {
+				t.Errorf("Expected error for status %d, got nil", tc.statusCode)
+			}
+		})
+	}
+}
+
+// TestVerifyConnectivity_NetworkError tests handling of network connectivity errors
+func TestVerifyConnectivity_NetworkError(t *testing.T) {
+	testCases := []struct {
+		name           string
+		healthEndpoint string
+	}{
+		{
+			name:           "EmptyURL",
+			healthEndpoint: "",
+		},
+		{
+			name:           "InvalidURL",
+			healthEndpoint: "://invalid-url",
+		},
+		{
+			name:           "UnreachableHost",
+			healthEndpoint: "http://unreachable-host-12345.invalid",
+		},
+		{
+			name:           "RefusedConnection",
+			healthEndpoint: "http://localhost:9999999999", // Unlikely port
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			client, err := NewHyperFleetClient("http://localhost:8000", 5*time.Second)
+			if err != nil {
+				t.Fatalf("Failed to create client: %v", err)
+			}
+
+			err = client.VerifyConnectivity(tc.healthEndpoint, 1*time.Second) // Short timeout
+
+			if err == nil {
+				t.Errorf("Expected network error for %s, got nil", tc.name)
+			}
+		})
+	}
+}

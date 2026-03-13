@@ -34,8 +34,9 @@ type SentinelConfig struct {
 
 // HyperFleetAPIConfig defines the HyperFleet API client configuration
 type HyperFleetAPIConfig struct {
-	Endpoint string        `mapstructure:"endpoint"`
-	Timeout  time.Duration `mapstructure:"timeout"`
+	Endpoint       string        `mapstructure:"endpoint"`
+	HealthEndpoint string        `mapstructure:"health_endpoint"`
+	Timeout        time.Duration `mapstructure:"timeout"`
 }
 
 // ToMap converts label selectors to a map for filtering

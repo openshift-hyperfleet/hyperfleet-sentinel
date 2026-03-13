@@ -169,8 +169,15 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 	if err != nil {
 		log.Errorf(ctx, "Failed to initialize OpenAPI client: %v", err)
 		return fmt.Errorf("failed to initialize OpenAPI client: %w", err)
-
 	}
+
+	// verify HyperFleet API health through /healthz endpoint
+	if err = hyperfleetClient.VerifyConnectivity(cfg.HyperFleetAPI.HealthEndpoint, cfg.HyperFleetAPI.Timeout); err != nil {
+		log.Errorf(ctx, "Failed to verify HyperFleet client connectivity: %v", err)
+		return fmt.Errorf("failed to verify HyperFleet client connectivity: %w", err)
+	}
+	log.Info(ctx, "Initialized HyperFleet client")
+
 	decisionEngine := engine.NewDecisionEngine(cfg.MaxAgeNotReady, cfg.MaxAgeReady)
 
 	// Initialize broker metrics recorder

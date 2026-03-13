@@ -169,6 +169,29 @@ func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType Reso
 	return resources, nil
 }
 
+// VerifyConnectivity checks the client connectivity by calling the /healthz endpoint
+func (c *HyperFleetClient) VerifyConnectivity(healthEndpoint string, timeout time.Duration) error {
+	healthURL := healthEndpoint + "/healthz"
+	client := http.Client{
+		Timeout: timeout,
+	}
+	if healthEndpoint == "" {
+		return fmt.Errorf("empty health endpoint")
+	}
+
+	// call the hyperfleet client /healthz endpoint
+	response, err := client.Get(healthURL)
+	if err != nil {
+		return fmt.Errorf("health check request failed: %v", err)
+	}
+
+	// It should return 200 OK if the application is alive
+	if response.StatusCode != http.StatusOK {
+		return fmt.Errorf("health check request failed with code %d", response.StatusCode)
+	}
+	return nil
+}
+
 // labelSelectorToSearchString converts a label selector map to TSL (Tree Search Language) search parameter string
 // Format: "labels.key1='value1' and labels.key2='value2'"
 // TSL syntax requires:

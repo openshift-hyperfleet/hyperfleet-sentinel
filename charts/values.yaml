@@ -97,6 +97,7 @@ config:
   hyperfleetApi:
     # Use in-cluster service name for API endpoint
     baseUrl: http://hyperfleet-api:8000
+    healthBaseUrl: http://hyperfleet-api:8080
     timeout: 5s
 
   # CloudEvents data payload configuration
