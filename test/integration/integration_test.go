@@ -773,6 +773,10 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		MaxAgeNotReady:  10 * time.Second,
 		MaxAgeReady:     30 * time.Minute,
 		MessagingSystem: "rabbitmq",
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
 	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
