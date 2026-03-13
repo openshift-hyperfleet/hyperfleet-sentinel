@@ -96,7 +96,7 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 	case samplerAlwaysOff:
 		sampler = trace.NeverSample()
 	case samplerTraceIDRatio:
-		sampler = trace.TraceIDRatioBased(parseSamplingRate(ctx, log))
+		sampler = trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx, log)))
 	case parentBasedTraceIDRatio, "":
 		// Default per tracing standard
 		sampler = trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx, log)))
