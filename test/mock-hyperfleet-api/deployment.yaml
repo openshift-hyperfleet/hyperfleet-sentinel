@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-hyperfleet-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mock-hyperfleet-api
+  template:
+    metadata:
+      labels:
+        app: mock-hyperfleet-api
+    spec:
+      containers:
+        - name: mock-hyperfleet-api
+          image: quay.io/$USER/mock-hyperfleet-api # $USER is substituted by envsubst at apply time
+          env:
+            - name: CLUSTER_COUNT
+              value: "100"
+          ports:
+            - containerPort: 8888
+      # Uncomment if using a private Quay repo (see README troubleshooting)
+      # imagePullSecrets:
+      #   - name: quay-pull-secret
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-hyperfleet-api
+spec:
+  selector:
+    app: mock-hyperfleet-api
+  ports:
+    - port: 8888
