@@ -105,7 +105,7 @@ func DefaultConfig() *LogConfig {
 		Version:   "dev",
 		Hostname:  hostname,
 		OTel: OTelConfig{
-			// TODO: Enable OTelConfig to true as a default standard post the rollout phase
+			// TODO (HYPREFLEET-771): Enable OTelConfig to true as a default standard post the rollout phase
 			Enabled: false,
 		},
 	}
