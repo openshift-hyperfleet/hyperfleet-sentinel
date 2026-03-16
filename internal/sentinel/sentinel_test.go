@@ -17,6 +17,9 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // createMockCluster creates a mock cluster response matching the new API spec.
@@ -633,4 +636,147 @@ func TestTrigger_ContextPropagationToBroker(t *testing.T) {
 	if spanID, ok := brokerCtx.Value(logger.SpanIDCtxKey).(string); !ok || spanID != "span-456" {
 		t.Errorf("span_id not propagated: got %v", spanID)
 	}
+}
+
+func TestTrigger_CreatesRequiredSpans(t *testing.T) {
+	ctx := context.Background()
+
+	// Setup in-memory trace exporter for span verification
+	exporter := tracetest.NewInMemoryExporter()
+	tp := trace.NewTracerProvider(
+		trace.WithSampler(trace.AlwaysSample()),
+		trace.WithBatcher(exporter),
+	)
+	previousProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	defer func() {
+		if err := tp.Shutdown(ctx); err != nil {
+			t.Errorf("shutdown of tracer provider: %v", err)
+		}
+		otel.SetTracerProvider(previousProvider)
+	}()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Cluster exceeds max age (31 minutes ago) - should trigger publishing
+		cluster := createMockCluster("cluster-1", 2, 2, true, time.Now().Add(-31*time.Minute))
+		response := createMockClusterList([]map[string]interface{}{cluster})
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Logf("Error encoding response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	hyperfleetClient, err := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
+	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+
+	mockPublisher := &MockPublisher{}
+	log := logger.NewHyperFleetLogger()
+
+	// Create metrics with a test registry
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry, "test")
+
+	cfg := &config.SentinelConfig{
+		ResourceType:    "clusters",
+		Topic:           "hyperfleet-clusters",
+		MaxAgeNotReady:  10 * time.Second,
+		MaxAgeReady:     30 * time.Minute,
+		MessagingSystem: "rabbitmq",
+	}
+
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
+
+	// Execute trigger
+	err = s.trigger(ctx)
+	if err != nil {
+		t.Fatalf("trigger failed: %v", err)
+	}
+
+	// Force flush spans to exporter
+	err = tp.ForceFlush(ctx)
+	if err != nil {
+		t.Fatalf("force flush error: %v", err)
+	}
+
+	// Verify spans were created
+	spans := exporter.GetSpans()
+
+	// Build map of span names for easy checking
+	spanNames := make(map[string]bool)
+	for _, span := range spans {
+		spanNames[span.Name] = true
+	}
+
+	// Verify required spans exist
+	requiredSpans := []string{
+		"sentinel.poll",
+		"sentinel.evaluate",
+		"hyperfleet-clusters publish",
+	}
+
+	for _, requiredSpan := range requiredSpans {
+		if !spanNames[requiredSpan] {
+			t.Errorf("Required span '%s' not found. Found spans: %v", requiredSpan, getSpanNames(spans))
+		}
+	}
+
+	// Verify we got the expected number of spans
+	// Should have: 1 poll + 1 evaluate + 1 publish = 3 spans minimum
+	if len(spans) < 3 {
+		t.Errorf("Expected at least 3 spans, got %d. Spans: %v", len(spans), getSpanNames(spans))
+	}
+
+	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.system", cfg.MessagingSystem)
+	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.operation.type", "publish")
+	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.destination.name", cfg.Topic)
+
+	// Verify the CloudEvent was published (basic functional verification)
+	if len(mockPublisher.publishedEvents) != 1 {
+		t.Errorf("Expected 1 published event, got %d", len(mockPublisher.publishedEvents))
+	}
+
+	// Verify CloudEvent has traceparent extension
+	if len(mockPublisher.publishedEvents) > 0 {
+		event := mockPublisher.publishedEvents[0]
+		extensions := event.Extensions()
+		if traceparent, exists := extensions["traceparent"]; !exists {
+			t.Error("Expected CloudEvent to contain traceparent extension for trace propagation")
+		} else if traceparentStr, ok := traceparent.(string); !ok || len(traceparentStr) != 55 {
+			t.Errorf("Expected valid W3C traceparent format, got: %v", traceparent)
+		}
+	}
+}
+
+func validateSpanAttribute(t *testing.T, spans []tracetest.SpanStub, spanName, attrKey, expectedValue string) {
+	for _, span := range spans {
+		if span.Name == spanName {
+			for _, attr := range span.Attributes {
+				if string(attr.Key) == attrKey {
+					if attr.Value.AsString() != expectedValue {
+						t.Errorf("Span '%s': expected %s=%s, got %s", spanName, attrKey, expectedValue, attr.Value.AsString())
+					}
+					return
+				}
+			}
+			t.Errorf("Span '%s': attribute '%s' not found", spanName, attrKey)
+			return
+		}
+	}
+	t.Errorf("Span '%s' not found", spanName)
+}
+
+// Helper function for span name extraction
+func getSpanNames(spans []tracetest.SpanStub) []string {
+	names := make([]string, len(spans))
+	for i, span := range spans {
+		names[i] = span.Name
+	}
+	return names
 }
