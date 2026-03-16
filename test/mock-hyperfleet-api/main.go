@@ -70,19 +70,19 @@ func createClusterList(count int) map[string]any {
 	clusters := make([]map[string]any, 0, count)
 	lastUpdated := now.Add(-35 * time.Minute).Format(time.RFC3339)
 
+	condition := func(condType string) map[string]any {
+		return map[string]any{
+			"type":                 condType,
+			"status":               "True",
+			"created_time":         defaultCreatedTime,
+			"last_transition_time": defaultUpdatedTime,
+			"last_updated_time":    lastUpdated,
+			"observed_generation":  1,
+		}
+	}
+
 	for i := range count {
 		id := fmt.Sprintf("cluster-%d", i)
-
-		condition := func(condType string) map[string]any {
-			return map[string]any{
-				"type":                 condType,
-				"status":               "True",
-				"created_time":         defaultCreatedTime,
-				"last_transition_time": defaultUpdatedTime,
-				"last_updated_time":    lastUpdated,
-				"observed_generation":  1,
-			}
-		}
 
 		cluster := map[string]any{
 			"id":           id,
