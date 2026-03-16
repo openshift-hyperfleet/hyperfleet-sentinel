@@ -1,3 +1,21 @@
+sentinel:
+  name: hyperfleet-sentinel-nodepools
+
+debug_config: false
+
+log:
+  level: "info"
+  format: "text"
+  output: "stdout"
+
+clients:
+  hyperfleet_api:
+    base_url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+    version: "v1"
+    timeout: 20s
+  broker:
+    topic: ""
+
 resource_type: nodepools
 poll_interval: 3s
 max_age_not_ready: 5s
@@ -8,10 +26,6 @@ resource_selector:
     value: cls-123
   - label: region
     value: eu-west
-
-hyperfleet_api:
-  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
-  timeout: 20s
 
 message_data:
   id: "resource.id"

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
 
@@ -15,10 +16,13 @@ const (
 	defaultMessagingSystem = "gcp_pubsub"
 )
 
+// EnvPrefix is the prefix for all environment variables that override sentinel config
+const EnvPrefix = "HYPERFLEET"
+
 // LabelSelector represents a label key-value pair for resource filtering
 type LabelSelector struct {
-	Label string `mapstructure:"label"`
-	Value string `mapstructure:"value"`
+	Label string `yaml:"label" mapstructure:"label"`
+	Value string `yaml:"value" mapstructure:"value"`
 }
 
 // LabelSelectorList is a list of label selectors
@@ -26,21 +30,48 @@ type LabelSelectorList []LabelSelector
 
 // SentinelConfig represents the Sentinel configuration
 type SentinelConfig struct {
-	ResourceType     string                 `mapstructure:"resource_type"`
-	PollInterval     time.Duration          `mapstructure:"poll_interval"`
-	MaxAgeNotReady   time.Duration          `mapstructure:"max_age_not_ready"`
-	MaxAgeReady      time.Duration          `mapstructure:"max_age_ready"`
-	ResourceSelector LabelSelectorList      `mapstructure:"resource_selector"`
-	HyperFleetAPI    *HyperFleetAPIConfig   `mapstructure:"hyperfleet_api"`
-	MessageData      map[string]interface{} `mapstructure:"message_data"`
-	Topic            string                 `mapstructure:"topic"`
-	MessagingSystem  string                 `mapstructure:"messaging_system"`
+	Sentinel         SentinelInfo           `yaml:"sentinel" mapstructure:"sentinel"`
+	DebugConfig      bool                   `yaml:"debug_config,omitempty" mapstructure:"debug_config"`
+	Log              LogConfig              `yaml:"log,omitempty" mapstructure:"log"`
+	Clients          ClientsConfig          `yaml:"clients" mapstructure:"clients"`
+	ResourceType     string                 `yaml:"resource_type" mapstructure:"resource_type"`
+	PollInterval     time.Duration          `yaml:"poll_interval" mapstructure:"poll_interval"`
+	MaxAgeNotReady   time.Duration          `yaml:"max_age_not_ready" mapstructure:"max_age_not_ready"`
+	MaxAgeReady      time.Duration          `yaml:"max_age_ready" mapstructure:"max_age_ready"`
+	ResourceSelector LabelSelectorList      `yaml:"resource_selector,omitempty" mapstructure:"resource_selector"`
+	MessageData      map[string]interface{} `yaml:"message_data,omitempty" mapstructure:"message_data"`
+	MessagingSystem  string                 `yaml:"messaging_system,omitempty" mapstructure:"messaging_system"`
+}
+
+// SentinelInfo contains basic sentinel information
+type SentinelInfo struct {
+	Name string `yaml:"name" mapstructure:"name"`
+}
+
+// LogConfig contains logging configuration.
+// Priority (lowest to highest): config file < HYPERFLEET_LOG_* env vars < --log-* CLI flags
+type LogConfig struct {
+	Level  string `yaml:"level,omitempty" mapstructure:"level"`
+	Format string `yaml:"format,omitempty" mapstructure:"format"`
+	Output string `yaml:"output,omitempty" mapstructure:"output"`
+}
+
+// ClientsConfig contains all client configurations
+type ClientsConfig struct {
+	HyperFleetAPI *HyperFleetAPIConfig `yaml:"hyperfleet_api" mapstructure:"hyperfleet_api"`
+	Broker        *BrokerConfig        `yaml:"broker,omitempty" mapstructure:"broker"`
 }
 
 // HyperFleetAPIConfig defines the HyperFleet API client configuration
 type HyperFleetAPIConfig struct {
-	Endpoint string        `mapstructure:"endpoint"`
-	Timeout  time.Duration `mapstructure:"timeout"`
+	BaseURL string        `yaml:"base_url" mapstructure:"base_url"`
+	Version string        `yaml:"version,omitempty" mapstructure:"version"`
+	Timeout time.Duration `yaml:"timeout" mapstructure:"timeout"`
+}
+
+// BrokerConfig contains broker configuration
+type BrokerConfig struct {
+	Topic string `yaml:"topic,omitempty" mapstructure:"topic"`
 }
 
 // ToMap converts label selectors to a map for filtering
@@ -61,41 +92,121 @@ func (ls LabelSelectorList) ToMap() map[string]string {
 // NewSentinelConfig creates a new configuration with defaults
 func NewSentinelConfig() *SentinelConfig {
 	return &SentinelConfig{
+		Sentinel: SentinelInfo{
+			Name: "hyperfleet-sentinel",
+		},
+		DebugConfig: false,
+		Log: LogConfig{
+			Level:  "info",
+			Format: "text",
+			Output: "stdout",
+		},
+		Clients: ClientsConfig{
+			HyperFleetAPI: &HyperFleetAPIConfig{
+				Version: "v1",
+				Timeout: 10 * time.Second,
+			},
+			Broker: &BrokerConfig{},
+		},
 		// ResourceType is required and must be set in config file
 		PollInterval:     5 * time.Second,
 		MaxAgeNotReady:   10 * time.Second,
 		MaxAgeReady:      30 * time.Minute,
 		ResourceSelector: []LabelSelector{}, // Empty means watch all resources
-		HyperFleetAPI: &HyperFleetAPIConfig{
-			// Endpoint is required and must be set in config file
-			Timeout: 5 * time.Second,
-		},
-		MessagingSystem: defaultMessagingSystem,
+		MessagingSystem:  defaultMessagingSystem,
 	}
 }
 
-// LoadConfig loads configuration from YAML file and environment variables
-// Precedence: Environment variables > YAML file > Defaults
-func LoadConfig(configFile string) (*SentinelConfig, error) {
+// viperKeyMappings defines mappings from config paths to env variable suffixes
+// The full env var name is EnvPrefix + "_" + suffix
+// Note: Uses "::" as key delimiter to avoid conflicts with dots in YAML keys
+// Complex types (maps, slices) are intentionally excluded — they cannot be expressed as scalar env vars.
+var viperKeyMappings = map[string]string{
+	"debug_config":                      "DEBUG_CONFIG",
+	"sentinel::name":                    "SENTINEL_NAME",
+	"log::level":                        "LOG_LEVEL",
+	"log::format":                       "LOG_FORMAT",
+	"log::output":                       "LOG_OUTPUT",
+	"clients::hyperfleet_api::base_url": "API_BASE_URL",
+	"clients::hyperfleet_api::version":  "API_VERSION",
+	"clients::hyperfleet_api::timeout":  "API_TIMEOUT",
+	"clients::broker::topic":            "BROKER_TOPIC",
+	"resource_type":                     "RESOURCE_TYPE",
+	"poll_interval":                     "POLL_INTERVAL",
+	"max_age_not_ready":                 "MAX_AGE_NOT_READY",
+	"max_age_ready":                     "MAX_AGE_READY",
+	"messaging_system":                  "MESSAGING_SYSTEM",
+}
+
+// cliFlags defines mappings from CLI flag names to config paths
+// Note: Uses "::" as key delimiter to avoid conflicts with dots in YAML keys
+var cliFlags = map[string]string{
+	"debug-config":            "debug_config",
+	"name":                    "sentinel::name",
+	"hyperfleet-api-base-url": "clients::hyperfleet_api::base_url",
+	"hyperfleet-api-version":  "clients::hyperfleet_api::version",
+	"hyperfleet-api-timeout":  "clients::hyperfleet_api::timeout",
+	"broker-topic":            "clients::broker::topic",
+	"resource-type":           "resource_type",
+	"poll-interval":           "poll_interval",
+	"max-age-not-ready":       "max_age_not_ready",
+	"max-age-ready":           "max_age_ready",
+	"log-level":               "log::level",
+	"log-format":              "log::format",
+	"log-output":              "log::output",
+}
+
+// LoadConfig loads configuration from YAML file with environment variable and CLI flag overrides
+// Precedence: CLI flags > Environment variables > YAML file > Defaults
+func LoadConfig(configFile string, flags *pflag.FlagSet) (*SentinelConfig, error) {
 	cfg := NewSentinelConfig()
 
-	// Load from YAML file
 	if configFile == "" {
-		return nil, fmt.Errorf("config file is required")
+		if env := os.Getenv("HYPERFLEET_CONFIG"); env != "" {
+			configFile = env
+		} else {
+			configFile = "/etc/hyperfleet/config.yaml"
+		}
 	}
 
 	log := logger.NewHyperFleetLogger()
 	ctx := context.Background()
 	log.Infof(ctx, "Loading configuration from %s", configFile)
 
-	v := viper.New()
+	// Use "::" as key delimiter to avoid conflicts with dots in YAML keys
+	v := viper.NewWithOptions(viper.KeyDelimiter("::"))
 	v.SetConfigFile(configFile)
 
+	// Read the YAML file
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
 
-	if err := v.Unmarshal(cfg); err != nil {
+	// Bind environment variables
+	v.SetEnvPrefix(EnvPrefix)
+	v.AutomaticEnv()
+	// Replace "::" (our key delimiter) and "-" with "_" for env var lookups
+	v.SetEnvKeyReplacer(strings.NewReplacer("::", "_", "-", "_"))
+
+	// Bind specific environment variables with HYPERFLEET_ prefix
+	for configPath, envSuffix := range viperKeyMappings {
+		envVar := EnvPrefix + "_" + envSuffix
+		if val := os.Getenv(envVar); val != "" {
+			v.Set(configPath, val)
+		}
+	}
+
+	// Bind CLI flags if provided
+	if flags != nil {
+		for flagName, configPath := range cliFlags {
+			if flag := flags.Lookup(flagName); flag != nil && flag.Changed {
+				v.Set(configPath, flag.Value.String())
+			}
+		}
+	}
+
+	// Unmarshal into SentinelConfig struct — ErrorUnused ensures unknown fields are rejected
+	if err := v.UnmarshalExact(cfg); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
@@ -108,31 +219,23 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 		}
 	}
 
-	// Override topic from environment variable if explicitly provided
-	// Environment variable takes precedence over config file (including empty value to clear)
-	if topic, ok := os.LookupEnv("BROKER_TOPIC"); ok {
-		cfg.Topic = topic
-	}
-
-	if messagingSystem, ok := os.LookupEnv("MESSAGING_SYSTEM"); ok {
-		messagingSystem = strings.TrimSpace(messagingSystem)
-		if messagingSystem != "" {
-			cfg.MessagingSystem = messagingSystem
-		}
-	}
-
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	log.Infof(ctx, "Configuration loaded successfully: resource_type=%s", cfg.ResourceType)
+	log.Infof(ctx, "Configuration loaded successfully: name=%s resource_type=%s",
+		cfg.Sentinel.Name, cfg.ResourceType)
 
 	return cfg, nil
 }
 
 // Validate validates the configuration
 func (c *SentinelConfig) Validate() error {
+	if c.Sentinel.Name == "" {
+		return fmt.Errorf("sentinel.name is required")
+	}
+
 	if c.ResourceType == "" {
 		return fmt.Errorf("resource_type is required")
 	}
@@ -143,8 +246,12 @@ func (c *SentinelConfig) Validate() error {
 			c.ResourceType, strings.Join(validResourceTypes, ", "))
 	}
 
-	if c.HyperFleetAPI.Endpoint == "" {
-		return fmt.Errorf("hyperfleet_api.endpoint is required")
+	if c.Clients.HyperFleetAPI == nil {
+		return fmt.Errorf("clients.hyperfleet_api is required")
+	}
+
+	if c.Clients.HyperFleetAPI.BaseURL == "" {
+		return fmt.Errorf("clients.hyperfleet_api.base_url is required")
 	}
 
 	if c.PollInterval <= 0 {
@@ -201,4 +308,38 @@ func contains(slice []string, value string) bool {
 		}
 	}
 	return false
+}
+
+// RedactedCopy returns a deep copy of the config. Use this copy when logging
+// the merged configuration at startup so that any future sensitive fields are
+// never accidentally shared by reference.
+// Currently there are no sensitive params in the configuration, so this function is doing just a deep copy
+func (c *SentinelConfig) RedactedCopy() *SentinelConfig {
+	cp := *c
+
+	if cp.Clients.HyperFleetAPI != nil {
+		api := *cp.Clients.HyperFleetAPI
+		cp.Clients.HyperFleetAPI = &api
+	}
+
+	if cp.Clients.Broker != nil {
+		b := *cp.Clients.Broker
+		cp.Clients.Broker = &b
+	}
+
+	if c.ResourceSelector != nil {
+		rs := make(LabelSelectorList, len(c.ResourceSelector))
+		copy(rs, c.ResourceSelector)
+		cp.ResourceSelector = rs
+	}
+
+	if c.MessageData != nil {
+		md := make(map[string]interface{}, len(c.MessageData))
+		for k, v := range c.MessageData {
+			md[k] = v
+		}
+		cp.MessageData = md
+	}
+
+	return &cp
 }

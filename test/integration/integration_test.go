@@ -150,7 +150,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	defer server.Close()
 
 	// Setup components with real RabbitMQ broker
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	log := logger.NewHyperFleetLogger()
 
@@ -266,7 +266,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	defer server.Close()
 
 	// Setup components with real RabbitMQ broker
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	log := logger.NewHyperFleetLogger()
 
@@ -377,7 +377,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	defer server.Close()
 
 	// Setup components
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 	log := logger.NewHyperFleetLogger()
 
@@ -536,12 +536,15 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	}))
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
 
 	sentinelConfig := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		Topic:          TEST_TOPIC,
+		ResourceType: "clusters",
+		Clients: config.ClientsConfig{
+			HyperFleetAPI: &config.HyperFleetAPIConfig{},
+			Broker:        &config.BrokerConfig{Topic: TEST_TOPIC},
+		},
 		PollInterval:   100 * time.Millisecond,
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
@@ -756,7 +759,7 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	helper := NewHelper()
 
 	// Setup components
-	hyperfleetClient, clientErr := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, clientErr := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	if clientErr != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", clientErr)
 	}
@@ -768,7 +771,7 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:    "clusters",
-		Topic:           "test-spans-topic",
+		Clients:         config.ClientsConfig{Broker: &config.BrokerConfig{Topic: "test-spans-topic"}},
 		PollInterval:    100 * time.Millisecond,
 		MaxAgeNotReady:  10 * time.Second,
 		MaxAgeReady:     30 * time.Minute,
@@ -936,7 +939,7 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 
 	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.system", cfg.MessagingSystem)
 	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.operation.type", "publish")
-	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.destination.name", cfg.Topic)
+	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.destination.name", cfg.Clients.Broker.Topic)
 
 	for _, publishSpan := range publishSpans {
 		if !publishSpan.Parent.IsValid() {
