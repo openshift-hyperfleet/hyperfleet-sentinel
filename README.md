@@ -67,6 +67,7 @@ The project uses a hybrid testing approach:
 
 - **Unit tests**: Fast, isolated tests using mocks
 - **Integration tests**: End-to-end tests with real message brokers via testcontainers
+- For simulating HyperFleet API load, see [test/mock-hyperfleet-api](test/mock-hyperfleet-api/).
 
 ```bash
 # Run only unit tests (fast)
@@ -80,6 +81,8 @@ make test-all
 ```
 
 Integration tests automatically work with both Docker and Podman. For troubleshooting and advanced configuration, see [docs/testcontainers.md](docs/testcontainers.md).
+
+For simulating HyperFleet API load without a real environment, see [test/mock-hyperfleet-api](test/mock-hyperfleet-api/).
 
 For instructions on running Sentinel locally or on GKE, see [docs/running-sentinel.md](docs/running-sentinel.md).
 

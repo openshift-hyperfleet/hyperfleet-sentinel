@@ -17,8 +17,6 @@ The server listens on port **8888**.
 |-----------------|---------|------------------------------|
 | `CLUSTER_COUNT` | `100`   | Number of clusters to return |
 
-The server listens on port **8888**.
-
 ## Run
 
 **Option 1 - Locally:**
@@ -98,7 +96,7 @@ kubectl create secret docker-registry quay-pull-secret \
   -n hyperfleet \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# 3.Verify the secret was created:
+# Step 3: Verify the secret was created
 kubectl get secret quay-pull-secret -n hyperfleet
 ```
 
