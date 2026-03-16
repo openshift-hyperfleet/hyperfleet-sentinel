@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -81,8 +82,7 @@ func TestFetchResources_Success(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Create client
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client := newTestClient(t, server.URL, 10*time.Second)
 
 	// Fetch resources
 	ctx := context.Background()
@@ -117,7 +117,7 @@ func TestFetchResources_EmptyList(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client := newTestClient(t, server.URL, 10*time.Second)
 
 	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 	if err != nil {
@@ -138,7 +138,7 @@ func TestFetchResources_404NotFound(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client := newTestClient(t, server.URL, 10*time.Second)
 
 	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 
@@ -168,7 +168,7 @@ func TestFetchResources_500ServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client := newTestClient(t, server.URL, 10*time.Second)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -213,7 +213,7 @@ func TestFetchResources_503ServiceUnavailable_ThenSuccess(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client := newTestClient(t, server.URL, 10*time.Second)
 
 	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 	if err != nil {
@@ -251,7 +251,7 @@ func TestFetchResources_429RateLimited(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client := newTestClient(t, server.URL, 10*time.Second)
 
 	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 	if err != nil {
@@ -272,7 +272,7 @@ func TestFetchResources_Timeout(t *testing.T) {
 	defer server.Close()
 
 	// Create client with very short timeout
-	client, _ := NewHyperFleetClient(server.URL, 100*time.Millisecond)
+	client := newTestClient(t, server.URL, 100*time.Millisecond)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
@@ -295,7 +295,7 @@ func TestFetchResources_ContextCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client := newTestClient(t, server.URL, 10*time.Second)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -324,7 +324,7 @@ func TestFetchResources_MalformedJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client := newTestClient(t, server.URL, 10*time.Second)
 
 	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
 
@@ -337,7 +337,7 @@ func TestFetchResources_MalformedJSON(t *testing.T) {
 
 // TestFetchResources_NilContext tests handling of nil context
 func TestFetchResources_NilContext(t *testing.T) {
-	client, _ := NewHyperFleetClient("http://localhost", 10*time.Second)
+	client := newTestClient(t, "http://localhost", 10*time.Second)
 
 	// Intentionally pass nil context to test validation
 	// nolint:staticcheck // Testing nil context validation
@@ -354,8 +354,7 @@ func TestFetchResources_NilContext(t *testing.T) {
 
 // TestFetchResources_InvalidResourceType tests handling of invalid resource type
 func TestFetchResources_InvalidResourceType(t *testing.T) {
-	client, _ := NewHyperFleetClient("http://localhost", 10*time.Second)
-
+	client := newTestClient(t, "http://localhost", 10*time.Second)
 	testCases := []struct {
 		name         string
 		resourceType ResourceType
@@ -406,7 +405,7 @@ func TestFetchResources_NilStatus(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client := newTestClient(t, server.URL, 10*time.Second)
 
 	// Note: A warning will be logged for cluster-1, but we can't easily
 	// verify log output in tests. In production, logs are captured for monitoring.
@@ -596,7 +595,7 @@ func TestFetchResources_NodePools(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client := newTestClient(t, server.URL, 10*time.Second)
 	resources, err := client.FetchResources(context.Background(), ResourceTypeNodePools, nil)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -644,7 +643,7 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client := newTestClient(t, server.URL, 10*time.Second)
 
 	labelSelector := map[string]string{
 		"region": "us-east",
@@ -663,4 +662,93 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 	if receivedSearchParam != expectedSearch {
 		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
 	}
+}
+
+// TestVerifyConnectivity_Success tests successful health check
+func TestVerifyConnectivity_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Verify correct endpoint called
+		if r.URL.Path != "/api/hyperfleet/v1/clusters" {
+			t.Errorf("Expected path /api/hyperfleet/v1/clusters, got %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("Expected GET request, got %s", r.Method)
+		}
+
+		// Return successful health check response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		response := map[string]string{"status": "ok"}
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL, 10*time.Second)
+
+	ctx := context.Background()
+	err := client.VerifyConnectivity(ctx)
+	if err != nil {
+		t.Errorf("Expected successful health check, got error: %v", err)
+	}
+}
+
+// TestVerifyConnectivity_NonOKStatus tests handling of non-200 status codes
+func TestVerifyConnectivity_NonOKStatus(t *testing.T) {
+	ctx := context.Background()
+	testCases := []struct {
+		name       string
+		statusCode int
+		response   string
+	}{
+		{
+			name:       "ServiceUnavailable",
+			statusCode: http.StatusServiceUnavailable,
+			response:   `{"error": "service unavailable"}`,
+		},
+		{
+			name:       "InternalServerError",
+			statusCode: http.StatusInternalServerError,
+			response:   `{"error": "internal server error"}`,
+		},
+		{
+			name:       "NotFound",
+			statusCode: http.StatusNotFound,
+			response:   `{"error": "endpoint not found"}`,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tc.statusCode)
+				if _, err := w.Write([]byte(tc.response)); err != nil {
+					t.Errorf("Failed to write response: %v", err)
+				}
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server.URL, 10*time.Second)
+
+			err := client.VerifyConnectivity(ctx)
+
+			if err == nil {
+				t.Errorf("Expected error for status %d, got nil", tc.statusCode)
+			}
+			if !strings.Contains(err.Error(), strconv.Itoa(tc.statusCode)) {
+				t.Errorf("Expected error to mention status %d, got: %v", tc.statusCode, err)
+			}
+		})
+	}
+}
+
+func newTestClient(t *testing.T, url string, timeout time.Duration) *HyperFleetClient {
+	t.Helper()
+	client, err := NewHyperFleetClient(url, timeout)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	return client
 }
