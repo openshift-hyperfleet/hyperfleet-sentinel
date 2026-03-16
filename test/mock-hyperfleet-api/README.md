@@ -102,4 +102,4 @@ kubectl create secret docker-registry quay-pull-secret \
 kubectl get secret quay-pull-secret -n hyperfleet
 ```
 
-Then uncomment `imagePullSecrets` in `test/mock-hyperfleet-ap/deployment.yaml` and redeploy.
+Then uncomment `imagePullSecrets` in `test/mock-hyperfleet-api/deployment.yaml` and redeploy.
