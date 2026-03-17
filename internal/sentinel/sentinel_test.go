@@ -177,8 +177,8 @@ func TestTrigger_Success(t *testing.T) {
 
 	// Verify CloudEvent properties
 	event := mockPublisher.publishedEvents[0]
-	if event.Type() != "com.redhat.hyperfleet.Cluster.reconcile" {
-		t.Errorf("Expected event type 'com.redhat.hyperfleet.Cluster.reconcile', got '%s'", event.Type())
+	if event.Type() != "com.redhat.hyperfleet.cluster.reconcile" {
+		t.Errorf("Expected event type 'com.redhat.hyperfleet.cluster.reconcile', got '%s'", event.Type())
 	}
 	if event.Source() != "hyperfleet-sentinel" {
 		t.Errorf("Expected source 'hyperfleet-sentinel', got '%s'", event.Source())
