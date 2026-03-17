@@ -36,6 +36,8 @@ This guide enables developers to run Sentinel both locally (for development) and
 - Access to a message broker (RabbitMQ recommended for local development)
 - HyperFleet API accessible (local or remote instance)
 
+> **Tip:** If you want to simulate the Hyperfleet API responses, use the [mock HyperFleet API](../test/mock-hyperfleet-api/) to serve a configurable number of resources.
+
 ### 1. Setting Up a Message Broker
 
 #### Option A: RabbitMQ via Podman (Recommended)

@@ -67,6 +67,7 @@ The project uses a hybrid testing approach:
 
 - **Unit tests**: Fast, isolated tests using mocks
 - **Integration tests**: End-to-end tests with real message brokers via testcontainers
+- For simulating HyperFleet API load, see [test/mock-hyperfleet-api](test/mock-hyperfleet-api/).
 
 ```bash
 # Run only unit tests (fast)
