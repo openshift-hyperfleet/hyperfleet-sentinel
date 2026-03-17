@@ -9,6 +9,11 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
+const (
+	testClusterID    = "cls-abc"
+	testResourceKind = "Cluster"
+)
+
 // ============================================================================
 // ParseValueDef Tests
 // ============================================================================
@@ -108,8 +113,8 @@ func TestNewBuilder_NilValueReturnsError(t *testing.T) {
 
 func makeTestResource() *client.Resource {
 	return &client.Resource{
-		ID:         "cls-abc",
-		Kind:       "Cluster",
+		ID:         testClusterID,
+		Kind:       testResourceKind,
 		Href:       "/api/v1/clusters/cls-abc",
 		Generation: 3,
 		Status: client.ResourceStatus{
@@ -133,7 +138,7 @@ func makeTestNodePoolResource() *client.Resource {
 		OwnerReferences: &client.OwnerReference{
 			ID:   "cluster-123",
 			Href: "/api/v1/clusters/cluster-123",
-			Kind: "Cluster",
+			Kind: testResourceKind,
 		},
 		CreatedTime: time.Now(),
 		UpdatedTime: time.Now(),
@@ -153,11 +158,11 @@ func TestBuildPayload_FlatFields(t *testing.T) {
 	resource := makeTestResource()
 	payload := b.BuildPayload(context.Background(), resource, "")
 
-	if payload["id"] != "cls-abc" {
-		t.Errorf("expected id 'cls-abc', got %v", payload["id"])
+	if payload["id"] != testClusterID {
+		t.Errorf("expected id %q, got %v", testClusterID, payload["id"])
 	}
-	if payload["kind"] != "Cluster" {
-		t.Errorf("expected kind 'Cluster', got %v", payload["kind"])
+	if payload["kind"] != testResourceKind {
+		t.Errorf("expected kind %q, got %v", testResourceKind, payload["kind"])
 	}
 }
 
@@ -179,8 +184,8 @@ func TestBuildPayload_NestedObject(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 'meta' to be a map, got %T", payload["meta"])
 	}
-	if nested["id"] != "cls-abc" {
-		t.Errorf("expected nested id 'cls-abc', got %v", nested["id"])
+	if nested["id"] != testClusterID {
+		t.Errorf("expected nested id %q, got %v", testClusterID, nested["id"])
 	}
 }
 
@@ -215,8 +220,8 @@ func TestBuildPayload_MissingFieldOmitted(t *testing.T) {
 	if _, exists := payload["missing"]; exists {
 		t.Errorf("expected absent 'missing' key (nil value omitted), but found it: %v", payload["missing"])
 	}
-	if payload["id"] != "cls-abc" {
-		t.Errorf("expected id 'cls-abc', got %v", payload["id"])
+	if payload["id"] != testClusterID {
+		t.Errorf("expected id %q, got %v", testClusterID, payload["id"])
 	}
 }
 
@@ -252,8 +257,8 @@ func TestBuildPayload_MixedTypes(t *testing.T) {
 
 	payload := b.BuildPayload(context.Background(), makeTestResource(), "")
 
-	if payload["id"] != "cls-abc" {
-		t.Errorf("expected id 'cls-abc', got %v", payload["id"])
+	if payload["id"] != testClusterID {
+		t.Errorf("expected id %q, got %v", testClusterID, payload["id"])
 	}
 	if payload["origin"] != "sentinel" {
 		t.Errorf("expected origin 'sentinel', got %v", payload["origin"])
@@ -265,8 +270,8 @@ func TestBuildPayload_MixedTypes(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected 'nested' to be a map, got %T", payload["nested"])
 	}
-	if nested["kind"] != "Cluster" {
-		t.Errorf("expected nested kind 'Cluster', got %v", nested["kind"])
+	if nested["kind"] != testResourceKind {
+		t.Errorf("expected nested kind %q, got %v", testResourceKind, nested["kind"])
 	}
 }
 
@@ -285,8 +290,8 @@ func TestBuildPayload_ReasonVariable(t *testing.T) {
 	if payload["reason"] != "max_age_exceeded" {
 		t.Errorf("expected reason 'max_age_exceeded', got %v", payload["reason"])
 	}
-	if payload["id"] != "cls-abc" {
-		t.Errorf("expected id 'cls-abc', got %v", payload["id"])
+	if payload["id"] != testClusterID {
+		t.Errorf("expected id %q, got %v", testClusterID, payload["id"])
 	}
 }
 
@@ -313,8 +318,8 @@ func TestBuildPayload_NodePool_OwnerReferences(t *testing.T) {
 	if payload["cluster_id"] != "cluster-123" {
 		t.Errorf("expected cluster_id 'cluster-123', got %v", payload["cluster_id"])
 	}
-	if payload["cluster_kind"] != "Cluster" {
-		t.Errorf("expected cluster_kind 'Cluster', got %v", payload["cluster_kind"])
+	if payload["cluster_kind"] != testResourceKind {
+		t.Errorf("expected cluster_kind %q, got %v", testResourceKind, payload["cluster_kind"])
 	}
 }
 
@@ -340,7 +345,7 @@ func TestBuildPayload_NestedObjectOmittedWhenAllChildrenMissing(t *testing.T) {
 	if _, ok := payload["owner_references"]; ok {
 		t.Errorf("expected 'owner_references' to be omitted when no parent exists, got %v", payload["owner_references"])
 	}
-	if payload["id"] != "cls-abc" {
-		t.Errorf("expected id 'cls-abc', got %v", payload["id"])
+	if payload["id"] != testClusterID {
+		t.Errorf("expected id %q, got %v", testClusterID, payload["id"])
 	}
 }

@@ -31,10 +31,8 @@ func NewDecisionEngine(maxAgeNotReady, maxAgeReady time.Duration) *DecisionEngin
 
 // Decision represents the result of evaluating a resource
 type Decision struct {
-	// ShouldPublish indicates whether an event should be published for the resource
-	ShouldPublish bool
-	// Reason provides a human-readable explanation for the decision
-	Reason string
+	Reason        string // Human-readable explanation for the decision
+	ShouldPublish bool   // Indicates whether an event should be published for the resource
 }
 
 // Evaluate determines if an event should be published for the resource.

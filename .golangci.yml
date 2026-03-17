@@ -1,81 +1,103 @@
 # HyperFleet Sentinel - golangci-lint configuration
-# Follows HyperFleet architecture testing standards
+# Aligned with: https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/golangci.yml
 
-# This file contains only configs which differ from defaults.
-# All possible options can be found at https://golangci-lint.run/usage/configuration
-
-version: 2
+version: "2"
 
 run:
   timeout: 5m
   tests: true
-  go: '1.25'
-
-linters-settings:
-  errcheck:
-    check-type-assertions: true
-    check-blank: true
-
-  govet:
-    enable-all: true
-
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-
-  misspell:
-    locale: US
-
-  lll:
-    line-length: 120
-
-  unused:
-    check-exported: false
-
-  unparam:
-    check-exported: false
+  modules-download-mode: readonly
 
 linters:
   enable:
-    - errcheck       # Check for unchecked errors
-    - govet          # Vet examines Go source code
-    - ineffassign    # Detect ineffectual assignments
-    - staticcheck    # Go static analysis
-    - unused         # Check for unused code
-    - misspell       # Check for misspelled words
-    - unconvert      # Remove unnecessary type conversions
-    - unparam        # Find unused function parameters
-    - gosec          # Security issues
+    # Code Quality
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - unconvert
+    - unparam
+    - goconst
+    - exhaustive
+
+    # Code Style
+    - misspell
+    - lll
+    - revive
+    - gocritic
+
+    # Security
+    - gosec
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+    govet:
+      enable-all: true
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    misspell:
+      locale: US
+    lll:
+      line-length: 120
+    revive:
+      rules:
+        - name: exported
+          severity: warning
+          disabled: true
+        - name: unexported-return
+          severity: warning
+          disabled: false
+        - name: var-naming
+          severity: warning
+          disabled: false
+    unparam:
+      check-exported: false
+    exhaustive:
+      default-signifies-exhaustive: true
+  exclusions:
+    generated: lax
+    rules:
+      # Relaxed rules for test files
+      - linters:
+          - gosec
+          - errcheck
+          - unparam
+        path: _test\.go
+      # Exclude generated code (backup pattern if exclusion paths don't catch all)
+      - linters:
+          - all
+        path: pkg/api/openapi/
+    # Add repository-specific generated code directories here
+    paths:
+      - pkg/api/openapi
+      - data/generated
+      - third_party(/|$)
+      - builtin(/|$)
+      - examples(/|$)
 
 issues:
-  exclude-dirs:
-    - pkg/api/openapi  # Generated code
-
-  exclude-rules:
-    # Exclude some linters from running on tests files
-    - path: _test\.go
-      linters:
-        - gosec       # Security checks less critical in tests
-        - errcheck    # Error checking less critical in tests
-        - unparam     # Unused params acceptable in test helpers
-
-    # Exclude generated code
-    - path: pkg/api/openapi/
-      linters:
-        - all
-
-  # Maximum issues count per one linter
   max-issues-per-linter: 0
-
-  # Maximum count of issues with the same text
   max-same-issues: 0
-
-  # Show only new issues
   new: false
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - third_party(/|$)
+      - builtin(/|$)
+      - examples(/|$)
 
 output:
   formats:
-    colored-line-number:
+    text:
       path: stdout
-  print-issued-lines: true
-  print-linter-name: true

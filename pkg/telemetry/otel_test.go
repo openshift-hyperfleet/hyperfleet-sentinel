@@ -49,9 +49,9 @@ func TestInitTraceProvider_OTLPExporter(t *testing.T) {
 		t.Fatalf("Failed to set OTEL_EXPORTER_OTLP_ENDPOINT: %v", err)
 	}
 	defer func() {
-		err := os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-		if err != nil {
-			t.Errorf("Failed to unset OTEL_EXPORTER_OTLP_ENDPOINT: %v", err)
+		unsetErr := os.Unsetenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+		if unsetErr != nil {
+			t.Errorf("Failed to unset OTEL_EXPORTER_OTLP_ENDPOINT: %v", unsetErr)
 		}
 	}()
 

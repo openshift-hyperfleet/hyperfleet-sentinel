@@ -22,15 +22,14 @@ import (
 
 // Sentinel polls the HyperFleet API and triggers reconciliation events
 type Sentinel struct {
-	config         *config.SentinelConfig
-	client         *client.HyperFleetClient
-	decisionEngine *engine.DecisionEngine
-	publisher      broker.Publisher
-	logger         logger.HyperFleetLogger
-
-	mu                 sync.RWMutex
 	lastSuccessfulPoll time.Time
+	publisher          broker.Publisher
+	logger             logger.HyperFleetLogger
+	config             *config.SentinelConfig
+	client             *client.HyperFleetClient
+	decisionEngine     *engine.DecisionEngine
 	payloadBuilder     *payload.Builder
+	mu                 sync.RWMutex
 }
 
 // NewSentinel creates a new sentinel
@@ -233,7 +232,11 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 
 // buildEventData builds the CloudEvent data payload for a resource using the
 // configured payload builder.
-func (s *Sentinel) buildEventData(ctx context.Context, resource *client.Resource, decision engine.Decision) map[string]interface{} {
+func (s *Sentinel) buildEventData(
+	ctx context.Context,
+	resource *client.Resource,
+	decision engine.Decision,
+) map[string]interface{} {
 	if s.payloadBuilder == nil {
 		s.logger.Errorf(ctx, "payload builder not initialized for resource_id=%s", resource.ID)
 		return map[string]interface{}{}

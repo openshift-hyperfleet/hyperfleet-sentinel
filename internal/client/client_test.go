@@ -15,6 +15,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
+const testClustersAPIPath = "/api/hyperfleet/v1/clusters"
+
 // createMockCluster creates a mock cluster response with all required fields
 func createMockCluster(id string) map[string]interface{} {
 	return map[string]interface{}{
@@ -70,7 +72,7 @@ func TestFetchResources_Success(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("Expected GET request, got %s", r.Method)
 		}
-		if r.URL.Path != "/api/hyperfleet/v1/clusters" {
+		if r.URL.Path != testClustersAPIPath {
 			t.Errorf("Expected path /api/hyperfleet/v1/clusters, got %s", r.URL.Path)
 		}
 
@@ -436,22 +438,22 @@ func TestFetchResources_NilStatus(t *testing.T) {
 // TestIsHTTPStatusRetriable tests the retry logic for different HTTP status codes
 func TestIsHTTPStatusRetriable(t *testing.T) {
 	tests := []struct {
+		name       string
 		statusCode int
 		retriable  bool
-		name       string
 	}{
-		{200, false, "200 OK - not retriable"},
-		{201, false, "201 Created - not retriable"},
-		{400, false, "400 Bad Request - not retriable"},
-		{401, false, "401 Unauthorized - not retriable"},
-		{403, false, "403 Forbidden - not retriable"},
-		{404, false, "404 Not Found - not retriable"},
-		{408, true, "408 Request Timeout - retriable"},
-		{429, true, "429 Too Many Requests - retriable"},
-		{500, true, "500 Internal Server Error - retriable"},
-		{502, true, "502 Bad Gateway - retriable"},
-		{503, true, "503 Service Unavailable - retriable"},
-		{504, true, "504 Gateway Timeout - retriable"},
+		{name: "200 OK - not retriable", statusCode: 200, retriable: false},
+		{name: "201 Created - not retriable", statusCode: 201, retriable: false},
+		{name: "400 Bad Request - not retriable", statusCode: 400, retriable: false},
+		{name: "401 Unauthorized - not retriable", statusCode: 401, retriable: false},
+		{name: "403 Forbidden - not retriable", statusCode: 403, retriable: false},
+		{name: "404 Not Found - not retriable", statusCode: 404, retriable: false},
+		{name: "408 Request Timeout - retriable", statusCode: 408, retriable: true},
+		{name: "429 Too Many Requests - retriable", statusCode: 429, retriable: true},
+		{name: "500 Internal Server Error - retriable", statusCode: 500, retriable: true},
+		{name: "502 Bad Gateway - retriable", statusCode: 502, retriable: true},
+		{name: "503 Service Unavailable - retriable", statusCode: 503, retriable: true},
+		{name: "504 Gateway Timeout - retriable", statusCode: 504, retriable: true},
 	}
 
 	for _, tt := range tests {
@@ -672,7 +674,7 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 func TestVerifyConnectivity_Success(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Verify correct endpoint called
-		if r.URL.Path != "/api/hyperfleet/v1/clusters" {
+		if r.URL.Path != testClustersAPIPath {
 			t.Errorf("Expected path /api/hyperfleet/v1/clusters, got %s", r.URL.Path)
 		}
 		if r.Method != http.MethodGet {
@@ -703,8 +705,8 @@ func TestVerifyConnectivity_NonOKStatus(t *testing.T) {
 	ctx := context.Background()
 	testCases := []struct {
 		name       string
-		statusCode int
 		response   string
+		statusCode int
 	}{
 		{
 			name:       "ServiceUnavailable",
@@ -781,7 +783,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("Expected GET request, got %s", r.Method)
 		}
-		if r.URL.Path != "/api/hyperfleet/v1/clusters" {
+		if r.URL.Path != testClustersAPIPath {
 			t.Errorf("Expected path /api/hyperfleet/v1/clusters, got %s", r.URL.Path)
 		}
 
@@ -859,7 +861,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation(t *testing.T) {
 				foundMethodAttr = true
 			}
 		case "url.full", "http.url": // Different versions of OTel use different names
-			if strings.Contains(attr.Value.AsString(), "/api/hyperfleet/v1/clusters") {
+			if strings.Contains(attr.Value.AsString(), testClustersAPIPath) {
 				foundURLAttr = true
 			}
 		}
