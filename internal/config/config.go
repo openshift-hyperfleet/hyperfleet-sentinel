@@ -11,6 +11,10 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	defaultMessagingSystem = "gcp_pubsub"
+)
+
 // LabelSelector represents a label key-value pair for resource filtering
 type LabelSelector struct {
 	Label string `mapstructure:"label"`
@@ -22,14 +26,15 @@ type LabelSelectorList []LabelSelector
 
 // SentinelConfig represents the Sentinel configuration
 type SentinelConfig struct {
+	HyperFleetAPI    *HyperFleetAPIConfig   `mapstructure:"hyperfleet_api"`
+	MessageData      map[string]interface{} `mapstructure:"message_data"`
 	ResourceType     string                 `mapstructure:"resource_type"`
+	Topic            string                 `mapstructure:"topic"`
+	MessagingSystem  string                 `mapstructure:"messaging_system"`
+	ResourceSelector LabelSelectorList      `mapstructure:"resource_selector"`
 	PollInterval     time.Duration          `mapstructure:"poll_interval"`
 	MaxAgeNotReady   time.Duration          `mapstructure:"max_age_not_ready"`
 	MaxAgeReady      time.Duration          `mapstructure:"max_age_ready"`
-	ResourceSelector LabelSelectorList      `mapstructure:"resource_selector"`
-	HyperFleetAPI    *HyperFleetAPIConfig   `mapstructure:"hyperfleet_api"`
-	MessageData      map[string]interface{} `mapstructure:"message_data"`
-	Topic            string                 `mapstructure:"topic"`
 }
 
 // HyperFleetAPIConfig defines the HyperFleet API client configuration
@@ -65,6 +70,7 @@ func NewSentinelConfig() *SentinelConfig {
 			// Endpoint is required and must be set in config file
 			Timeout: 5 * time.Second,
 		},
+		MessagingSystem: defaultMessagingSystem,
 	}
 }
 
@@ -106,6 +112,13 @@ func LoadConfig(configFile string) (*SentinelConfig, error) {
 	// Environment variable takes precedence over config file (including empty value to clear)
 	if topic, ok := os.LookupEnv("BROKER_TOPIC"); ok {
 		cfg.Topic = topic
+	}
+
+	if messagingSystem, ok := os.LookupEnv("MESSAGING_SYSTEM"); ok {
+		messagingSystem = strings.TrimSpace(messagingSystem)
+		if messagingSystem != "" {
+			cfg.MessagingSystem = messagingSystem
+		}
 	}
 
 	// Validate configuration
@@ -166,10 +179,17 @@ func validateMessageDataLeaves(data map[string]interface{}, path string) error {
 		fullKey := path + "." + k
 		switch val := v.(type) {
 		case nil:
-			return fmt.Errorf("%s: nil value is not allowed; every leaf must be a non-empty CEL expression string (was the field left blank in the config?)", fullKey)
+			return fmt.Errorf(
+				"%s: nil value is not allowed; every leaf must be a non-empty CEL expression string "+
+					"(was the field left blank in the config?)",
+				fullKey,
+			)
 		case string:
 			if val == "" {
-				return fmt.Errorf("%s: empty CEL expression is not allowed; every leaf must be a non-empty CEL expression string", fullKey)
+				return fmt.Errorf(
+					"%s: empty CEL expression is not allowed; every leaf must be a non-empty CEL expression string",
+					fullKey,
+				)
 			}
 		case map[string]interface{}:
 			if err := validateMessageDataLeaves(val, fullKey); err != nil {

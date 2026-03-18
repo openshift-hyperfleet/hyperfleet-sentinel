@@ -8,6 +8,11 @@ import (
 	"time"
 )
 
+const (
+	testResourceType = "clusters"
+	testAPIEndpoint  = "http://api.example.com"
+)
+
 // Helper function to create a temporary config file for testing
 func createTempConfigFile(t *testing.T, content string) string {
 	t.Helper()
@@ -33,8 +38,8 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 	}
 
 	// Verify resource type
-	if cfg.ResourceType != "clusters" {
-		t.Errorf("Expected resource_type 'clusters', got '%s'", cfg.ResourceType)
+	if cfg.ResourceType != testResourceType {
+		t.Errorf("Expected resource_type '%s', got '%s'", testResourceType, cfg.ResourceType)
 	}
 
 	// Verify durations
@@ -167,7 +172,7 @@ func TestNewSentinelConfig_Defaults(t *testing.T) {
 func TestValidate_MissingResourceType(t *testing.T) {
 	cfg := NewSentinelConfig()
 	cfg.ResourceType = ""
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.HyperFleetAPI.Endpoint = testAPIEndpoint
 
 	err := cfg.Validate()
 	if err == nil {
@@ -180,7 +185,7 @@ func TestValidate_MissingResourceType(t *testing.T) {
 
 func TestValidate_MissingEndpoint(t *testing.T) {
 	cfg := NewSentinelConfig()
-	cfg.ResourceType = "clusters" // Set valid resource_type to test endpoint validation
+	cfg.ResourceType = testResourceType // Set valid resource_type to test endpoint validation
 	cfg.HyperFleetAPI.Endpoint = ""
 
 	err := cfg.Validate()
@@ -199,7 +204,7 @@ func TestValidate_MissingEndpoint(t *testing.T) {
 func TestValidate_InvalidResourceType(t *testing.T) {
 	cfg := NewSentinelConfig()
 	cfg.ResourceType = "invalid-type"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.HyperFleetAPI.Endpoint = testAPIEndpoint
 
 	err := cfg.Validate()
 	if err == nil {
@@ -213,7 +218,7 @@ func TestValidate_InvalidResourceTypes(t *testing.T) {
 		resourceType string
 		shouldFail   bool
 	}{
-		{"valid clusters", "clusters", false},
+		{"valid clusters", testResourceType, false},
 		{"valid nodepools", "nodepools", false},
 		{"invalid manifests", "manifests", true},
 		{"invalid workloads", "workloads", true},
@@ -226,7 +231,7 @@ func TestValidate_InvalidResourceTypes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := NewSentinelConfig()
 			cfg.ResourceType = tt.resourceType
-			cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+			cfg.HyperFleetAPI.Endpoint = testAPIEndpoint
 			cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 
 			err := cfg.Validate()
@@ -242,8 +247,8 @@ func TestValidate_InvalidResourceTypes(t *testing.T) {
 
 func TestValidate_NegativeDurations(t *testing.T) {
 	tests := []struct {
-		name     string
 		modifier func(*SentinelConfig)
+		name     string
 	}{
 		{
 			name: "negative poll_interval",
@@ -274,7 +279,7 @@ func TestValidate_NegativeDurations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := NewSentinelConfig()
-			cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+			cfg.HyperFleetAPI.Endpoint = testAPIEndpoint
 			tt.modifier(cfg)
 
 			err := cfg.Validate()
@@ -338,8 +343,8 @@ func TestLabelSelectorList_ToMap_EmptyLabel(t *testing.T) {
 
 func TestValidate_ValidMessageDataFlat(t *testing.T) {
 	cfg := NewSentinelConfig()
-	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.ResourceType = testResourceType
+	cfg.HyperFleetAPI.Endpoint = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{
 		"id":     "resource.id",
 		"kind":   "resource.kind",
@@ -353,8 +358,8 @@ func TestValidate_ValidMessageDataFlat(t *testing.T) {
 
 func TestValidate_ValidMessageDataNested(t *testing.T) {
 	cfg := NewSentinelConfig()
-	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.ResourceType = testResourceType
+	cfg.HyperFleetAPI.Endpoint = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{
 		"origin": `"sentinel"`,
 		"ref": map[string]interface{}{
@@ -370,8 +375,8 @@ func TestValidate_ValidMessageDataNested(t *testing.T) {
 
 func TestValidate_NilMessageData(t *testing.T) {
 	cfg := NewSentinelConfig()
-	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.ResourceType = testResourceType
+	cfg.HyperFleetAPI.Endpoint = testAPIEndpoint
 	// MessageData is nil by default — message_data is required so this must fail
 
 	if err := cfg.Validate(); err == nil {
@@ -382,8 +387,8 @@ func TestValidate_NilMessageData(t *testing.T) {
 func TestValidate_NilLeafInMessageData(t *testing.T) {
 	// Mirrors YAML: `id:` — viper may drop the key, but if it doesn't the nil leaf must be rejected.
 	cfg := NewSentinelConfig()
-	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.ResourceType = testResourceType
+	cfg.HyperFleetAPI.Endpoint = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{
 		"id":   nil,
 		"kind": "resource.kind",
@@ -397,8 +402,8 @@ func TestValidate_NilLeafInMessageData(t *testing.T) {
 func TestValidate_EmptyStringLeafInMessageData(t *testing.T) {
 	// Mirrors YAML: `id: ""` — an explicitly-set empty CEL expression.
 	cfg := NewSentinelConfig()
-	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.ResourceType = testResourceType
+	cfg.HyperFleetAPI.Endpoint = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{
 		"id":   "",
 		"kind": "resource.kind",
@@ -412,8 +417,8 @@ func TestValidate_EmptyStringLeafInMessageData(t *testing.T) {
 func TestValidate_NilLeafInNestedMessageData(t *testing.T) {
 	// Ensures the recursive check reaches nested objects.
 	cfg := NewSentinelConfig()
-	cfg.ResourceType = "clusters"
-	cfg.HyperFleetAPI.Endpoint = "http://api.example.com"
+	cfg.ResourceType = testResourceType
+	cfg.HyperFleetAPI.Endpoint = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{
 		"ref": map[string]interface{}{
 			"id":   nil,

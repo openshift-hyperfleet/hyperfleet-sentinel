@@ -17,11 +17,25 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+)
+
+const (
+	testTopic        = "test-topic"
+	testResourceKind = "Cluster"
 )
 
 // createMockCluster creates a mock cluster response matching the new API spec.
 // Ready status is determined by the ready bool parameter.
-func createMockCluster(id string, generation int, observedGeneration int, ready bool, lastUpdated time.Time) map[string]interface{} {
+func createMockCluster(
+	id string,
+	generation int,
+	observedGeneration int,
+	ready bool,
+	lastUpdated time.Time,
+) map[string]interface{} {
 	// Map ready bool to condition status
 	readyStatus := "False"
 	if ready {
@@ -40,7 +54,7 @@ func createMockCluster(id string, generation int, observedGeneration int, ready 
 	return map[string]interface{}{
 		"id":           id,
 		"href":         "/api/hyperfleet/v1/clusters/" + id,
-		"kind":         "Cluster",
+		"kind":         testResourceKind,
 		"name":         id,
 		"generation":   generation,
 		"created_time": "2025-01-01T09:00:00Z",
@@ -77,9 +91,9 @@ func createMockClusterList(clusters []map[string]interface{}) map[string]interfa
 
 // MockPublisher implements broker.Publisher for testing
 type MockPublisher struct {
+	publishError    error
 	publishedEvents []*cloudevents.Event
 	publishedTopics []string
-	publishError    error
 }
 
 func (m *MockPublisher) Publish(ctx context.Context, topic string, event *cloudevents.Event) error {
@@ -139,7 +153,7 @@ func TestTrigger_Success(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		Topic:          testTopic,
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -168,8 +182,8 @@ func TestTrigger_Success(t *testing.T) {
 		t.Errorf("Expected 1 topic, got %d", len(mockPublisher.publishedTopics))
 	}
 
-	if mockPublisher.publishedTopics[0] != "test-topic" {
-		t.Errorf("Expected topic 'test-topic', got '%s'", mockPublisher.publishedTopics[0])
+	if mockPublisher.publishedTopics[0] != testTopic {
+		t.Errorf("Expected topic '%s', got '%s'", testTopic, mockPublisher.publishedTopics[0])
 	}
 
 	// Verify CloudEvent properties
@@ -213,7 +227,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		Topic:          testTopic,
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -264,7 +278,7 @@ func TestTrigger_FetchError(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		Topic:          testTopic,
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -320,7 +334,7 @@ func TestTrigger_PublishError(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		Topic:          testTopic,
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -350,10 +364,14 @@ func TestTrigger_MixedResources(t *testing.T) {
 	// Create mock server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clusters := []map[string]interface{}{
-			createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)), // Should publish (max age exceeded)
-			createMockCluster("cluster-2", 1, 1, true, now.Add(-5*time.Minute)),  // Should skip (within max age)
-			createMockCluster("cluster-3", 3, 3, false, now.Add(-1*time.Minute)), // Should publish (not ready max age exceeded: 1min > 10s)
-			createMockCluster("cluster-4", 5, 4, true, now.Add(-5*time.Minute)),  // Should publish (generation changed)
+			// Should publish (max age exceeded)
+			createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)),
+			// Should skip (within max age)
+			createMockCluster("cluster-2", 1, 1, true, now.Add(-5*time.Minute)),
+			// Should publish (not ready max age exceeded: 1min > 10s)
+			createMockCluster("cluster-3", 3, 3, false, now.Add(-1*time.Minute)),
+			// Should publish (generation changed)
+			createMockCluster("cluster-4", 5, 4, true, now.Add(-5*time.Minute)),
 		}
 		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")
@@ -375,7 +393,7 @@ func TestTrigger_MixedResources(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		Topic:          testTopic,
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -406,8 +424,8 @@ func TestTrigger_MixedResources(t *testing.T) {
 
 	// Verify topics
 	for _, topic := range mockPublisher.publishedTopics {
-		if topic != "test-topic" {
-			t.Errorf("Expected topic 'test-topic', got '%s'", topic)
+		if topic != testTopic {
+			t.Errorf("Expected topic '%s', got '%s'", testTopic, topic)
 		}
 	}
 }
@@ -437,7 +455,7 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		Topic:          testTopic,
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -467,7 +485,7 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 	if data["id"] != "cluster-xyz" {
 		t.Errorf("Expected id 'cluster-xyz', got %v", data["id"])
 	}
-	if data["kind"] != "Cluster" {
+	if data["kind"] != testResourceKind {
 		t.Errorf("Expected kind 'Cluster', got %v", data["kind"])
 	}
 	if data["origin"] != "sentinel" {
@@ -503,7 +521,7 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 
 	cfg := &config.SentinelConfig{
 		ResourceType:   "clusters",
-		Topic:          "test-topic",
+		Topic:          testTopic,
 		MaxAgeNotReady: 10 * time.Second,
 		MaxAgeReady:    30 * time.Minute,
 		MessageData: map[string]interface{}{
@@ -539,7 +557,7 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 	if nested["id"] != "cluster-nest" {
 		t.Errorf("Expected nested id 'cluster-nest', got %v", nested["id"])
 	}
-	if nested["kind"] != "Cluster" {
+	if nested["kind"] != testResourceKind {
 		t.Errorf("Expected nested kind 'Cluster', got %v", nested["kind"])
 	}
 }
@@ -563,7 +581,7 @@ func TestBuildEventData_WithBuilder(t *testing.T) {
 
 	resource := &client.Resource{
 		ID:         "cls-direct",
-		Kind:       "Cluster",
+		Kind:       testResourceKind,
 		Href:       "/api/v1/clusters/cls-direct",
 		Generation: 1,
 	}
@@ -574,7 +592,7 @@ func TestBuildEventData_WithBuilder(t *testing.T) {
 	if data["id"] != "cls-direct" {
 		t.Errorf("Expected id 'cls-direct', got %v", data["id"])
 	}
-	if data["kind"] != "Cluster" {
+	if data["kind"] != testResourceKind {
 		t.Errorf("Expected kind 'Cluster', got %v", data["kind"])
 	}
 }
@@ -595,7 +613,7 @@ func TestTrigger_ContextPropagationToBroker(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = logger.WithDecisionReason(ctx, "max_age_exceeded")
-	ctx = logger.WithTopic(ctx, "test-topic")
+	ctx = logger.WithTopic(ctx, testTopic)
 	ctx = logger.WithSubset(ctx, "clusters")
 	ctx = logger.WithTraceID(ctx, "trace-123")
 	ctx = logger.WithSpanID(ctx, "span-456")
@@ -606,7 +624,7 @@ func TestTrigger_ContextPropagationToBroker(t *testing.T) {
 	event.SetSource("hyperfleet-sentinel")
 	event.SetID("test-id")
 
-	err := mockPublisherWithLogger.Publish(ctx, "test-topic", &event)
+	err := mockPublisherWithLogger.Publish(ctx, testTopic, &event)
 	if err != nil {
 		t.Fatalf("publish failed: %v", err)
 	}
@@ -622,7 +640,7 @@ func TestTrigger_ContextPropagationToBroker(t *testing.T) {
 		t.Errorf("decision_reason not propagated: got %v", reason)
 	}
 
-	if topic, ok := brokerCtx.Value(logger.TopicCtxKey).(string); !ok || topic != "test-topic" {
+	if topic, ok := brokerCtx.Value(logger.TopicCtxKey).(string); !ok || topic != testTopic {
 		t.Errorf("topic not propagated: got %v", topic)
 	}
 
@@ -633,4 +651,147 @@ func TestTrigger_ContextPropagationToBroker(t *testing.T) {
 	if spanID, ok := brokerCtx.Value(logger.SpanIDCtxKey).(string); !ok || spanID != "span-456" {
 		t.Errorf("span_id not propagated: got %v", spanID)
 	}
+}
+
+func TestTrigger_CreatesRequiredSpans(t *testing.T) {
+	ctx := context.Background()
+
+	// Setup in-memory trace exporter for span verification
+	exporter := tracetest.NewInMemoryExporter()
+	tp := trace.NewTracerProvider(
+		trace.WithSampler(trace.AlwaysSample()),
+		trace.WithBatcher(exporter),
+	)
+	previousProvider := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	defer func() {
+		if err := tp.Shutdown(ctx); err != nil {
+			t.Errorf("shutdown of tracer provider: %v", err)
+		}
+		otel.SetTracerProvider(previousProvider)
+	}()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Cluster exceeds max age (31 minutes ago) - should trigger publishing
+		cluster := createMockCluster("cluster-1", 2, 2, true, time.Now().Add(-31*time.Minute))
+		response := createMockClusterList([]map[string]interface{}{cluster})
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Logf("Error encoding response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	hyperfleetClient, err := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
+	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+
+	mockPublisher := &MockPublisher{}
+	log := logger.NewHyperFleetLogger()
+
+	// Create metrics with a test registry
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry, "test")
+
+	cfg := &config.SentinelConfig{
+		ResourceType:    "clusters",
+		Topic:           "hyperfleet-clusters",
+		MaxAgeNotReady:  10 * time.Second,
+		MaxAgeReady:     30 * time.Minute,
+		MessagingSystem: "rabbitmq",
+	}
+
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
+
+	// Execute trigger
+	err = s.trigger(ctx)
+	if err != nil {
+		t.Fatalf("trigger failed: %v", err)
+	}
+
+	// Force flush spans to exporter
+	err = tp.ForceFlush(ctx)
+	if err != nil {
+		t.Fatalf("force flush error: %v", err)
+	}
+
+	// Verify spans were created
+	spans := exporter.GetSpans()
+
+	// Build map of span names for easy checking
+	spanNames := make(map[string]bool)
+	for _, span := range spans {
+		spanNames[span.Name] = true
+	}
+
+	// Verify required spans exist
+	requiredSpans := []string{
+		"sentinel.poll",
+		"sentinel.evaluate",
+		"hyperfleet-clusters publish",
+	}
+
+	for _, requiredSpan := range requiredSpans {
+		if !spanNames[requiredSpan] {
+			t.Errorf("Required span '%s' not found. Found spans: %v", requiredSpan, getSpanNames(spans))
+		}
+	}
+
+	// Verify we got the expected number of spans
+	// Should have: 1 poll + 1 evaluate + 1 publish = 3 spans minimum
+	if len(spans) < 3 {
+		t.Errorf("Expected at least 3 spans, got %d. Spans: %v", len(spans), getSpanNames(spans))
+	}
+
+	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.system", cfg.MessagingSystem)
+	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.operation.type", "publish")
+	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.destination.name", cfg.Topic)
+
+	// Verify the CloudEvent was published (basic functional verification)
+	if len(mockPublisher.publishedEvents) != 1 {
+		t.Errorf("Expected 1 published event, got %d", len(mockPublisher.publishedEvents))
+	}
+
+	// Verify CloudEvent has traceparent extension
+	if len(mockPublisher.publishedEvents) > 0 {
+		event := mockPublisher.publishedEvents[0]
+		extensions := event.Extensions()
+		if traceparent, exists := extensions["traceparent"]; !exists {
+			t.Error("Expected CloudEvent to contain traceparent extension for trace propagation")
+		} else if traceparentStr, ok := traceparent.(string); !ok || len(traceparentStr) != 55 {
+			t.Errorf("Expected valid W3C traceparent format, got: %v", traceparent)
+		}
+	}
+}
+
+func validateSpanAttribute(t *testing.T, spans []tracetest.SpanStub, spanName, attrKey, expectedValue string) {
+	for _, span := range spans {
+		if span.Name == spanName {
+			for _, attr := range span.Attributes {
+				if string(attr.Key) == attrKey {
+					if attr.Value.AsString() != expectedValue {
+						t.Errorf("Span '%s': expected %s=%s, got %s", spanName, attrKey, expectedValue, attr.Value.AsString())
+					}
+					return
+				}
+			}
+			t.Errorf("Span '%s': attribute '%s' not found", spanName, attrKey)
+			return
+		}
+	}
+	t.Errorf("Span '%s' not found", spanName)
+}
+
+// Helper function for span name extraction
+func getSpanNames(spans []tracetest.SpanStub) []string {
+	names := make([]string, len(spans))
+	for i, span := range spans {
+		names[i] = span.Name
+	}
+	return names
 }

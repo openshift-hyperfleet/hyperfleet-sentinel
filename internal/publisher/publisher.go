@@ -19,7 +19,10 @@ func NewMockPublisher() *MockPublisher {
 
 // Publish logs the event instead of publishing
 func (p *MockPublisher) Publish(ctx context.Context, topic string, event *cloudevents.Event) error {
-	data, _ := json.MarshalIndent(event, "", "  ")
+	data, err := json.MarshalIndent(event, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal event: %w", err)
+	}
 	fmt.Printf("[MOCK PUBLISH] topic=%s event=%s\n", topic, string(data))
 	return nil
 }

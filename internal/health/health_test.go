@@ -14,6 +14,11 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
+const (
+	testContentType = "application/json"
+	testStatusError = "error"
+)
+
 func assertLogContains(t *testing.T, mock *logger.MockLoggerWithContext, substr string, ctx context.Context) {
 	t.Helper()
 	if len(*mock.CapturedLogs) == 0 {
@@ -68,11 +73,11 @@ func TestReadinessChecker_ConcurrentAccess(t *testing.T) {
 
 func TestHealthzHandler_InvalidParameters(t *testing.T) {
 	tests := []struct {
-		name         string
 		lastPollFn   func() time.Time
+		name         string
+		expectedBody string
 		threshold    time.Duration
 		expectedCode int
-		expectedBody string
 	}{
 		{
 			name:         "nil lastPollFn",
@@ -83,7 +88,7 @@ func TestHealthzHandler_InvalidParameters(t *testing.T) {
 		},
 		{
 			name:         "non-positive threshold",
-			lastPollFn:   func() time.Time { return time.Now() },
+			lastPollFn:   time.Now,
 			threshold:    0,
 			expectedCode: http.StatusInternalServerError,
 			expectedBody: "invalid health configuration",
@@ -117,10 +122,10 @@ func TestHealthzHandler_InvalidParameters(t *testing.T) {
 
 func TestHealthzHandler_PollStates(t *testing.T) {
 	tests := []struct {
-		name           string
 		lastPoll       time.Time
-		expectedCode   int
+		name           string
 		expectedStatus string
+		expectedCode   int
 		expectLog      bool
 	}{
 		{
@@ -162,8 +167,8 @@ func TestHealthzHandler_PollStates(t *testing.T) {
 				t.Errorf("Expected status %d, got %d", tt.expectedCode, w.Code)
 			}
 
-			if ct := w.Header().Get("Content-Type"); ct != "application/json" {
-				t.Errorf("Expected Content-Type application/json, got %s", ct)
+			if ct := w.Header().Get("Content-Type"); ct != testContentType {
+				t.Errorf("Expected Content-Type %s, got %s", testContentType, ct)
 			}
 
 			var resp healthResponse
@@ -206,8 +211,8 @@ func TestReadyzHandler_PreFirstPollNotReady(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
-	if resp.Status != "error" {
-		t.Errorf("Expected status 'error', got %s", resp.Status)
+	if resp.Status != testStatusError {
+		t.Errorf("Expected status %q, got %s", testStatusError, resp.Status)
 	}
 	got, ok := resp.Checks["sentinel_poll"]
 	if !ok {
@@ -235,16 +240,16 @@ func TestReadyzHandler_WhenNotReady(t *testing.T) {
 		t.Errorf("Expected status 503, got %d", w.Code)
 	}
 
-	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
-		t.Errorf("Expected Content-Type application/json, got %s", ct)
+	if ct := w.Header().Get("Content-Type"); ct != testContentType {
+		t.Errorf("Expected Content-Type %s, got %s", testContentType, ct)
 	}
 
 	var resp readyResponse
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
-	if resp.Status != "error" {
-		t.Errorf("Expected status 'error', got '%s'", resp.Status)
+	if resp.Status != testStatusError {
+		t.Errorf("Expected status %q, got '%s'", testStatusError, resp.Status)
 	}
 	if resp.Checks["broker"] != "unavailable" {
 		t.Errorf("Expected broker check 'unavailable', got '%s'", resp.Checks["broker"])
@@ -265,8 +270,8 @@ func TestReadyzHandler_WhenReady(t *testing.T) {
 		t.Errorf("Expected status 200, got %d", w.Code)
 	}
 
-	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
-		t.Errorf("Expected Content-Type application/json, got %s", ct)
+	if ct := w.Header().Get("Content-Type"); ct != testContentType {
+		t.Errorf("Expected Content-Type %s, got %s", testContentType, ct)
 	}
 
 	var resp readyResponse
@@ -325,8 +330,8 @@ func TestReadyzHandler_CheckFails(t *testing.T) {
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("Failed to decode response: %v", err)
 	}
-	if resp.Status != "error" {
-		t.Errorf("Expected status 'error', got '%s'", resp.Status)
+	if resp.Status != testStatusError {
+		t.Errorf("Expected status %q, got '%s'", testStatusError, resp.Status)
 	}
 	if resp.Checks["broker"] != "connection refused" {
 		t.Errorf("Expected broker check 'connection refused', got '%s'", resp.Checks["broker"])

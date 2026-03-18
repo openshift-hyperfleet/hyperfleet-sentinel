@@ -9,6 +9,14 @@ import (
 	"testing"
 )
 
+const (
+	testLevelDebug = "debug"
+	testLevelInfo  = "info"
+	testLevelWarn  = "warn"
+	testLevelError = "error"
+	testComponent  = "sentinel"
+)
+
 func TestParseLogLevel(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -135,14 +143,14 @@ func TestParseLogOutput_Invalid(t *testing.T) {
 
 func TestLogLevelString(t *testing.T) {
 	tests := []struct {
-		level    LogLevel
 		expected string
+		level    LogLevel
 	}{
-		{LevelDebug, "debug"},
-		{LevelInfo, "info"},
-		{LevelWarn, "warn"},
-		{LevelError, "error"},
-		{LogLevel(99), "unknown"},
+		{expected: "debug", level: LevelDebug},
+		{expected: "info", level: LevelInfo},
+		{expected: "warn", level: LevelWarn},
+		{expected: "error", level: LevelError},
+		{expected: "unknown", level: LogLevel(99)},
 	}
 
 	for _, tt := range tests {
@@ -156,12 +164,12 @@ func TestLogLevelString(t *testing.T) {
 
 func TestLogFormatString(t *testing.T) {
 	tests := []struct {
-		format   LogFormat
 		expected string
+		format   LogFormat
 	}{
-		{FormatText, "text"},
-		{FormatJSON, "json"},
-		{LogFormat(99), "text"}, // unknown defaults to text
+		{expected: "text", format: FormatText},
+		{expected: "json", format: FormatJSON},
+		{expected: "text", format: LogFormat(99)}, // unknown defaults to text
 	}
 
 	for _, tt := range tests {
@@ -176,29 +184,29 @@ func TestLogFormatString(t *testing.T) {
 func TestLoggerLevelFiltering(t *testing.T) {
 	tests := []struct {
 		name          string
-		configLevel   LogLevel
 		logLevel      string
+		configLevel   LogLevel
 		shouldContain bool
 	}{
-		{"debug message at debug level", LevelDebug, "debug", true},
-		{"info message at debug level", LevelDebug, "info", true},
-		{"warn message at debug level", LevelDebug, "warn", true},
-		{"error message at debug level", LevelDebug, "error", true},
+		{name: "debug message at debug level", configLevel: LevelDebug, logLevel: "debug", shouldContain: true},
+		{name: "info message at debug level", configLevel: LevelDebug, logLevel: "info", shouldContain: true},
+		{name: "warn message at debug level", configLevel: LevelDebug, logLevel: "warn", shouldContain: true},
+		{name: "error message at debug level", configLevel: LevelDebug, logLevel: "error", shouldContain: true},
 
-		{"debug message at info level", LevelInfo, "debug", false},
-		{"info message at info level", LevelInfo, "info", true},
-		{"warn message at info level", LevelInfo, "warn", true},
-		{"error message at info level", LevelInfo, "error", true},
+		{name: "debug message at info level", configLevel: LevelInfo, logLevel: "debug", shouldContain: false},
+		{name: "info message at info level", configLevel: LevelInfo, logLevel: "info", shouldContain: true},
+		{name: "warn message at info level", configLevel: LevelInfo, logLevel: "warn", shouldContain: true},
+		{name: "error message at info level", configLevel: LevelInfo, logLevel: "error", shouldContain: true},
 
-		{"debug message at warn level", LevelWarn, "debug", false},
-		{"info message at warn level", LevelWarn, "info", false},
-		{"warn message at warn level", LevelWarn, "warn", true},
-		{"error message at warn level", LevelWarn, "error", true},
+		{name: "debug message at warn level", configLevel: LevelWarn, logLevel: "debug", shouldContain: false},
+		{name: "info message at warn level", configLevel: LevelWarn, logLevel: "info", shouldContain: false},
+		{name: "warn message at warn level", configLevel: LevelWarn, logLevel: "warn", shouldContain: true},
+		{name: "error message at warn level", configLevel: LevelWarn, logLevel: "error", shouldContain: true},
 
-		{"debug message at error level", LevelError, "debug", false},
-		{"info message at error level", LevelError, "info", false},
-		{"warn message at error level", LevelError, "warn", false},
-		{"error message at error level", LevelError, "error", true},
+		{name: "debug message at error level", configLevel: LevelError, logLevel: "debug", shouldContain: false},
+		{name: "info message at error level", configLevel: LevelError, logLevel: "info", shouldContain: false},
+		{name: "warn message at error level", configLevel: LevelError, logLevel: "warn", shouldContain: false},
+		{name: "error message at error level", configLevel: LevelError, logLevel: "error", shouldContain: true},
 	}
 
 	for _, tt := range tests {
@@ -217,13 +225,13 @@ func TestLoggerLevelFiltering(t *testing.T) {
 			testMessage := "test message for " + tt.logLevel
 
 			switch tt.logLevel {
-			case "debug":
+			case testLevelDebug:
 				log.Debug(ctx, testMessage)
-			case "info":
+			case testLevelInfo:
 				log.Info(ctx, testMessage)
-			case "warn":
+			case testLevelWarn:
 				log.Warn(ctx, testMessage)
-			case "error":
+			case testLevelError:
 				log.Error(ctx, testMessage)
 			}
 
@@ -246,7 +254,7 @@ func TestLoggerTextFormat(t *testing.T) {
 		Level:     LevelInfo,
 		Format:    FormatText,
 		Output:    &buf,
-		Component: "sentinel",
+		Component: testComponent,
 		Version:   "v1.2.3",
 		Hostname:  "testhost",
 	}
@@ -261,7 +269,7 @@ func TestLoggerTextFormat(t *testing.T) {
 	if !strings.Contains(output, "INFO") {
 		t.Error("expected output to contain 'INFO'")
 	}
-	if !strings.Contains(output, "[sentinel]") {
+	if !strings.Contains(output, "["+testComponent+"]") {
 		t.Error("expected output to contain '[sentinel]'")
 	}
 	if !strings.Contains(output, "[v1.2.3]") {
@@ -285,7 +293,7 @@ func TestLoggerJSONFormat(t *testing.T) {
 		Level:     LevelInfo,
 		Format:    FormatJSON,
 		Output:    &buf,
-		Component: "sentinel",
+		Component: testComponent,
 		Version:   "v1.2.3",
 		Hostname:  "testhost",
 	}
@@ -303,10 +311,10 @@ func TestLoggerJSONFormat(t *testing.T) {
 	}
 
 	// Verify required fields
-	if entry.Level != "info" {
-		t.Errorf("expected level 'info', got %q", entry.Level)
+	if entry.Level != testLevelInfo {
+		t.Errorf("expected level %q, got %q", testLevelInfo, entry.Level)
 	}
-	if entry.Component != "sentinel" {
+	if entry.Component != testComponent {
 		t.Errorf("expected component 'sentinel', got %q", entry.Component)
 	}
 	if entry.Version != "v1.2.3" {
@@ -478,7 +486,7 @@ func TestLoggerSentinelFields(t *testing.T) {
 		Level:     LevelInfo,
 		Format:    FormatJSON,
 		Output:    &buf,
-		Component: "sentinel",
+		Component: testComponent,
 		Version:   "1.0.0",
 		Hostname:  "testhost",
 	}
@@ -506,7 +514,7 @@ func TestLoggerSentinelFields(t *testing.T) {
 		t.Errorf("expected subset 'clusters', got %q", entry.Subset)
 	}
 
-	if entry.Component != "sentinel" {
+	if entry.Component != testComponent {
 		t.Errorf("expected component 'sentinel', got %q", entry.Component)
 	}
 }
@@ -520,6 +528,7 @@ func TestLoggerCorrelationFields(t *testing.T) {
 		Component: "test",
 		Version:   "1.0.0",
 		Hostname:  "testhost",
+		OTel:      OTelConfig{Enabled: true},
 	}
 	log := NewHyperFleetLoggerWithConfig(cfg)
 
@@ -550,9 +559,10 @@ func TestLoggerSentinelFieldsTextFormat(t *testing.T) {
 		Level:     LevelInfo,
 		Format:    FormatText,
 		Output:    &buf,
-		Component: "sentinel",
+		Component: testComponent,
 		Version:   "1.0.0",
 		Hostname:  "testhost",
+		OTel:      OTelConfig{Enabled: true},
 	}
 	log := NewHyperFleetLoggerWithConfig(cfg)
 
@@ -591,7 +601,7 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Output != os.Stdout {
 		t.Error("expected default output to be stdout")
 	}
-	if cfg.Component != "sentinel" {
+	if cfg.Component != testComponent {
 		t.Errorf("expected default component to be 'sentinel', got %q", cfg.Component)
 	}
 	if cfg.Hostname == "" {

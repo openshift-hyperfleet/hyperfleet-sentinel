@@ -12,10 +12,10 @@ import (
 
 // ValueDef is the result of parsing a raw YAML node into a typed definition.
 type ValueDef struct {
-	Expression    string                 // CEL expression string (from any YAML string value)
-	ExpressionSet bool                   // true when the raw input contained an "expression" field (string type)
 	Literal       interface{}            // constant value (int, bool, nil)
 	Children      map[string]interface{} // nested sub-object (recurse)
+	Expression    string                 // CEL expression string (from any YAML string value)
+	ExpressionSet bool                   // true when the raw input contained an "expression" field (string type)
 }
 
 // ParseValueDef parses a raw YAML value into a ValueDef.
@@ -107,7 +107,11 @@ func compileNode(raw interface{}, env *cel.Env) (*compiledNode, error) {
 		}
 		return &compiledNode{children: children}, nil
 	case vd.ExpressionSet && vd.Expression == "":
-		return nil, fmt.Errorf("compileNode: ParseValueDef returned an empty expression (vd.Expression=%q); a compiledNode cannot be created from an empty CEL expression", vd.Expression)
+		return nil, fmt.Errorf(
+			"compileNode: ParseValueDef returned an empty expression (vd.Expression=%q); "+
+				"a compiledNode cannot be created from an empty CEL expression",
+			vd.Expression,
+		)
 	case vd.Expression != "":
 		ast, issues := env.Compile(vd.Expression)
 		if issues != nil && issues.Err() != nil {
@@ -194,7 +198,12 @@ func resourceToMap(r *client.Resource) map[string]interface{} {
 }
 
 // evalCompiledMap evaluates a compiled map against the resource and reason.
-func (b *Builder) evalCompiledMap(ctx context.Context, nodes map[string]*compiledNode, resourceMap map[string]interface{}, reason string) map[string]interface{} {
+func (b *Builder) evalCompiledMap(
+	ctx context.Context,
+	nodes map[string]*compiledNode,
+	resourceMap map[string]interface{},
+	reason string,
+) map[string]interface{} {
 	result := make(map[string]interface{})
 	for key, node := range nodes {
 		val := b.evalCompiledNode(ctx, node, resourceMap, reason)
@@ -207,7 +216,12 @@ func (b *Builder) evalCompiledMap(ctx context.Context, nodes map[string]*compile
 
 // evalCompiledNode evaluates a single compiled node.
 // Returns nil for missing or null values (fail-safe: misconfigured fields are omitted).
-func (b *Builder) evalCompiledNode(ctx context.Context, node *compiledNode, resourceMap map[string]interface{}, reason string) interface{} {
+func (b *Builder) evalCompiledNode(
+	ctx context.Context,
+	node *compiledNode,
+	resourceMap map[string]interface{},
+	reason string,
+) interface{} {
 	if node.children != nil {
 		nested := b.evalCompiledMap(ctx, node.children, resourceMap, reason)
 		if len(nested) == 0 {

@@ -267,8 +267,8 @@ func TestUpdateLastSuccessfulPollTimestampMetric(t *testing.T) {
 func TestGetResourceSelectorLabel(t *testing.T) {
 	tests := []struct {
 		name      string
-		selectors config.LabelSelectorList
 		expected  string
+		selectors config.LabelSelectorList
 	}{
 		{
 			name:      "empty selector returns all",

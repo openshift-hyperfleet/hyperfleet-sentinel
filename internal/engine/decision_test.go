@@ -41,8 +41,14 @@ func newTestResourceWithCreatedTime(id, kind string, ready bool, createdTime, la
 	}
 }
 
-// newTestResourceWithGeneration creates a test resource with explicit generation values
-func newTestResourceWithGeneration(id, kind string, ready bool, lastUpdated time.Time, generation, observedGeneration int32) *client.Resource {
+// newTestResourceWithGeneration creates a test resource with explicit
+// generation values
+func newTestResourceWithGeneration(
+	id, kind string,
+	ready bool,
+	lastUpdated time.Time,
+	generation, observedGeneration int32,
+) *client.Resource {
 	return &client.Resource{
 		ID:          id,
 		Kind:        kind,
@@ -107,13 +113,13 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 	engine := newTestEngine()
 
 	tests := []struct {
-		name               string
-		ready              bool
 		lastUpdated        time.Time
 		now                time.Time
-		wantShouldPublish  bool
+		name               string
 		wantReasonContains string
 		description        string
+		ready              bool
+		wantShouldPublish  bool
 	}{
 		// Zero LastUpdated tests - should fall back to created_time
 		// These tests use the test factory default (created 1 hour ago)
@@ -253,11 +259,11 @@ func TestDecisionEngine_Evaluate_ZeroMaxAge(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
+		lastUpdated       time.Time
 		name              string
 		maxAgeNotReady    time.Duration
 		maxAgeReady       time.Duration
 		ready             bool
-		lastUpdated       time.Time
 		wantShouldPublish bool
 	}{
 		{
@@ -370,11 +376,11 @@ func TestDecisionEngine_Evaluate_InvalidInputs(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name              string
-		resource          *client.Resource
 		now               time.Time
-		wantShouldPublish bool
+		resource          *client.Resource
+		name              string
 		wantReason        string
+		wantShouldPublish bool
 	}{
 		{
 			name:              "nil resource",
@@ -413,13 +419,13 @@ func TestDecisionEngine_Evaluate_CreatedTimeFallback(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
-		name               string
 		createdTime        time.Time
 		lastUpdated        time.Time
-		ready              bool
-		wantShouldPublish  bool
+		name               string
 		wantReasonContains string
 		description        string
+		ready              bool
+		wantShouldPublish  bool
 	}{
 		{
 			name:               "zero lastUpdated - created 11s ago - not ready",
@@ -470,7 +476,13 @@ func TestDecisionEngine_Evaluate_CreatedTimeFallback(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resource := newTestResourceWithCreatedTime(testResourceID, testResourceKind, tt.ready, tt.createdTime, tt.lastUpdated)
+			resource := newTestResourceWithCreatedTime(
+				testResourceID,
+				testResourceKind,
+				tt.ready,
+				tt.createdTime,
+				tt.lastUpdated,
+			)
 			decision := engine.Evaluate(resource, now)
 
 			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
@@ -491,14 +503,14 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 	now := time.Now()
 
 	tests := []struct {
+		lastUpdated        time.Time
 		name               string
+		wantReasonContains string
+		description        string
 		generation         int32
 		observedGeneration int32
 		ready              bool
-		lastUpdated        time.Time
 		wantShouldPublish  bool
-		wantReasonContains string
-		description        string
 	}{
 		// Generation mismatch tests - should publish immediately
 		{

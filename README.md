@@ -67,6 +67,7 @@ The project uses a hybrid testing approach:
 
 - **Unit tests**: Fast, isolated tests using mocks
 - **Integration tests**: End-to-end tests with real message brokers via testcontainers
+- For simulating HyperFleet API load, see [test/mock-hyperfleet-api](test/mock-hyperfleet-api/).
 
 ```bash
 # Run only unit tests (fast)
@@ -211,6 +212,7 @@ The service validates configuration at startup and will fail fast on errors:
 - **Valid durations**: All interval fields must be positive
 - **Valid CEL expressions**: All `message_data` values must be valid CEL expressions
 - **Broker configuration**: Managed by hyperfleet-broker library (see broker.yaml)
+- **API connectivity**: HyperFleet API must be reachable at startup (fails fast via `/clusters` endpoint verification)
 
 ### Configuration Examples
 

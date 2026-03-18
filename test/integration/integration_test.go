@@ -13,6 +13,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -22,7 +23,11 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/sentinel"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // TestMain provides centralized setup/teardown for integration tests
@@ -424,6 +429,40 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	t.Logf("TSL syntax validation completed - received correct format: %s", receivedSearchParam)
 }
 
+// TestIntegration_BrokerLoggerContext validates that OpenTelemetry trace context and Sentinel-specific context fields are properly propagated through the logging system
+// during event publishing workflows.
+//
+// Context Propagation Flow:
+//  1. OpenTelemetry creates trace_id and span_id for spans
+//  2. telemetry.StartSpan() enriches context with trace IDs for logging
+//  3. Sentinel adds decision context (decision_reason, topic, subset) to context
+//  4. Context flows through to broker operations via logger.WithXXX() calls
+//  5. All log entries contain both OpenTelemetry and Sentinel context fields
+//
+// Validated Log Fields:
+//
+//	OpenTelemetry fields:
+//	- trace_id: Distributed trace identifier from active span
+//	- span_id: Current span identifier from active span
+//
+//	Sentinel-specific fields:
+//	- decision_reason: Why the event was triggered (e.g., "max age exceeded", "generation changed")
+//	- topic: Message broker topic where event is published
+//	- subset: Resource type being monitored (e.g., "clusters")
+//	- component: Always "sentinel" for consistent log attribution
+//
+// Test Approach:
+//   - Captures structured JSON logs to a buffer for analysis
+//   - Uses real RabbitMQ broker to generate authentic broker operation logs
+//   - Mock server returns resources that trigger multiple event types
+//   - Parses JSON log entries to verify required context fields are present
+//
+// Success Criteria:
+//   - Sentinel's "Published event" logs contain all OpenTelemetry and context fields
+//   - Broker operation logs inherit Sentinel's component and context
+//   - No context fields are lost during the broker publishing workflow
+//
+// This test ensures distributed tracing correlation and structured logging work correctly across the Sentinel → Broker boundary for observability.
 func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	const SENTINEL_COMPONENT = "sentinel"
 	const TEST_VERSION = "test"
@@ -439,6 +478,25 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	// Set OTLP sampler
+	err := os.Setenv("OTEL_TRACES_SAMPLER", "always_on")
+	if err != nil {
+		t.Errorf("Failed to set OTEL_TRACES_SAMPLER: %v", err)
+	}
+	defer func() {
+		err := os.Unsetenv("OTEL_TRACES_SAMPLER")
+		if err != nil {
+			t.Errorf("Failed to unset OTEL_TRACES_SAMPLER: %v", err)
+		}
+	}()
+
+	// Setup OpenTelemetry for integration test
+	tp, err := telemetry.InitTraceProvider(ctx, "sentinel", "test")
+	if err != nil {
+		t.Fatalf("Failed to initialize OpenTelemetry: %v", err)
+	}
+	defer telemetry.Shutdown(context.Background(), tp)
+
 	// Get globalConfig and assign multiWriter to observe output logs
 	globalConfig := logger.GetGlobalConfig()
 	multiWriter := io.MultiWriter(globalConfig.Output, &logBuffer)
@@ -451,6 +509,9 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		Component: SENTINEL_COMPONENT,
 		Version:   TEST_VERSION,
 		Hostname:  TEST_HOST,
+		OTel: logger.OTelConfig{
+			Enabled: true,
+		},
 	}
 	log := logger.NewHyperFleetLoggerWithConfig(cfg)
 
@@ -562,13 +623,13 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 			if entry["subset"] == nil {
 				t.Errorf("Sentinel event log missing subset: %v", entry)
 			}
-			// TODO: Remove the commented lines as part of https://issues.redhat.com/browse/HYPERFLEET-542. We expect trace_id and span_id to be propagated once they're available
-			//if entry["trace_id"] == nil {
-			//	t.Errorf("Sentinel event log missing trace_id: %v", entry)
-			//}
-			//if entry["span_id"] == nil {
-			//	t.Errorf("Sentinel event log missing span_id: %v", entry)
-			//}
+
+			if entry["trace_id"] == nil {
+				t.Errorf("Sentinel event log missing trace_id: %v", entry)
+			}
+			if entry["span_id"] == nil {
+				t.Errorf("Sentinel event log missing span_id: %v", entry)
+			}
 
 			t.Logf("Found Sentinel event log with context: decision_reason=%v topic=%v subset=%v",
 				entry["decision_reason"], entry["topic"], entry["subset"])
@@ -615,4 +676,319 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	if foundSentinelEventLog && foundBrokerOperationLog {
 		t.Log("SUCCESS: Logger context inheritance verified - both Sentinel and broker operations log with component=sentinel")
 	}
+}
+
+// TestIntegration_EndToEndSpanHierarchy validates the complete OpenTelemetry span hierarchy created during Sentinel's polling and event publishing workflow.
+//
+// Expected Span Hierarchy:
+//
+//	sentinel.poll (root span - one per polling cycle)
+//	├── HTTP GET (API call to fetch resources)
+//	├── sentinel.evaluate (one per resource evaluated)
+//	│   └── {topic} publish (one per event published)
+//	├── sentinel.evaluate (next resource)
+//	│   └── {topic} publish
+//	└── ...
+//
+// The test validates:
+//  1. Required spans are created: sentinel.poll, sentinel.evaluate, {topic} publish
+//  2. Parent-child relationships: evaluate HTTP spans are children of poll spans, publish spans are children of evaluate spans
+//  3. Multiple spans: One evaluate/publish span per resource that triggers an event
+//  4. Trace continuity: All spans within a poll cycle belong to the same trace
+//
+// Test Setup:
+//   - Uses in-memory OpenTelemetry exporter to capture and analyze spans
+//   - Mock server returns 3 test resources that will trigger events
+//   - Real RabbitMQ broker for realistic message publishing
+//
+// Note: The test may capture multiple poll cycles. Due to context cancellation timing, only 2 poll cycles are validated
+func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Setup in-memory trace exporter to capture spans
+	exporter := tracetest.NewInMemoryExporter()
+	tp := trace.NewTracerProvider(
+		trace.WithSampler(trace.AlwaysSample()),
+		trace.WithBatcher(exporter),
+	)
+	prevTP := otel.GetTracerProvider()
+	otel.SetTracerProvider(tp)
+	defer otel.SetTracerProvider(prevTP)
+	defer func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cleanupCancel()
+		if err := tp.Shutdown(cleanupCtx); err != nil {
+			t.Logf("Warning: shutdown of tracer provider failed: %v", err)
+		}
+	}()
+
+	now := time.Now()
+	var callCount atomic.Int32
+	readyChan := make(chan bool, 1)
+
+	// Mock server that returns clusters requiring reconciliation
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount.Add(1)
+		if callCount.Load() > 2 {
+			select {
+			case readyChan <- true:
+			default:
+			}
+		}
+
+		// Return clusters that will trigger different decision types
+		clusters := []map[string]interface{}{
+			// Triggers max_age_ready exceeded
+			createMockCluster("cluster-ready-old", 2, 2, true, now.Add(-35*time.Minute)),
+			// Triggers max_age_not_ready exceeded
+			createMockCluster("cluster-not-ready-old", 1, 1, false, now.Add(-15*time.Second)),
+			// Triggers generation mismatch
+			createMockCluster("cluster-generation-mismatch", 5, 3, true, now.Add(-5*time.Minute)),
+		}
+		response := createMockClusterList(clusters)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	}))
+	defer server.Close()
+
+	// Get shared RabbitMQ from helper
+	helper := NewHelper()
+
+	// Setup components
+	hyperfleetClient, clientErr := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	if clientErr != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", clientErr)
+	}
+	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	log := logger.NewHyperFleetLogger()
+
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry, "test")
+
+	cfg := &config.SentinelConfig{
+		ResourceType:    "clusters",
+		Topic:           "test-spans-topic",
+		PollInterval:    100 * time.Millisecond,
+		MaxAgeNotReady:  10 * time.Second,
+		MaxAgeReady:     30 * time.Minute,
+		MessagingSystem: "rabbitmq",
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
+	}
+
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
+
+	// Run Sentinel to generate spans
+	errChan := make(chan error, 1)
+	go func() {
+		errChan <- s.Start(ctx)
+	}()
+
+	// Wait for at least 2 polling cycles
+	select {
+	case <-readyChan:
+		t.Log("Sentinel completed required polling cycles")
+	case <-time.After(5 * time.Second):
+		t.Fatal("Timeout waiting for sentinel polling")
+	}
+	cancel()
+
+	// Wait for Sentinel to stop
+	select {
+	case err := <-errChan:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("Sentinel failed: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Sentinel did not stop within timeout")
+	}
+
+	// Force flush spans to exporter
+	flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer flushCancel()
+
+	err = tp.ForceFlush(flushCtx)
+	if err != nil {
+		t.Fatalf("force flush error: %v", err)
+	}
+
+	// Analyze captured spans
+	spans := exporter.GetSpans()
+	t.Logf("Captured %d spans", len(spans))
+
+	// Build span maps for analysis
+	spansByName := make(map[string][]tracetest.SpanStub)
+	spansByID := make(map[string]tracetest.SpanStub)
+	spansByParentID := make(map[string][]tracetest.SpanStub)
+
+	for _, span := range spans {
+		spansByName[span.Name] = append(spansByName[span.Name], span)
+		spansByID[span.SpanContext.SpanID().String()] = span
+
+		if span.Parent.IsValid() {
+			parentID := span.Parent.SpanID().String()
+			spansByParentID[parentID] = append(spansByParentID[parentID], span)
+		}
+	}
+
+	// Print span hierarchy for debugging
+	t.Log("Span hierarchy:")
+	for _, span := range spans {
+		parentInfo := "ROOT"
+		if span.Parent.IsValid() {
+			parentInfo = "child of " + span.Parent.SpanID().String()
+		}
+		t.Logf("  %s (%s) - %s", span.Name, span.SpanContext.SpanID().String()[:8], parentInfo)
+	}
+
+	// Validate required spans exist
+	requiredSpans := []string{
+		"sentinel.poll",
+		"sentinel.evaluate",
+		"test-spans-topic publish",
+	}
+
+	for _, requiredSpan := range requiredSpans {
+		if _, exists := spansByName[requiredSpan]; !exists {
+			t.Errorf("Required span '%s' not found. Available spans: %v", requiredSpan, getSpanNames(spans))
+		}
+	}
+
+	// Validate span hierarchy structure
+	pollSpans := spansByName["sentinel.poll"]
+	if len(pollSpans) == 0 {
+		t.Fatal("No sentinel.poll spans found")
+	}
+
+	pollSpansToValidate := pollSpans
+	if len(pollSpansToValidate) > 2 {
+		pollSpansToValidate = pollSpansToValidate[:2]
+	}
+
+	// For each poll span, validate it has the expected children, evaluate only the first two poll spans
+	for _, pollSpan := range pollSpansToValidate {
+		pollSpanID := pollSpan.SpanContext.SpanID().String()
+		directChildren := spansByParentID[pollSpanID]
+
+		t.Logf("Poll span %s has %d direct children", pollSpanID[:8], len(directChildren))
+
+		// Verify poll span has evaluate children (direct)
+		hasEvaluateChild := false
+		hasHTTPChild := false
+		evaluateChildCount := 0
+
+		for _, child := range directChildren {
+			switch {
+			case child.Name == "sentinel.evaluate":
+				hasEvaluateChild = true
+				evaluateChildCount++
+			case strings.Contains(child.Name, "HTTP"):
+				hasHTTPChild = true
+			}
+		}
+
+		if !hasEvaluateChild {
+			t.Errorf("Poll span %s missing sentinel.evaluate child", pollSpanID[:8])
+			continue
+		}
+
+		// Verify each evaluate span has publish grandchildren
+		publishGrandchildCount := 0
+		for _, child := range directChildren {
+			if child.Name == "sentinel.evaluate" {
+				childID := child.SpanContext.SpanID().String()
+				grandchildren := spansByParentID[childID]
+				for _, grandchild := range grandchildren {
+					if strings.HasSuffix(grandchild.Name, " publish") {
+						publishGrandchildCount++
+					}
+				}
+			}
+		}
+
+		t.Logf("Poll span %s: evaluate children=%d, publish grandchildren=%d, http=%t",
+			pollSpanID[:8], evaluateChildCount, publishGrandchildCount, hasHTTPChild)
+
+		// Only validate publish grandchildren if this poll span actually processed events
+		if evaluateChildCount > 0 && publishGrandchildCount == 0 {
+			t.Errorf("Poll span %s has %d evaluate children but no publish grandchildren",
+				pollSpanID[:8], evaluateChildCount)
+		}
+	}
+
+	// Validate we have multiple evaluation spans (one per resource)
+	evaluateSpans := spansByName["sentinel.evaluate"]
+	if len(evaluateSpans) < 3 {
+		t.Errorf("Expected at least 3 sentinel.evaluate spans (one per test resource), got %d", len(evaluateSpans))
+	}
+
+	// Validate we have multiple publish spans (one per event)
+	publishSpans := spansByName["test-spans-topic publish"]
+	if len(publishSpans) < 3 {
+		t.Errorf("Expected at least 3 publish spans (one per test event), got %d", len(publishSpans))
+	}
+
+	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.system", cfg.MessagingSystem)
+	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.operation.type", "publish")
+	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.destination.name", cfg.Topic)
+
+	for _, publishSpan := range publishSpans {
+		if !publishSpan.Parent.IsValid() {
+			t.Errorf("Publish span %s should have a parent", publishSpan.SpanContext.SpanID().String()[:8])
+			continue
+		}
+
+		parentSpan, exists := spansByID[publishSpan.Parent.SpanID().String()]
+		if !exists {
+			t.Errorf("Publish span parent not found")
+			continue
+		}
+
+		if parentSpan.Name != "sentinel.evaluate" {
+			t.Errorf("Publish span parent should be sentinel.evaluate, got %s", parentSpan.Name)
+		}
+	}
+
+	// Verify trace continuity - spans should form coherent traces
+	traceIDs := make(map[string]bool)
+	for _, span := range spans {
+		traceIDs[span.SpanContext.TraceID().String()] = true
+	}
+
+	if len(traceIDs) > len(pollSpans) {
+		t.Errorf("Expected spans to belong to %d traces (one per poll), but found %d trace IDs", len(pollSpans), len(traceIDs))
+	}
+}
+
+// Helper function for span name extraction
+func getSpanNames(spans []tracetest.SpanStub) []string {
+	names := make([]string, len(spans))
+	for i, span := range spans {
+		names[i] = span.Name
+	}
+	return names
+}
+
+func validateSpanAttribute(t *testing.T, spans []tracetest.SpanStub, spanName, attrKey, expectedValue string) {
+	for _, span := range spans {
+		if span.Name == spanName {
+			for _, attr := range span.Attributes {
+				if string(attr.Key) == attrKey {
+					if attr.Value.AsString() != expectedValue {
+						t.Errorf("Span '%s': expected %s=%s, got %s", spanName, attrKey, expectedValue, attr.Value.AsString())
+					}
+					return
+				}
+			}
+			t.Errorf("Span '%s': attribute '%s' not found", spanName, attrKey)
+			return
+		}
+	}
+	t.Errorf("Span '%s' not found", spanName)
 }
