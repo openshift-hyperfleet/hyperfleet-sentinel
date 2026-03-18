@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -125,20 +128,49 @@ func (m *MockPublisherWithLogger) Close() error { return nil }
 
 func (m *MockPublisherWithLogger) Health(ctx context.Context) error { return nil }
 
-// TestTrigger_Success tests successful event publishing
-func TestTrigger_Success(t *testing.T) {
-	ctx := context.Background()
+// mockServerForConditionQueries creates a mock HTTP server that routes responses
+// based on condition-based search parameters. Each poll cycle makes two queries:
+// one for not-ready resources (Ready='False') and one for stale-ready resources (Ready='True').
+func mockServerForConditionQueries(
+	t *testing.T,
+	notReadyClusters, staleClusters []map[string]interface{},
+) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		search := r.URL.Query().Get("search")
 
-	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Cluster exceeds max age (31 minutes ago)
-		cluster := createMockCluster("cluster-1", 2, 2, true, time.Now().Add(-31*time.Minute))
-		response := createMockClusterList([]map[string]interface{}{cluster})
+		var clusters []map[string]interface{}
+		switch {
+		case strings.Contains(search, "Ready='False'"):
+			clusters = notReadyClusters
+		case strings.Contains(search, "Ready='True'"):
+			clusters = staleClusters
+		default:
+			t.Errorf("unexpected search query: %q", search)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			t.Logf("Error encoding response: %v", err)
 		}
 	}))
+}
+
+// TestTrigger_Success tests successful event publishing
+func TestTrigger_Success(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	// Stale ready cluster exceeds max age (31 minutes ago)
+	server := mockServerForConditionQueries(t,
+		nil, // no not-ready clusters
+		[]map[string]interface{}{
+			createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)),
+		},
+	)
 	defer server.Close()
 
 	// Setup components
@@ -203,16 +235,13 @@ func TestTrigger_Success(t *testing.T) {
 func TestTrigger_NoEventsPublished(t *testing.T) {
 	ctx := context.Background()
 
-	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Cluster within max age and generation in sync - should NOT publish
-		cluster := createMockCluster("cluster-1", 1, 1, true, time.Now().Add(-5*time.Minute))
-		response := createMockClusterList([]map[string]interface{}{cluster})
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			t.Logf("Error encoding response: %v", err)
-		}
-	}))
+	server := mockServerForConditionQueries(t,
+		[]map[string]interface{}{
+			// Not-ready for only 1 second — within max_age_not_ready (10s), should be skipped
+			createMockCluster("cluster-1", 1, 1, false, time.Now().Add(-1*time.Second)),
+		},
+		nil, // no stale clusters
+	)
 	defer server.Close()
 
 	// Setup components
@@ -257,7 +286,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 func TestTrigger_FetchError(t *testing.T) {
 	ctx := context.Background()
 
-	// Create mock server that returns 500 errors
+	// Create mock server that returns 500 errors for all queries
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		if _, err := w.Write([]byte(`{"error": "internal server error"}`)); err != nil {
@@ -308,16 +337,14 @@ func TestTrigger_FetchError(t *testing.T) {
 // TestTrigger_PublishError tests handling of publish errors (graceful degradation)
 func TestTrigger_PublishError(t *testing.T) {
 	ctx := context.Background()
+	now := time.Now()
 
-	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cluster := createMockCluster("cluster-1", 2, 2, true, time.Now().Add(-31*time.Minute))
-		response := createMockClusterList([]map[string]interface{}{cluster})
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			t.Logf("Error encoding response: %v", err)
-		}
-	}))
+	server := mockServerForConditionQueries(t,
+		nil, // no not-ready clusters
+		[]map[string]interface{}{
+			createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)),
+		},
+	)
 	defer server.Close()
 
 	// Setup components
@@ -361,24 +388,21 @@ func TestTrigger_MixedResources(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 
-	// Create mock server
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clusters := []map[string]interface{}{
-			// Should publish (max age exceeded)
-			createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)),
-			// Should skip (within max age)
-			createMockCluster("cluster-2", 1, 1, true, now.Add(-5*time.Minute)),
+	// Split resources between not-ready and stale queries
+	server := mockServerForConditionQueries(t,
+		// Not-ready query
+		[]map[string]interface{}{
 			// Should publish (not ready max age exceeded: 1min > 10s)
 			createMockCluster("cluster-3", 3, 3, false, now.Add(-1*time.Minute)),
-			// Should publish (generation changed)
-			createMockCluster("cluster-4", 5, 4, true, now.Add(-5*time.Minute)),
-		}
-		response := createMockClusterList(clusters)
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			t.Logf("Error encoding response: %v", err)
-		}
-	}))
+			// Should be skipped (empty ID)
+			createMockCluster("", 1, 1, false, now.Add(-15*time.Second)),
+		},
+		// Stale query
+		[]map[string]interface{}{
+			createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)), // Should publish (max age exceeded)
+			createMockCluster("cluster-4", 5, 4, true, now.Add(-5*time.Minute)),  // Should publish (generation changed)
+		},
+	)
 	defer server.Close()
 
 	// Setup components
@@ -415,8 +439,8 @@ func TestTrigger_MixedResources(t *testing.T) {
 	}
 
 	// Should publish for:
-	// - cluster-1 (ready max age exceeded: 31min > 30min)
 	// - cluster-3 (not ready max age exceeded: 1min > 10s)
+	// - cluster-1 (ready max age exceeded: 31min > 30min)
 	// - cluster-4 (generation changed: 5 > 4)
 	if len(mockPublisher.publishedEvents) != 3 {
 		t.Errorf("Expected 3 published events, got %d", len(mockPublisher.publishedEvents))
@@ -434,15 +458,14 @@ func TestTrigger_MixedResources(t *testing.T) {
 // used in place of the hardcoded payload when MessageData is set.
 func TestTrigger_WithMessageDataConfig(t *testing.T) {
 	ctx := context.Background()
+	now := time.Now()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cluster := createMockCluster("cluster-xyz", 2, 2, true, time.Now().Add(-31*time.Minute))
-		response := createMockClusterList([]map[string]interface{}{cluster})
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			t.Logf("Error encoding response: %v", err)
-		}
-	}))
+	server := mockServerForConditionQueries(t,
+		nil,
+		[]map[string]interface{}{
+			createMockCluster("cluster-xyz", 2, 2, true, now.Add(-31*time.Minute)),
+		},
+	)
 	defer server.Close()
 
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
@@ -500,15 +523,14 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 // TestTrigger_WithNestedMessageData verifies that nested objects are correctly built.
 func TestTrigger_WithNestedMessageData(t *testing.T) {
 	ctx := context.Background()
+	now := time.Now()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cluster := createMockCluster("cluster-nest", 1, 1, true, time.Now().Add(-31*time.Minute))
-		response := createMockClusterList([]map[string]interface{}{cluster})
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			t.Logf("Error encoding response: %v", err)
-		}
-	}))
+	server := mockServerForConditionQueries(t,
+		nil,
+		[]map[string]interface{}{
+			createMockCluster("cluster-nest", 1, 1, true, now.Add(-31*time.Minute)),
+		},
+	)
 	defer server.Close()
 
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
@@ -653,6 +675,267 @@ func TestTrigger_ContextPropagationToBroker(t *testing.T) {
 	}
 }
 
+// TestMergeResources tests the mergeResources deduplication function
+func TestMergeResources(t *testing.T) {
+	tests := []struct {
+		name    string
+		a       []client.Resource
+		b       []client.Resource
+		wantIDs []string
+		wantLen int
+	}{
+		{
+			name:    "no overlap",
+			a:       []client.Resource{{ID: "a1"}, {ID: "a2"}},
+			b:       []client.Resource{{ID: "b1"}},
+			wantIDs: []string{"a1", "a2", "b1"},
+			wantLen: 3,
+		},
+		{
+			name:    "duplicate in b removed",
+			a:       []client.Resource{{ID: "x"}},
+			b:       []client.Resource{{ID: "x"}, {ID: "y"}},
+			wantIDs: []string{"x", "y"},
+			wantLen: 2,
+		},
+		{
+			name:    "both empty",
+			a:       nil,
+			b:       nil,
+			wantIDs: nil,
+			wantLen: 0,
+		},
+		{
+			name:    "a empty",
+			a:       nil,
+			b:       []client.Resource{{ID: "b1"}},
+			wantIDs: []string{"b1"},
+			wantLen: 1,
+		},
+		{
+			name:    "b empty",
+			a:       []client.Resource{{ID: "a1"}},
+			b:       nil,
+			wantIDs: []string{"a1"},
+			wantLen: 1,
+		},
+		{
+			name:    "all duplicates",
+			a:       []client.Resource{{ID: "x"}, {ID: "y"}},
+			b:       []client.Resource{{ID: "x"}, {ID: "y"}},
+			wantIDs: []string{"x", "y"},
+			wantLen: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := mergeResources(tt.a, tt.b)
+			if len(result) != tt.wantLen {
+				t.Errorf("mergeResources() returned %d resources, want %d", len(result), tt.wantLen)
+			}
+			for i, id := range tt.wantIDs {
+				if i < len(result) && result[i].ID != id {
+					t.Errorf("mergeResources()[%d].ID = %q, want %q", i, result[i].ID, id)
+				}
+			}
+		})
+	}
+}
+
+// TestMergeResources_FirstSlicePrecedence verifies that resources from the first
+// slice take precedence when duplicates are found.
+func TestMergeResources_FirstSlicePrecedence(t *testing.T) {
+	a := []client.Resource{{ID: "dup", Kind: "from-a"}}
+	b := []client.Resource{{ID: "dup", Kind: "from-b"}}
+
+	result := mergeResources(a, b)
+	if len(result) != 1 {
+		t.Fatalf("Expected 1 resource, got %d", len(result))
+	}
+	if result[0].Kind != "from-a" {
+		t.Errorf("Expected resource from first slice (Kind='from-a'), got Kind=%q", result[0].Kind)
+	}
+}
+
+// TestTrigger_ConditionBasedQueries verifies that trigger sends two condition-based
+// queries (not-ready + stale) and correctly processes results from both.
+func TestTrigger_ConditionBasedQueries(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	var capturedSearchParams []string
+	var mu sync.Mutex
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		search := r.URL.Query().Get("search")
+		mu.Lock()
+		capturedSearchParams = append(capturedSearchParams, search)
+		mu.Unlock()
+
+		var clusters []map[string]interface{}
+		switch {
+		case strings.Contains(search, "Ready='False'"):
+			clusters = []map[string]interface{}{
+				createMockCluster("not-ready-1", 1, 1, false, now.Add(-15*time.Second)),
+			}
+		case strings.Contains(search, "Ready='True'"):
+			clusters = []map[string]interface{}{
+				createMockCluster("stale-1", 2, 2, true, now.Add(-31*time.Minute)),
+			}
+		default:
+			t.Errorf("unexpected search query: %q", search)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		response := createMockClusterList(clusters)
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Logf("Error encoding response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	mockPublisher := &MockPublisher{}
+	log := logger.NewHyperFleetLogger()
+
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry, "test")
+
+	cfg := &config.SentinelConfig{
+		ResourceType:   "clusters",
+		Topic:          "test-topic",
+		MaxAgeNotReady: 10 * time.Second,
+		MaxAgeReady:    30 * time.Minute,
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
+	}
+
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
+
+	if err := s.trigger(ctx); err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// Verify two queries were sent
+	mu.Lock()
+	params := make([]string, len(capturedSearchParams))
+	copy(params, capturedSearchParams)
+	mu.Unlock()
+
+	if len(params) != 2 {
+		t.Fatalf("Expected 2 search queries (not-ready + stale), got %d", len(params))
+	}
+
+	hasNotReady := false
+	hasStale := false
+	for _, search := range params {
+		if strings.Contains(search, "Ready='False'") {
+			hasNotReady = true
+		}
+		if strings.Contains(search, "Ready='True'") {
+			hasStale = true
+		}
+	}
+	if !hasNotReady {
+		t.Error("No not-ready query (Ready='False') was sent")
+	}
+	if !hasStale {
+		t.Error("No stale query (Ready='True') was sent")
+	}
+
+	// Both resources should trigger events
+	if len(mockPublisher.publishedEvents) != 2 {
+		t.Errorf("Expected 2 published events (1 not-ready + 1 stale), got %d", len(mockPublisher.publishedEvents))
+	}
+}
+
+// TestTrigger_StaleQueryFailure tests graceful degradation when the stale query
+// fails but the not-ready query succeeds.
+func TestTrigger_StaleQueryFailure(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	var queryCount atomic.Int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queryCount.Add(1)
+		search := r.URL.Query().Get("search")
+
+		switch {
+		case strings.Contains(search, "Ready='False'"):
+			// Not-ready query succeeds
+			clusters := []map[string]interface{}{
+				createMockCluster("not-ready-1", 1, 1, false, now.Add(-15*time.Second)),
+			}
+			response := createMockClusterList(clusters)
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(response); err != nil {
+				t.Logf("Error encoding response: %v", err)
+			}
+		case strings.Contains(search, "Ready='True'"):
+			// Stale query fails
+			w.WriteHeader(http.StatusInternalServerError)
+			if _, err := w.Write([]byte(`{"error": "internal server error"}`)); err != nil {
+				t.Logf("Error writing error response: %v", err)
+			}
+		default:
+			t.Errorf("unexpected search query: %q", search)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	}))
+	defer server.Close()
+
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 1*time.Second)
+	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	mockPublisher := &MockPublisher{}
+	log := logger.NewHyperFleetLogger()
+
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry, "test")
+
+	cfg := &config.SentinelConfig{
+		ResourceType:   "clusters",
+		Topic:          "test-topic",
+		MaxAgeNotReady: 10 * time.Second,
+		MaxAgeReady:    30 * time.Minute,
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
+	}
+
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
+
+	// Should succeed with graceful degradation (not-ready results only)
+	err = s.trigger(ctx)
+	if err != nil {
+		t.Errorf("Expected no error (graceful degradation), got %v", err)
+	}
+
+	// Should still publish event for the not-ready resource
+	if len(mockPublisher.publishedEvents) != 1 {
+		t.Errorf("Expected 1 published event (from not-ready query), got %d", len(mockPublisher.publishedEvents))
+	}
+
+	// Both queries should have been attempted (stale query retries on 500, so queryCount >= 2)
+	if queryCount.Load() < 2 {
+		t.Errorf("Expected at least 2 queries (not-ready + stale), got %d", queryCount.Load())
+	}
+}
+
 func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 	ctx := context.Background()
 
@@ -671,15 +954,12 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 		otel.SetTracerProvider(previousProvider)
 	}()
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Cluster exceeds max age (31 minutes ago) - should trigger publishing
-		cluster := createMockCluster("cluster-1", 2, 2, true, time.Now().Add(-31*time.Minute))
-		response := createMockClusterList([]map[string]interface{}{cluster})
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			t.Logf("Error encoding response: %v", err)
-		}
-	}))
+	server := mockServerForConditionQueries(t,
+		nil, // no not-ready clusters
+		[]map[string]interface{}{
+			createMockCluster("cluster-1", 2, 2, true, time.Now().Add(-31*time.Minute)),
+		},
+	)
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(server.URL, 10*time.Second)
@@ -701,6 +981,10 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 		MaxAgeNotReady:  10 * time.Second,
 		MaxAgeReady:     30 * time.Minute,
 		MessagingSystem: "rabbitmq",
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
 	}
 
 	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
