@@ -230,7 +230,7 @@ spec:
       expr: |
         hyperfleet_sentinel_pending_resources > 0
         unless on(resource_type, resource_selector)
-        rate(hyperfleet_sentinel_events_published_total[15m]) > 0s
+        rate(hyperfleet_sentinel_events_published_total[15m]) > 0
       for: 15m
       labels:
         severity: warning

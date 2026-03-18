@@ -96,9 +96,11 @@ hyperfleet_api:
 
 **Configuration Example (GCP Pub/Sub)**:
 ```yaml
-# Via environment variables or ConfigMap
-BROKER_TYPE: "pubsub"
-BROKER_PROJECT_ID: "hyperfleet-prod"
+# Via broker config file (broker.yaml)
+broker:
+  type: googlepubsub
+  googlepubsub:
+    project_id: hyperfleet-prod
 ```
 
 **Metrics**: Publishing failures tracked via `hyperfleet_sentinel_broker_errors_total` metric.
@@ -164,6 +166,63 @@ readinessProbe:
 ```
 
 **Operational Impact**: Kubernetes automatically restarts unhealthy pods and removes unready pods from service.
+
+## Distributed Tracing
+
+Sentinel supports OpenTelemetry distributed tracing, which is useful for debugging event flow across service boundaries.
+
+### Enabling Tracing
+
+Tracing is enabled by default. If not, it can be enabled by setting the `TRACING_ENABLED` environment variable:
+
+```bash
+TRACING_ENABLED=true
+```
+
+Configure the exporter endpoint to send traces to your collector:
+```bash
+OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+```
+
+If no endpoint is set, traces are written to stdout (useful for local debugging).
+
+### Adjusting Sampling for Debugging
+
+By default, Sentinel uses `parentbased_traceidratio` sampling. To control sampling:
+
+```bash
+# Sample all traces (useful for debugging a specific issue)
+OTEL_TRACES_SAMPLER=always_on
+
+# Sample 10% of traces (reduce overhead in production)
+OTEL_TRACES_SAMPLER_ARG=0.1
+```
+
+### Finding a Trace for a Specific Event
+
+1. Find the `trace_id` in structured logs (JSON format):
+   ```json
+   {"level":"info","message":"Publishing event","trace_id":"4bf92f3577b34da6a...","span_id":"00f067aa0ba902b7",...}
+   ```
+2. Search for that `trace_id` in your tracing backend (Jaeger, Tempo, etc.) to see the full request flow
+
+### Span Hierarchy
+
+Sentinel creates the following spans during each polling cycle:
+
+- **`sentinel.poll`** — Top-level span for the entire poll cycle
+  - **`GET`** — HTTP span auto-created by `otelhttp` for the HyperFleet API call
+  - **`sentinel.evaluate`** — One per resource, includes `hyperfleet.resource_id` and `hyperfleet.decision_reason` attributes
+    - **`{topic} publish`** — Created when an event is published, includes `messaging.system`, `messaging.destination.name`, and `messaging.message.id` attributes
+
+### Trace Propagation Across Services
+
+Sentinel propagates W3C `traceparent` context in two ways:
+
+- **Outbound API calls**: HTTP client is instrumented with `otelhttp`, so calls to the HyperFleet API automatically carry trace context
+- **CloudEvents**: Published events include a `traceparent` extension, allowing downstream adapters to continue the trace
+
+Traces span service boundaries only when the upstream caller includes a `traceparent` header. Without it, Sentinel starts a new trace root.
 
 ## Common Failure Modes and Recovery Procedures
 

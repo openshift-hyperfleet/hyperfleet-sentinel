@@ -131,7 +131,7 @@ spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: hyperfleet-sentinel
+      app.kubernetes.io/name: sentinel
 ```
 
 **Operational Impact**:

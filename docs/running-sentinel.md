@@ -541,7 +541,7 @@ max_age_ready: 30m
 resource_selector: []
 
 hyperfleet_api:
-  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
   timeout: 5s
 
 # CloudEvent data payload using CEL expressions
@@ -550,29 +550,6 @@ message_data:
   resource_type: "resource.kind"   # CEL expression accessing resource.kind field
   generation: "resource.generation" # CEL expression accessing resource.generation field
   region: "resource.labels.region" # CEL expression accessing nested labels.region field
-```
-
-### Multi-Region Configuration
-```yaml
-# sentinel-us-east-config.yaml
-resource_type: clusters
-poll_interval: 5s
-max_age_not_ready: 10s
-max_age_ready: 30m
-
-resource_selector:
-  - label: region
-    value: us-east
-
-hyperfleet_api:
-  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
-  timeout: 5s
-
-message_data:
-  resource_id: "resource.id"
-  resource_type: "resource.kind"
-  generation: "resource.generation"
-  region: "resource.labels.region"
 ```
 
 ### Development Environment Configuration
@@ -588,7 +565,7 @@ resource_selector:
     value: development
 
 hyperfleet_api:
-  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
   timeout: 5s
 
 message_data:

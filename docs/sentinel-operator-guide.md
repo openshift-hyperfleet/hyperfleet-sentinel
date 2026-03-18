@@ -261,6 +261,12 @@ broker:
   topic: hyperfleet-us-west-clusters
 ```
 
+#### Multi-Region Configuration
+
+For multi-region deployment examples using `resource_selector`, see [Resource Selector
+Strategies](multi-instance-deployment.md#resource-filtering-strategies).
+
+
 For detailed deployment examples, see [docs/multi-instance-deployment.md](multi-instance-deployment.md).
 
 ---
