@@ -251,7 +251,7 @@ spec:
         summary: "Sentinel poll loop is stale"
         description: "Sentinel has not completed a successful poll cycle in over 60 seconds."
     - alert: SentinelDown
-      expr: absent(up{service="sentinel"}) or up{service="sentinel"} == 0
+      expr: absent(up{service="{{ include "sentinel.fullname" . }}"}) or up{service="{{ include "sentinel.fullname" . }}"} == 0
       for: 5m
       labels:
         severity: critical
