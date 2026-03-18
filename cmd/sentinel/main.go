@@ -161,7 +161,9 @@ func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, e
 	return cfg, nil
 }
 
-func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAddress, metricsBindAddress string) error {
+func runServe(
+	cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAddress, metricsBindAddress string,
+) error {
 	// Initialize context and logger
 	ctx := context.Background()
 	log := logger.NewHyperFleetLoggerWithConfig(logCfg)
@@ -231,8 +233,8 @@ func runServe(cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAd
 	}
 	if pub != nil {
 		defer func() {
-			if err := pub.Close(); err != nil {
-				log.Errorf(ctx, "Error closing publisher: %v", err)
+			if closeErr := pub.Close(); closeErr != nil {
+				log.Errorf(ctx, "Error closing publisher: %v", closeErr)
 			}
 		}()
 	}

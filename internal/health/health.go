@@ -19,10 +19,10 @@ type CheckFunc func() error
 // evaluates registered health checks on each /readyz request.
 // It is goroutine-safe.
 type ReadinessChecker struct {
-	ready  atomic.Bool
-	mu     sync.RWMutex
-	checks map[string]CheckFunc
 	logger logger.HyperFleetLogger
+	checks map[string]CheckFunc
+	mu     sync.RWMutex
+	ready  atomic.Bool
 }
 
 // NewReadinessChecker creates a new ReadinessChecker with ready=false and no checks.
@@ -58,8 +58,8 @@ type healthResponse struct {
 
 // readyResponse is the JSON response for /readyz.
 type readyResponse struct {
-	Status string            `json:"status"`
 	Checks map[string]string `json:"checks"`
+	Status string            `json:"status"`
 }
 
 // writeJSON writes a JSON response with the given status code.

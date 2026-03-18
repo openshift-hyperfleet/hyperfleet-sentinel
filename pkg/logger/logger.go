@@ -50,12 +50,12 @@ type OTelConfig struct {
 
 // LogConfig holds the logging configuration
 type LogConfig struct {
-	Level     LogLevel
-	Format    LogFormat
 	Output    io.Writer
 	Component string
 	Version   string
 	Hostname  string
+	Level     LogLevel
+	Format    LogFormat
 	OTel      OTelConfig
 }
 
@@ -96,7 +96,10 @@ var (
 
 // DefaultConfig returns a LogConfig with default values
 func DefaultConfig() *LogConfig {
-	hostname, _ := os.Hostname()
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = "unknown"
+	}
 	return &LogConfig{
 		Level:     LevelInfo,
 		Format:    FormatText,
@@ -213,31 +216,31 @@ func NewHyperFleetLoggerWithConfig(cfg *LogConfig) HyperFleetLogger {
 
 // logEntry represents a structured log entry
 type logEntry struct {
+	// Additional fields
+	Extra map[string]interface{} `json:"extra,omitempty"`
+
 	// Required fields per HyperFleet logging specification
+	TraceID   string `json:"trace_id,omitempty"`
 	Timestamp string `json:"timestamp"`
-	Level     string `json:"level"`
-	Message   string `json:"message"`
 	Component string `json:"component"`
 	Version   string `json:"version"`
 	Hostname  string `json:"hostname"`
 
 	// Error fields (for error level logs)
-	Error      string   `json:"error,omitempty"`
-	StackTrace []string `json:"stack_trace,omitempty"`
-
-	// Correlation fields (when available)
-	TraceID string `json:"trace_id,omitempty"`
-	SpanID  string `json:"span_id,omitempty"`
-	OpID    string `json:"op_id,omitempty"`
-	TxID    int64  `json:"tx_id,omitempty"`
+	Error   string `json:"error,omitempty"`
+	Message string `json:"message"`
+	Level   string `json:"level"`
 
 	// Sentinel-specific fields
+	Subset         string `json:"subset,omitempty"`
+	OpID           string `json:"op_id,omitempty"`
+	SpanID         string `json:"span_id,omitempty"`
 	DecisionReason string `json:"decision_reason,omitempty"`
 	Topic          string `json:"topic,omitempty"`
-	Subset         string `json:"subset,omitempty"`
 
-	// Additional fields
-	Extra map[string]interface{} `json:"extra,omitempty"`
+	// Correlation fields
+	StackTrace []string `json:"stack_trace,omitempty"`
+	TxID       int64    `json:"tx_id,omitempty"`
 }
 
 func (l *logger) shouldLog(level LogLevel) bool {
@@ -450,7 +453,14 @@ func (l *logger) logWithError(ctx context.Context, level LogLevel, message strin
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	_, _ = l.config.Output.Write([]byte(output))
+
+	w := l.config.Output
+	if w == nil {
+		w = os.Stderr
+	}
+	if _, err := w.Write([]byte(output)); err != nil {
+		fmt.Fprintf(os.Stderr, "logger: write failed: %v\n", err)
+	}
 }
 
 func (l *logger) Debug(ctx context.Context, message string) {

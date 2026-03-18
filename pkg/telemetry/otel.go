@@ -83,7 +83,8 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 		if shutdownErr := exporter.Shutdown(ctx); shutdownErr != nil {
 			log.Warnf(ctx, "Failed to shutdown exporter: %v", shutdownErr)
 		}
-		log.Extra("service_name", serviceName).Extra("service_version", serviceVersion).Errorf(ctx, "Failed to create OpenTelemetry resource: %v", err)
+		log.Extra("service_name", serviceName).Extra("service_version", serviceVersion).
+			Errorf(ctx, "Failed to create OpenTelemetry resource: %v", err)
 		return nil, fmt.Errorf("failed to create OTel resource: %w", err)
 	}
 

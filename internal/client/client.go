@@ -56,7 +56,8 @@ func NewHyperFleetClient(endpoint string, timeout time.Duration) (*HyperFleetCli
 
 	client, err := openapi.NewClientWithResponses(endpoint, openapi.WithHTTPClient(httpClient))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create OpenAPI client: %v", err) // This should only fail if the endpoint URL is invalid
+		// This should only fail if the endpoint URL is invalid
+		return nil, fmt.Errorf("failed to create OpenAPI client: %v", err)
 	}
 
 	return &HyperFleetClient{
@@ -74,36 +75,36 @@ type OwnerReference struct {
 
 // Resource represents a HyperFleet resource (cluster, nodepool, etc.)
 type Resource struct {
+	CreatedTime     time.Time              `json:"created_time"`
+	UpdatedTime     time.Time              `json:"updated_time"`
+	Labels          map[string]string      `json:"labels"`
+	OwnerReferences *OwnerReference        `json:"owner_references,omitempty"`
+	Metadata        map[string]interface{} `json:"metadata,omitempty"`
 	ID              string                 `json:"id"`
 	Href            string                 `json:"href"`
 	Kind            string                 `json:"kind"`
-	CreatedTime     time.Time              `json:"created_time"`
-	UpdatedTime     time.Time              `json:"updated_time"`
-	Generation      int32                  `json:"generation"`
-	Labels          map[string]string      `json:"labels"`
 	Status          ResourceStatus         `json:"status"`
-	OwnerReferences *OwnerReference        `json:"owner_references,omitempty"`
-	Metadata        map[string]interface{} `json:"metadata,omitempty"`
+	Generation      int32                  `json:"generation"`
 }
 
 // ResourceStatus represents the status of a resource
 type ResourceStatus struct {
-	Ready              bool        `json:"ready"`              // True if Ready condition status is "True"
 	LastTransitionTime time.Time   `json:"lastTransitionTime"` // Updates only when ready status changes
 	LastUpdated        time.Time   `json:"lastUpdated"`        // Updates every time an adapter checks the resource
-	ObservedGeneration int32       `json:"observedGeneration"` // The generation last processed by the adapter
 	Conditions         []Condition `json:"conditions,omitempty"`
+	ObservedGeneration int32       `json:"observedGeneration"` // The generation last processed by the adapter
+	Ready              bool        `json:"ready"`              // True if Ready condition status is "True"
 }
 
 // Condition represents a status condition
 type Condition struct {
-	Type               string    `json:"type"`
-	Status             string    `json:"status"`
 	LastTransitionTime time.Time `json:"lastTransitionTime"`
 	LastUpdatedTime    time.Time `json:"lastUpdatedTime"`
-	ObservedGeneration int32     `json:"observedGeneration"`
+	Type               string    `json:"type"`
+	Status             string    `json:"status"`
 	Reason             string    `json:"reason,omitempty"`
 	Message            string    `json:"message,omitempty"`
+	ObservedGeneration int32     `json:"observedGeneration"`
 }
 
 // FetchResources fetches resources from the HyperFleet API with retry logic.
@@ -118,7 +119,11 @@ type Condition struct {
 //   - Only resources with valid status are returned
 //
 // Returns a slice of resources and an error if the fetch operation fails.
-func (c *HyperFleetClient) FetchResources(ctx context.Context, resourceType ResourceType, labelSelector map[string]string) ([]Resource, error) {
+func (c *HyperFleetClient) FetchResources(
+	ctx context.Context,
+	resourceType ResourceType,
+	labelSelector map[string]string,
+) ([]Resource, error) {
 	// Validate inputs
 	if ctx == nil {
 		return nil, fmt.Errorf("context cannot be nil")
@@ -213,7 +218,11 @@ func labelSelectorToSearchString(labelSelector map[string]string) string {
 }
 
 // fetchResourcesOnce performs a single fetch operation without retry logic
-func (c *HyperFleetClient) fetchResourcesOnce(ctx context.Context, resourceType ResourceType, labelSelector map[string]string) ([]Resource, error) {
+func (c *HyperFleetClient) fetchResourcesOnce(
+	ctx context.Context,
+	resourceType ResourceType,
+	labelSelector map[string]string,
+) ([]Resource, error) {
 	// Build search parameter from label selector
 	searchParam := labelSelectorToSearchString(labelSelector)
 
@@ -470,8 +479,8 @@ func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam strin
 
 // APIError represents an API error with retry information
 type APIError struct {
-	StatusCode int
 	Message    string
+	StatusCode int
 	Retriable  bool
 }
 
