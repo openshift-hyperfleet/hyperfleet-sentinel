@@ -23,7 +23,7 @@ The following 8 alert rules provide comprehensive monitoring for production Sent
 #### SentinelDown
 ```yaml
 alert: SentinelDown
-expr: absent(up{service="sentinel"}) or up{service="sentinel"} == 0
+expr: absent(up{service="<your-sentinel-service-name>"}) or up{service="<your-sentinel-service-name>"} == 0
 for: 5m
 labels:
   severity: critical

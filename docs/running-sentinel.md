@@ -28,7 +28,6 @@ This guide enables developers to run Sentinel both locally (for development) and
   - [Cleanup](#8-cleanup)
 - [Deployment Configuration](#deployment-configuration)
   - [Basic Production Configuration](#basic-production-configuration)
-  - [Multi-Region Configuration](#multi-region-configuration)
   - [Development Environment Configuration](#development-environment-configuration)
 - [Troubleshooting](#troubleshooting)
 
@@ -541,7 +540,7 @@ max_age_ready: 30m
 resource_selector: []
 
 hyperfleet_api:
-  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
   timeout: 5s
 
 # CloudEvent data payload using CEL expressions
@@ -565,7 +564,7 @@ resource_selector:
     value: development
 
 hyperfleet_api:
-  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
   timeout: 5s
 
 message_data:
@@ -645,7 +644,7 @@ podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TA
 3. For GKE, use the in-cluster service name:
    ```yaml
    hyperfleet_api:
-     endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+     endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
    ```
 
 ### OpenAPI Client Not Generated
