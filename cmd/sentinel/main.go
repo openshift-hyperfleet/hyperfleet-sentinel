@@ -146,7 +146,7 @@ func initLogging(flagLevel, flagFormat, flagOutput string) (*logger.LogConfig, e
 		cfg.Output = output
 	}
 
-	// TRACING_ENABLED=true enables tracing
+	// TRACING_ENABLED overrides the default tracing configuration (enabled by default)
 	if otelEnabled := os.Getenv("TRACING_ENABLED"); otelEnabled != "" {
 		enabled, err := strconv.ParseBool(otelEnabled)
 		if err != nil {
