@@ -29,7 +29,7 @@ spec:
       annotations:
         summary: "High number of pending resources in Sentinel"
         description: "{{`{{ $value }}`}} resources are pending reconciliation for more than 10 minutes. This may indicate processing bottleneck or API issues."
-        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#high-pending-resources"
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/alerts.md#sentinelhighpendingresources"
 
     # Alert when API errors are happening frequently
     - alert: SentinelAPIErrorRateHigh
@@ -42,7 +42,7 @@ spec:
       annotations:
         summary: "High API error rate in Sentinel"
         description: "Sentinel is experiencing {{`{{ $value | humanize }}`}} API errors/sec for resource_type {{`{{ $labels.resource_type }}`}}. Check HyperFleet API availability."
-        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#api-error-rate-high"
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/alerts.md#sentinelapierrorratehigh"
 
     # Alert when broker errors are happening
     - alert: SentinelBrokerErrorRateHigh
@@ -55,7 +55,7 @@ spec:
       annotations:
         summary: "High broker error rate in Sentinel"
         description: "Sentinel is experiencing {{`{{ $value | humanize }}`}} broker errors/sec for resource_type {{`{{ $labels.resource_type }}`}}. Check message broker connectivity."
-        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#broker-error-rate-high"
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/alerts.md#sentinelbrokererrorratehigh"
 
     # Alert when polling is too slow
     - alert: SentinelSlowPolling
@@ -69,7 +69,7 @@ spec:
       annotations:
         summary: "Sentinel polling cycles are slow"
         description: "95th percentile poll duration is {{`{{ $value | humanize }}`}}s for {{`{{ $labels.resource_type }}`}}. This may indicate API latency or processing issues."
-        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#slow-poll-duration"
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/alerts.md#sentinelslowpolling"
 
     # Alert when no events are published despite pending resources
     - alert: SentinelNoEventsPublished
@@ -84,7 +84,7 @@ spec:
       annotations:
         summary: "Sentinel not publishing events"
         description: "Sentinel has pending resources but hasn't published any events in 15 minutes. Service may be stuck."
-        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#no-events-published"
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/alerts.md#sentinelnoeventspublished"
 
     # Alert when Sentinel poll loop is stuck (dead man's switch)
     - alert: SentinelPollStale
@@ -98,7 +98,7 @@ spec:
       annotations:
         summary: "Sentinel poll loop is stale"
         description: "Sentinel has not completed a successful poll cycle in over {{ .Values.monitoring.prometheusRule.alerts.sentinelPollStale.staleAfterSeconds }} seconds. The service may be hung or unable to poll."
-        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#poll-stale"
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/alerts.md#sentinelpollstale"
 
     # Alert when skip ratio is too high (may indicate configuration issues)
     - alert: SentinelHighSkipRatio
@@ -115,7 +115,7 @@ spec:
       annotations:
         summary: "High resource skip ratio in Sentinel"
         description: "{{`{{ $value | humanizePercentage }}`}} of resources are being skipped. This may indicate max_age configuration issues."
-        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#high-skip-ratio"
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/alerts.md#sentinelhighskipratio"
 
     # Alert when Sentinel pod is down
     - alert: SentinelDown
@@ -128,5 +128,5 @@ spec:
       annotations:
         summary: "Sentinel service is down"
         description: "Sentinel metrics endpoint is not responding. Service may be down or unreachable."
-        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/metrics.md#troubleshooting"
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/alerts.md#sentineldown"
 {{- end }}

@@ -1,4 +1,8 @@
 # HyperFleet Sentinel Operator Guide
+**Status**: Active
+**Owner**: HyperFleet Team
+**Last Updated**: 2026-03-12
+> **Audience:** Operators deploying and configuring Sentinel service.
 
 This comprehensive guide teaches operators how to deploy, configure, and operate the HyperFleet Sentinel service—a polling-based event publisher that drives cluster lifecycle orchestration.
 
@@ -257,6 +261,12 @@ broker:
   topic: hyperfleet-us-west-clusters
 ```
 
+#### Multi-Region Configuration
+
+For multi-region deployment examples using `resource_selector`, see [Resource Selector
+Strategies](multi-instance-deployment.md#resource-filtering-strategies).
+
+
 For detailed deployment examples, see [docs/multi-instance-deployment.md](multi-instance-deployment.md).
 
 ---
@@ -285,7 +295,7 @@ resource_selector:
 
 # Required: HyperFleet API configuration
 hyperfleet_api:
-  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
   timeout: 5s
 
 # Optional: CloudEvent payload definition
@@ -306,10 +316,10 @@ message_data:
 
 These fields MUST be present in the configuration file or Sentinel will fail to start:
 
-| Field | Type | Description | Example |
-|-------|------|-------------|---------|
-| `resource_type` | string | Resource to watch (`clusters` or `nodepools`) | `clusters` |
-| `hyperfleet_api.endpoint` | string | HyperFleet API base URL | `http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080` |
+| Field | Type | Description | Example                                                          |
+|-------|------|-------------|------------------------------------------------------------------|
+| `resource_type` | string | Resource to watch (`clusters` or `nodepools`) | `clusters`                                                       |
+| `hyperfleet_api.endpoint` | string | HyperFleet API base URL | `http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000` |
 
 ### 3.3 Optional Fields
 
@@ -678,23 +688,23 @@ For detailed deployment guidance, see [docs/running-sentinel.md](running-sentine
 
 ## Appendix A: Troubleshooting
 
-| Symptom                                                                                                                      | Likely Cause | Solution |
-|------------------------------------------------------------------------------------------------------------------------------|--------------|----------|
-| **Events not published, resources not found** | Resource selector mismatch | Verify `resource_selector` matches resource labels. Empty selector watches ALL resources. Check logs: `kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel` |
-| **Events not published, resources found but skipped**                                                                           | Max age not exceeded | Normal behavior. Events publish when `generation > observed_generation` OR max age interval elapsed (`max_age_ready`: 30m, `max_age_not_ready`: 10s). |
-| **API connection errors, DNS lookup fails**                                                                                  | Wrong service name or namespace | Verify endpoint format: `http://<service>.<namespace>.svc.cluster.local:8080`. Check API is running: `kubectl get pods -n hyperfleet-system -l app=hyperfleet-api` |
-| **API returns 401 Unauthorized**                                                                                             | Missing authentication | Add auth headers to `hyperfleet_api` config if API requires authentication. |
-| **API returns 404 Not Found**                                                                                                | Wrong API version in path | Verify endpoint uses correct API version: `/api/v1/clusters` or `/api/hyperfleet/v1/clusters` |
-| **Broker PermissionDenied (Pub/Sub)**                                                                                        | Missing publisher role | Grant role: `gcloud projects add-iam-policy-binding ${GCP_PROJECT} --role="roles/pubsub.publisher" --member="principal://iam.googleapis.com/..."` |
-| **Broker Topic not found (Pub/Sub)**                                                                                         | Topic doesn't exist | Create topic: `gcloud pubsub topics create hyperfleet-prod-clusters --project=${GCP_PROJECT}` |
-| **Broker type mismatch**                                                                                                     | Config doesn't match actual broker | Ensure `broker.type` matches: `rabbitmq` or `googlepubsub`. Check: `kubectl get configmap sentinel -o jsonpath='{.data.broker\.yaml}'` |
-| **High CPU/memory usage**                                                                                                    | Too many resources or slow API | Check `kubectl top pod -n hyperfleet-system -l app=sentinel`. Consider horizontal scaling with `resource_selector` or increase poll intervals. |
-| **Error: resource_type is required**                                                                                         | Missing required config field | Add `resource_type: clusters` or `resource_type: nodepools` to configuration. |
-| **Error: invalid resource_type**                                                                                             | Invalid value | Use only `clusters` or `nodepools`. |
-| **Error: hyperfleet_api.endpoint is required**                                                                               | Missing required config field | Add `hyperfleet_api.endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080` |
-| **Error: poll_interval must be positive**                                                                                    | Zero or negative interval | Set `poll_interval: 5s` (must be > 0). |
-| **Error: OpenAPI client not generated**                                                                                      | Missing generated code | Run `make generate && make build` before starting Sentinel. |
+| Symptom                                                                                                                      | Likely Cause | Solution                                                                                                                                                                                                                                                                                                                 |
+|------------------------------------------------------------------------------------------------------------------------------|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Events not published, resources not found** | Resource selector mismatch | Verify `resource_selector` matches resource labels. Empty selector watches ALL resources. Check logs: `kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel`                                                                                                                                             |
+| **Events not published, resources found but skipped**                                                                           | Max age not exceeded | Normal behavior. Events publish when `generation > observed_generation` OR max age interval elapsed (`max_age_ready`: 30m, `max_age_not_ready`: 10s).                                                                                                                                                                    |
+| **API connection errors, DNS lookup fails**                                                                                  | Wrong service name or namespace | Verify endpoint format: `http://<service>.<namespace>.svc.cluster.local:8000`. Check API is running: `kubectl get pods -n hyperfleet-system -l app=hyperfleet-api`                                                                                                                                                       |
+| **API returns 401 Unauthorized**                                                                                             | Missing authentication | Add auth headers to `hyperfleet_api` config if API requires authentication.                                                                                                                                                                                                                                              |
+| **API returns 404 Not Found**                                                                                                | Wrong API version in path | Verify endpoint uses correct API version: `/api/v1/clusters` or `/api/hyperfleet/v1/clusters`                                                                                                                                                                                                                            |
+| **Broker PermissionDenied (Pub/Sub)**                                                                                        | Missing publisher role | Grant role: `gcloud projects add-iam-policy-binding ${GCP_PROJECT} --role="roles/pubsub.publisher" --member="principal://iam.googleapis.com/..."`                                                                                                                                                                        |
+| **Broker Topic not found (Pub/Sub)**                                                                                         | Topic doesn't exist | Create topic: `gcloud pubsub topics create hyperfleet-prod-clusters --project=${GCP_PROJECT}`                                                                                                                                                                                                                            |
+| **Broker type mismatch**                                                                                                     | Config doesn't match actual broker | Ensure `broker.type` matches: `rabbitmq` or `googlepubsub`. Check: `kubectl get configmap sentinel -o jsonpath='{.data.broker\.yaml}'`                                                                                                                                                                                   |
+| **High CPU/memory usage**                                                                                                    | Too many resources or slow API | Check `kubectl top pod -n hyperfleet-system -l app=sentinel`. Consider horizontal scaling with `resource_selector` or increase poll intervals.                                                                                                                                                                           |
+| **Error: resource_type is required**                                                                                         | Missing required config field | Add `resource_type: clusters` or `resource_type: nodepools` to configuration.                                                                                                                                                                                                                                            |
+| **Error: invalid resource_type**                                                                                             | Invalid value | Use only `clusters` or `nodepools`.                                                                                                                                                                                                                                                                                      |
+| **Error: hyperfleet_api.endpoint is required**                                                                               | Missing required config field | Add `hyperfleet_api.endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000`                                                                                                                                                                                                                            |
+| **Error: poll_interval must be positive**                                                                                    | Zero or negative interval | Set `poll_interval: 5s` (must be > 0).                                                                                                                                                                                                                                                                                   |
+| **Error: OpenAPI client not generated**                                                                                      | Missing generated code | Run `make generate && make build` before starting Sentinel.                                                                                                                                                                                                                                                              |
 | **Pods stay unready after startup**                                                                                         | Normal startup behavior | The `/readyz` endpoint returns `false` until the first successful poll completes and broker health checks pass. This is expected. If readiness probe failures persist beyond initial startup, check pod logs and broker connectivity. Tune probe timing (e.g., increase `initialDelaySeconds`) in Helm values if needed. |
-| **Health/readiness endpoints return errors**                                                                                 | Configuration validation failed | Check pod logs for startup errors: `kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel`. Verify all required config fields. |
+| **Health/readiness endpoints return errors**                                                                                 | Configuration validation failed | Check pod logs for startup errors: `kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel`. Verify all required config fields.                                                                                                                                                                            |
 
 ---
