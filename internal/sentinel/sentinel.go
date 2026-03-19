@@ -154,6 +154,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 
 		if resource.ID == "" {
 			s.logger.Warnf(ctx, "Skipping resource with empty ID kind=%s", resource.Kind)
+			evalSpan.End()
 			continue
 		}
 
