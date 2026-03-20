@@ -624,3 +624,91 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 		})
 	}
 }
+
+// TestDecisionEngine_Evaluate_NeverProcessedPrecedence tests the precedence of checks
+// when both "never processed" and "generation changed" conditions are true.
+//
+// For brand-new resources (generation=1, observedGeneration=0, lastUpdated=zero),
+// both the LastUpdated.IsZero() check and the generation mismatch check would fire.
+// This test ensures that the "never processed" check takes precedence since it runs
+// first, and protects against future reordering of these checks.
+func TestDecisionEngine_Evaluate_NeverProcessedPrecedence(t *testing.T) {
+	engine := newTestEngine()
+	now := time.Now()
+
+	tests := []struct {
+		lastUpdated        time.Time
+		name               string
+		wantReasonContains string
+		description        string
+		generation         int32
+		observedGeneration int32
+		ready              bool
+		wantShouldPublish  bool
+	}{
+		{
+			name:               "brand-new resource - never processed wins over generation changed",
+			generation:         1,
+			observedGeneration: 0,
+			ready:              false,
+			lastUpdated:        time.Time{}, // Zero - triggers "never processed"
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonNeverProcessed, // Should be "never processed", not "generation changed"
+			description:        "Both checks fire, but never-processed check runs first and wins",
+		},
+		{
+			name:               "brand-new resource - ready - never processed wins",
+			generation:         1,
+			observedGeneration: 0,
+			ready:              true,
+			lastUpdated:        time.Time{}, // Zero - triggers "never processed"
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonNeverProcessed,
+			description:        "Both checks fire, but never-processed check runs first and wins (ready)",
+		},
+		{
+			name:               "generation mismatch with non-zero lastUpdated - generation changed wins",
+			generation:         1,
+			observedGeneration: 0,
+			ready:              true,
+			lastUpdated:        now, // Non-zero - skips "never processed" check
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonGenerationChanged, // Should be "generation changed"
+			description:        "Only generation check fires since lastUpdated is non-zero",
+		},
+		{
+			name:               "multiple generation changes on never-processed resource",
+			generation:         5,
+			observedGeneration: 0,
+			ready:              false,
+			lastUpdated:        time.Time{}, // Zero - triggers "never processed"
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonNeverProcessed, // Still "never processed", not "generation changed"
+			description:        "Never-processed check takes precedence even with large generation gap",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resource := newTestResourceWithGeneration(
+				testResourceID,
+				testResourceKind,
+				tt.ready,
+				tt.lastUpdated,
+				tt.generation,
+				tt.observedGeneration,
+			)
+			decision := engine.Evaluate(resource, now)
+
+			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
+
+			// Additional context on failure
+			if t.Failed() {
+				t.Logf("Test description: %s", tt.description)
+				t.Logf("Generation: %d, ObservedGeneration: %d", tt.generation, tt.observedGeneration)
+				t.Logf("LastUpdated.IsZero(): %v", tt.lastUpdated.IsZero())
+				t.Logf("Expected reason containing: %q, got: %q", tt.wantReasonContains, decision.Reason)
+			}
+		})
+	}
+}
