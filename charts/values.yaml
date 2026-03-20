@@ -8,9 +8,9 @@ replicaCount: 1
 # Container image configuration
 image:
   registry: CHANGE_ME
-  repository: hyperfleet-sentinel
+  repository: CHANGE_ME # e.g. openshift-hyperfleet/hyperfleet-sentinel
   pullPolicy: Always
-  # Overrides the image tag whose default is the chart appVersion.
+  # Required: image tag (e.g. git SHA, semver tag). No default — must be set at install time.
   tag: ""
 
 imagePullSecrets: []
@@ -32,20 +32,23 @@ serviceAccount:
 
 # Pod annotations
 podAnnotations: {}
+podLabels: {}
 
 # Pod security context
 podSecurityContext:
   fsGroup: 65532
+  runAsNonRoot: true
+  runAsUser: 65532
 
 # Container security context
 securityContext:
-  runAsNonRoot: true
-  runAsUser: 65532
   readOnlyRootFilesystem: true
   allowPrivilegeEscalation: false
   capabilities:
     drop:
       - ALL
+  seccompProfile:
+    type: RuntimeDefault
 
 # Resource limits and requests
 resources:

@@ -163,60 +163,91 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		exit 1; \
 	fi
 	@echo "Linting Helm chart..."
-	helm lint $(HELM_CHART_DIR)/
+	helm lint $(HELM_CHART_DIR)/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
+		--set image.tag=latest
 	@echo ""
 	@echo "Testing template rendering with default values..."
-	helm template test-release $(HELM_CHART_DIR)/ > /dev/null
+	helm template test-release $(HELM_CHART_DIR)/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
+		--set image.tag=latest > /dev/null
 	@echo "Default values template OK"
 	@echo ""
-	@echo "Testing template with custom image registry..."
+	@echo "Testing template with custom image..."
 	helm template test-release $(HELM_CHART_DIR)/ \
-		--set image.registry=quay.io/openshift-hyperfleet \
+		--set image.registry=quay.io \
+		--set image.repository=myorg/hyperfleet-sentinel \
 		--set image.tag=v1.0.0 > /dev/null
 	@echo "Custom image config template OK"
 	@echo ""
 	@echo "Testing template with PDB enabled..."
 	helm template test-release $(HELM_CHART_DIR)/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
+		--set image.tag=latest \
 		--set podDisruptionBudget.enabled=true \
 		--set podDisruptionBudget.maxUnavailable=1 > /dev/null
 	@echo "PDB config template OK"
 	@echo ""
 	@echo "Testing template with PDB disabled..."
 	helm template test-release $(HELM_CHART_DIR)/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
+		--set image.tag=latest \
 		--set podDisruptionBudget.enabled=false > /dev/null
 	@echo "PDB disabled template OK"
 	@echo ""
 	@echo "Testing template with RabbitMQ broker..."
 	helm template test-release $(HELM_CHART_DIR)/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
+		--set image.tag=latest \
 		--set broker.type=rabbitmq \
 		--set broker.rabbitmq.url=amqp://user:pass@rabbitmq:5672/hyperfleet > /dev/null
 	@echo "RabbitMQ broker template OK"
 	@echo ""
 	@echo "Testing template with Google Pub/Sub broker..."
 	helm template test-release $(HELM_CHART_DIR)/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
+		--set image.tag=latest \
 		--set broker.type=googlepubsub \
 		--set broker.googlepubsub.projectId=test-project > /dev/null
 	@echo "Google Pub/Sub broker template OK"
 	@echo ""
 	@echo "Testing template with PodMonitoring enabled..."
 	helm template test-release $(HELM_CHART_DIR)/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
+		--set image.tag=latest \
 		--set monitoring.podMonitoring.enabled=true \
 		--set monitoring.podMonitoring.interval=15s > /dev/null
 	@echo "PodMonitoring config template OK"
 	@echo ""
 	@echo "Testing template with ServiceMonitor enabled..."
 	helm template test-release $(HELM_CHART_DIR)/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
+		--set image.tag=latest \
 		--set monitoring.serviceMonitor.enabled=true \
 		--set monitoring.serviceMonitor.interval=30s > /dev/null
 	@echo "ServiceMonitor config template OK"
 	@echo ""
 	@echo "Testing template with PrometheusRule enabled..."
 	helm template test-release $(HELM_CHART_DIR)/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
+		--set image.tag=latest \
 		--set monitoring.prometheusRule.enabled=true > /dev/null
 	@echo "PrometheusRule config template OK"
 	@echo ""
 	@echo "Testing template with custom resource selector..."
 	helm template test-release $(HELM_CHART_DIR)/ \
+		--set image.registry=quay.io \
+		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
+		--set image.tag=latest \
 		--set config.resourceType=nodepools \
 		--set config.pollInterval=10s \
 		--set config.maxAgeReady=1h > /dev/null
