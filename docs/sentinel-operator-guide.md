@@ -13,8 +13,10 @@ This comprehensive guide teaches operators how to deploy, configure, and operate
    - [When to Use Sentinel](#12-when-to-use-sentinel)
 2. [Core Concepts](#2-core-concepts)
    - [Decision Engine](#21-decision-engine)
-      - [State-Based Reconciliation](#211-state-based-reconciliation)
-      - [Time-Based Reconciliation (Max Age Intervals)](#212-time-based-reconciliation-max-age-intervals)
+      - [Never-Processed Reconciliation](#211-never-processed-reconciliation)
+      - [State-Based Reconciliation](#212-state-based-reconciliation)
+      - [Time-Based Reconciliation (Max Age Intervals)](#213-time-based-reconciliation-max-age-intervals)
+      - [Complete Decision Flow](#214-complete-decision-flow)
    - [Resource Filtering](#22-resource-filtering)
 3. [Configuration Reference](#3-configuration-reference)
    - [Configuration File Structure](#31-configuration-file-structure)
@@ -63,7 +65,8 @@ graph LR
     E -->|Update Status| B
 ```
 
-Sentinel publishes events to a message broker, which fans out messages to downstream adapters. It uses a **dual-trigger reconciliation strategy**:
+Sentinel publishes events to a message broker, which fans out messages to downstream adapters. It uses a **three-part decision strategy**:
+- **Never-processed**: Publish immediately for new resources that have never been processed
 - **State-based**: Publish immediately when resource state indicates unprocessed spec changes
 - **Time-based**: Publish periodically based on max age intervals to ensure eventual consistency
 
@@ -83,19 +86,36 @@ Deploy Sentinel when you need:
 
 ### 2.1 Decision Engine
 
-Sentinel's decision engine evaluates resources during each poll cycle to determine when to publish events. It uses a **dual-trigger strategy** that combines two complementary mechanisms to ensure both immediate response to changes and eventual consistency over time:
+Sentinel's decision engine evaluates resources during each poll cycle to determine when to publish events. It uses a **three-part decision strategy** that ensures both immediate response to changes and eventual consistency over time:
 
-1. **State-Based Reconciliation** — Immediate event publishing when resource state indicates unprocessed spec changes, which is checked first
-2. **Time-Based Reconciliation** — Periodic event publishing to handle drift and failures when state is in sync
+1. **Never-Processed Reconciliation** — Immediate event publishing for new resources that have never been processed by any adapter
+2. **State-Based Reconciliation** — Immediate event publishing when resource state indicates unprocessed spec changes
+3. **Time-Based Reconciliation** — Periodic event publishing to handle drift and failures when state is in sync
 
 **How Sentinel Reads Resource State:**
 
-When Sentinel polls the HyperFleet API, it retrieves cluster or nodepool resources with their current state. 
+When Sentinel polls the HyperFleet API, it retrieves cluster or nodepool resources with their current state.
 
 1. **`resource.Generation`** — Retrieved from the API resource. The HyperFleet API increments this value every time the resource spec is updated.
 2. **`resource.status`** — Extracted from the API resource's `type=Ready` condition.
 
-#### 2.1.1 State-Based Reconciliation
+#### 2.1.1 Never-Processed Reconciliation
+
+Never-processed reconciliation is the **first and highest-priority check** that ensures new resources are published immediately on the first poll cycle after creation.
+
+**How It Works:**
+
+Sentinel checks if `status.last_updated` is zero (meaning no adapter has ever updated the resource status):
+
+- If zero → **Publish immediately** with reason `"never processed"`
+- If non-zero → Proceed to state-based check
+
+**Why This Matters:**
+
+- New clusters are published within one poll interval (~5s)
+- Ensures consistent handling of all new resources regardless of generation initialization
+
+#### 2.1.2 State-Based Reconciliation
 
 State-based reconciliation is a **spec-change detection mechanism** where Sentinel immediately publishes events when resource state indicates the spec has changed but hasn't been fully processed yet.
 
@@ -109,27 +129,6 @@ Sentinel detects unprocessed spec changes by comparing the resource's `generatio
 
 **Note**: Sentinel uses the Ready condition's `ObservedGeneration` field as a proxy signal for spec changes. While the Ready condition can also be False for other reasons (e.g., adapter-reported infrastructure failures), the `ObservedGeneration` field specifically tracks spec processing, making this an effective spec-change detection mechanism.
 
-**Flow Diagram:**
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant API
-    participant Sentinel
-    participant Broker
-    participant Adapter
-
-    User->>API: Update cluster spec (generation: 1 → 2)
-    API->>API: Increment generation
-    Sentinel->>API: Poll resources
-    API-->>Sentinel: cluster (gen: 2, observed_gen: 1)
-    Sentinel->>Sentinel: Evaluate: 2 > 1 → PUBLISH
-    Sentinel->>Broker: CloudEvent (reason: state change detected)
-    Broker->>Adapter: Consume event
-    Adapter->>API: Reconcile cluster
-    Adapter->>API: Update status (observed_generation: 2)
-```
-
 **Key Properties:**
 
 - **Immediate Response**: No need to wait for max age interval when state indicates unprocessed changes
@@ -137,7 +136,7 @@ sequenceDiagram
 - **Race Prevention**: Ensures spec changes are never missed due to timing
 - **Condition-Based**: Uses Ready condition data as a reliable proxy for tracking spec processing status
 
-#### 2.1.2 Time-Based Reconciliation (Max Age Intervals)
+#### 2.1.3 Time-Based Reconciliation (Max Age Intervals)
 
 Time-based reconciliation ensures **eventual consistency** by publishing events periodically, even when specs haven't changed. This handles external state drift and transient failures.
 
@@ -152,41 +151,43 @@ Sentinel uses two configurable max age intervals based on the resource's status 
 
 **Decision Logic:**
 
-When the resource's `generation` matches the `Ready` condition's `ObservedGeneration` (indicating the condition reflects the current state), Sentinel checks if enough time has elapsed:
+At this point, we know `status.last_updated` is not zero, so we can use it as the reference timestamp:
 
-1. Calculate reference timestamp:
-   - If `status.last_updated` exists → use it (adapter has processed resource)
-   - Otherwise → use `created_time` (new resource never processed)
-
-2. Determine max age interval:
+1. Determine max age interval based on ready status:
    - If resource is ready (`Ready` condition status == True) → use `max_age_ready` (default: 30m)
    - If resource is not ready (`Ready` condition status == False) → use `max_age_not_ready` (default: 10s)
 
-3. Calculate next event time:
-   ```text
-   next_event = reference_time + max_age_interval
-   ```
+2. Calculate next event time:
+   - `next_event = last_updated + max_age_interval`
 
-4. Compare with current time:
+3. Compare with current time:
    - If `now >= next_event` → **Publish event** (reason: "max age exceeded")
    - Otherwise → **Skip** (reason: "max age not exceeded")
 
-**Flow Diagram:**
+#### 2.1.4 Complete Decision Flow
+
+The three reconciliation checks work together in priority order to determine when to publish events:
 
 ```mermaid
 graph TD
-    A[Determine Reference Time] --> B{last_updated exists?}
-    B -->|Yes| C[Use last_updated]
-    B -->|No| D[Use created_time]
-    C --> E{Resource Ready?}
-    D --> E
-    E -->|Yes| F[Max Age = 30m]
-    E -->|No| G[Max Age = 10s]
-    F --> H{now >= reference + max_age?}
-    G --> H
-    H -->|Yes| I[Publish: max age exceeded]
-    H -->|No| J[Skip: within max age]
+    START[Poll Resource] --> CHECK1{last_updated == zero?}
+    CHECK1 -->|Yes| PUB1[Publish: never processed]
+    CHECK1 -->|No| CHECK2{Generation > ObservedGeneration?}
+    CHECK2 -->|Yes| PUB2[Publish: generation changed]
+    CHECK2 -->|No| CHECK3{Resource Ready?}
+    CHECK3 -->|Yes| AGE1[Max Age = 30m]
+    CHECK3 -->|No| AGE2[Max Age = 10s]
+    AGE1 --> CHECK4{now >= last_updated + max_age?}
+    AGE2 --> CHECK4
+    CHECK4 -->|Yes| PUB3[Publish: max age exceeded]
+    CHECK4 -->|No| SKIP[Skip: within max age]
 ```
+
+**Key Takeaways:**
+
+- **Never-processed takes absolute priority** - New resources always publish immediately
+- **State changes override max age** - Spec changes don't wait for intervals
+- **Max age is the fallback** - Ensures eventual consistency when nothing else triggers
 
 ### 2.2 Resource Filtering
 
@@ -372,7 +373,7 @@ The `message_data` field defines the CloudEvents payload structure using **Commo
 | Variable | Type | Description | Example Fields |
 |----------|------|-------------|----------------|
 | `resource` | Resource | The HyperFleet resource | `id`, `kind`, `href`, `generation`, `status`, `labels`, `created_time` |
-| `reason` | string | Decision engine reason | `"max age exceeded"`, `"generation changed"` |
+| `reason` | string | Decision engine reason | `"generation changed"`, `"never processed"`, `"max age exceeded"` |
 
 **CEL Expression Syntax:**
 
@@ -662,7 +663,7 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
   Trigger cycle completed total=15 published=3 skipped=12 duration=0.125s topic=hyperfleet-dev-clusters subset=clusters
   ```
   - `count` - Number of resources fetched from the API matching the resource selector
-  - `published` - Number of events published (generation changed or max age exceeded)
+  - `published` - Number of events published (generation changed, never processed, or max age exceeded)
   - `skipped` - Number of resources skipped (no reconciliation needed)
 
 For detailed deployment guidance, see [docs/running-sentinel.md](running-sentinel.md)

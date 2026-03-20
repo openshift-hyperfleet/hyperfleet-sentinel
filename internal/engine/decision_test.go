@@ -121,25 +121,24 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 		ready              bool
 		wantShouldPublish  bool
 	}{
-		// Zero LastUpdated tests - should fall back to created_time
-		// These tests use the test factory default (created 1 hour ago)
+		// Zero LastUpdated tests - should publish immediately as never processed
 		{
 			name:               "zero LastUpdated - ready",
 			ready:              true,
-			lastUpdated:        time.Time{}, // Zero time - will use created_time
+			lastUpdated:        time.Time{}, // Zero time - never processed
 			now:                now,
 			wantShouldPublish:  true,
-			wantReasonContains: "max age exceeded",
-			description:        "Resources with zero LastUpdated should use created_time and publish (created > 30m ago)",
+			wantReasonContains: ReasonNeverProcessed,
+			description:        "Resources with zero LastUpdated should publish immediately (never processed)",
 		},
 		{
 			name:               "zero LastUpdated - not ready",
 			ready:              false,
-			lastUpdated:        time.Time{}, // Zero time - will use created_time
+			lastUpdated:        time.Time{}, // Zero time - never processed
 			now:                now,
 			wantShouldPublish:  true,
-			wantReasonContains: "max age exceeded",
-			description:        "Resources with zero LastUpdated should use created_time and publish (created > 10s ago)",
+			wantReasonContains: ReasonNeverProcessed,
+			description:        "Resources with zero LastUpdated should publish immediately (never processed)",
 		},
 
 		// Not-ready resources (10s max age)
@@ -413,8 +412,9 @@ func TestDecisionEngine_Evaluate_InvalidInputs(t *testing.T) {
 	}
 }
 
-// TestDecisionEngine_Evaluate_CreatedTimeFallback tests that created_time is used when lastUpdated is zero
-func TestDecisionEngine_Evaluate_CreatedTimeFallback(t *testing.T) {
+// TestDecisionEngine_Evaluate_NeverProcessedResources tests the never-processed reconciliation
+// When lastUpdated is zero, resources are published immediately with "never processed" reason
+func TestDecisionEngine_Evaluate_NeverProcessedResources(t *testing.T) {
 	engine := newTestEngine()
 	now := time.Now()
 
@@ -428,49 +428,31 @@ func TestDecisionEngine_Evaluate_CreatedTimeFallback(t *testing.T) {
 		wantShouldPublish  bool
 	}{
 		{
-			name:               "zero lastUpdated - created 11s ago - not ready",
-			createdTime:        now.Add(-11 * time.Second),
-			lastUpdated:        time.Time{}, // Zero - should use created_time
+			name:               "never processed - not ready",
+			createdTime:        now.Add(-1 * time.Hour), // Doesn't affect decision
+			lastUpdated:        time.Time{},             // Zero - never processed
 			ready:              false,
 			wantShouldPublish:  true,
-			wantReasonContains: "max age exceeded",
-			description:        "Should use created_time and publish (11s > 10s max age)",
+			wantReasonContains: ReasonNeverProcessed,
+			description:        "Should publish immediately (never processed)",
 		},
 		{
-			name:               "zero lastUpdated - created 5s ago - not ready",
-			createdTime:        now.Add(-5 * time.Second),
-			lastUpdated:        time.Time{}, // Zero - should use created_time
-			ready:              false,
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "Should use created_time and not publish (5s < 10s max age)",
-		},
-		{
-			name:               "zero lastUpdated - created 31m ago - ready",
-			createdTime:        now.Add(-31 * time.Minute),
-			lastUpdated:        time.Time{}, // Zero - should use created_time
+			name:               "never processed - ready",
+			createdTime:        now.Add(-1 * time.Hour), // Doesn't affect decision
+			lastUpdated:        time.Time{},             // Zero - never processed
 			ready:              true,
 			wantShouldPublish:  true,
-			wantReasonContains: "max age exceeded",
-			description:        "Should use created_time and publish (31m > 30m max age)",
+			wantReasonContains: ReasonNeverProcessed,
+			description:        "Should publish immediately (never processed)",
 		},
 		{
-			name:               "zero lastUpdated - created 15m ago - ready",
-			createdTime:        now.Add(-15 * time.Minute),
-			lastUpdated:        time.Time{}, // Zero - should use created_time
-			ready:              true,
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "Should use created_time and not publish (15m < 30m max age)",
-		},
-		{
-			name:               "non-zero lastUpdated - should ignore created_time",
-			createdTime:        now.Add(-1 * time.Hour),   // Created long ago
+			name:               "processed resource - use lastUpdated for max age",
+			createdTime:        now.Add(-1 * time.Hour),   // Irrelevant once processed
 			lastUpdated:        now.Add(-5 * time.Second), // Updated recently
 			ready:              false,
 			wantShouldPublish:  false,
 			wantReasonContains: "max age not exceeded",
-			description:        "Should use lastUpdated, not created_time (5s < 10s max age)",
+			description:        "Should use lastUpdated for max age calculation (5s < 10s max age)",
 		},
 	}
 
@@ -551,7 +533,7 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 			lastUpdated:        now,
 			wantShouldPublish:  true,
 			wantReasonContains: ReasonGenerationChanged,
-			description:        "First reconciliation should be triggered by generation (never processed)",
+			description:        "Generation mismatch triggers immediate reconciliation",
 		},
 
 		// Generation in sync tests - should follow normal max age logic
@@ -638,6 +620,94 @@ func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
 				t.Logf("Test description: %s", tt.description)
 				t.Logf("Generation: %d, ObservedGeneration: %d", tt.generation, tt.observedGeneration)
 				t.Logf("Ready: %t, LastUpdated: %v", tt.ready, tt.lastUpdated)
+			}
+		})
+	}
+}
+
+// TestDecisionEngine_Evaluate_NeverProcessedPrecedence tests the precedence of checks
+// when both "never processed" and "generation changed" conditions are true.
+//
+// For brand-new resources (generation=1, observedGeneration=0, lastUpdated=zero),
+// both the LastUpdated.IsZero() check and the generation mismatch check would fire.
+// This test ensures that the "never processed" check takes precedence since it runs
+// first, and protects against future reordering of these checks.
+func TestDecisionEngine_Evaluate_NeverProcessedPrecedence(t *testing.T) {
+	engine := newTestEngine()
+	now := time.Now()
+
+	tests := []struct {
+		lastUpdated        time.Time
+		name               string
+		wantReasonContains string
+		description        string
+		generation         int32
+		observedGeneration int32
+		ready              bool
+		wantShouldPublish  bool
+	}{
+		{
+			name:               "brand-new resource - never processed wins over generation changed",
+			generation:         1,
+			observedGeneration: 0,
+			ready:              false,
+			lastUpdated:        time.Time{}, // Zero - triggers "never processed"
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonNeverProcessed, // Should be "never processed", not "generation changed"
+			description:        "Both checks fire, but never-processed check runs first and wins",
+		},
+		{
+			name:               "brand-new resource - ready - never processed wins",
+			generation:         1,
+			observedGeneration: 0,
+			ready:              true,
+			lastUpdated:        time.Time{}, // Zero - triggers "never processed"
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonNeverProcessed,
+			description:        "Both checks fire, but never-processed check runs first and wins (ready)",
+		},
+		{
+			name:               "generation mismatch with non-zero lastUpdated - generation changed wins",
+			generation:         1,
+			observedGeneration: 0,
+			ready:              true,
+			lastUpdated:        now, // Non-zero - skips "never processed" check
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonGenerationChanged, // Should be "generation changed"
+			description:        "Only generation check fires since lastUpdated is non-zero",
+		},
+		{
+			name:               "multiple generation changes on never-processed resource",
+			generation:         5,
+			observedGeneration: 0,
+			ready:              false,
+			lastUpdated:        time.Time{}, // Zero - triggers "never processed"
+			wantShouldPublish:  true,
+			wantReasonContains: ReasonNeverProcessed, // Still "never processed", not "generation changed"
+			description:        "Never-processed check takes precedence even with large generation gap",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resource := newTestResourceWithGeneration(
+				testResourceID,
+				testResourceKind,
+				tt.ready,
+				tt.lastUpdated,
+				tt.generation,
+				tt.observedGeneration,
+			)
+			decision := engine.Evaluate(resource, now)
+
+			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
+
+			// Additional context on failure
+			if t.Failed() {
+				t.Logf("Test description: %s", tt.description)
+				t.Logf("Generation: %d, ObservedGeneration: %d", tt.generation, tt.observedGeneration)
+				t.Logf("LastUpdated.IsZero(): %v", tt.lastUpdated.IsZero())
+				t.Logf("Expected reason containing: %q, got: %q", tt.wantReasonContains, decision.Reason)
 			}
 		})
 	}

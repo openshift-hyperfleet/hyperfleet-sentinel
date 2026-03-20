@@ -11,6 +11,7 @@ import (
 const (
 	ReasonMaxAgeExceeded    = "max age exceeded"
 	ReasonGenerationChanged = "generation changed"
+	ReasonNeverProcessed    = "never processed"
 	ReasonNilResource       = "resource is nil"
 	ReasonZeroNow           = "now time is zero"
 )
@@ -38,11 +39,12 @@ type Decision struct {
 // Evaluate determines if an event should be published for the resource.
 //
 // Decision Logic (in priority order):
-//  1. Generation-based reconciliation: If resource.Generation > status.ObservedGeneration,
+//  1. Never-processed reconciliation: If status.LastUpdated is zero, publish immediately
+//     (resource has never been processed by any adapter)
+//  2. Generation-based reconciliation: If resource.Generation > status.ObservedGeneration,
 //     publish immediately (spec has changed, adapter needs to reconcile)
-//  2. Time-based reconciliation: If max age exceeded since last update, publish
+//  3. Time-based reconciliation: If max age exceeded since last update, publish
 //     - Uses status.LastUpdated as reference timestamp
-//     - If LastUpdated is zero (never processed), falls back to created_time
 //
 // Max Age Intervals:
 //   - Resources with Ready=true: maxAgeReady (default 30m)
@@ -71,6 +73,16 @@ func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Deci
 		}
 	}
 
+	// Check if resource has never been processed by an adapter
+	// LastUpdated is zero means no adapter has updated the status yet
+	// This ensures first-time resources are published immediately
+	if resource.Status.LastUpdated.IsZero() {
+		return Decision{
+			ShouldPublish: true,
+			Reason:        ReasonNeverProcessed,
+		}
+	}
+
 	// Check for generation mismatch
 	// This triggers immediate reconciliation regardless of max age
 	if resource.Generation > resource.Status.ObservedGeneration {
@@ -81,12 +93,9 @@ func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Deci
 	}
 
 	// Determine the reference timestamp for max age calculation
-	// Use LastUpdated if available (adapter has processed the resource)
-	// Otherwise fall back to created_time (resource is newly created)
+	// At this point, we know LastUpdated is not zero (checked above)
+	// so we can use it directly for the max age calculation
 	referenceTime := resource.Status.LastUpdated
-	if referenceTime.IsZero() {
-		referenceTime = resource.CreatedTime
-	}
 
 	// Determine the appropriate max age based on resource ready status
 	var maxAge time.Duration
