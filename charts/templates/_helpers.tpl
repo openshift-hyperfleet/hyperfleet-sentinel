@@ -60,6 +60,22 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Validate required values that must not remain as placeholders.
+*/}}
+{{- define "sentinel.validateValues" -}}
+{{- $effectiveRegistry := ((.Values.global).imageRegistry) | default .Values.image.registry -}}
+{{- if eq $effectiveRegistry "CHANGE_ME" -}}
+{{- fail "image.registry must be set (e.g. --set image.registry=quay.io)" -}}
+{{- end -}}
+{{- if eq .Values.image.repository "CHANGE_ME" -}}
+{{- fail "image.repository must be set (e.g. --set image.repository=openshift-hyperfleet/hyperfleet-sentinel)" -}}
+{{- end -}}
+{{- if not .Values.image.tag -}}
+{{- fail "image.tag must be set (e.g. --set image.tag=abc1234)" -}}
+{{- end -}}
+{{- end }}
+
+{{/*
 Create the name of the secret to use
 */}}
 {{- define "sentinel.secretName" -}}

@@ -1,9 +1,9 @@
 apiVersion: v2
-name: sentinel
+name: hyperfleet-sentinel
 description: HyperFleet Sentinel - Kubernetes service that polls HyperFleet API and publishes CloudEvents
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 1.0.0
+appVersion: "0.0.0-dev"
 keywords:
   - hyperfleet
   - sentinel
