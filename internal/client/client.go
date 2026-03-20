@@ -118,11 +118,16 @@ type Condition struct {
 //   - This maintains service availability during resource provisioning/deletion
 //   - Only resources with valid status are returned
 //
+// The additionalFilters parameter accepts optional TSL condition expressions
+// (e.g., "status.conditions.Ready='False'") that are combined with label
+// selectors using "and" to form the final search query.
+//
 // Returns a slice of resources and an error if the fetch operation fails.
 func (c *HyperFleetClient) FetchResources(
 	ctx context.Context,
 	resourceType ResourceType,
 	labelSelector map[string]string,
+	additionalFilters ...string,
 ) ([]Resource, error) {
 	// Validate inputs
 	if ctx == nil {
@@ -147,15 +152,15 @@ func (c *HyperFleetClient) FetchResources(
 
 	// Retry operation with backoff (v5 API)
 	operation := func() ([]Resource, error) {
-		resources, err := c.fetchResourcesOnce(ctx, resourceType, labelSelector)
+		resources, err := c.fetchResourcesOnce(ctx, resourceType, labelSelector, additionalFilters)
 		if err != nil {
 			// Check if error is retriable
 			if isRetriable(err) {
-				c.log.V(2).Infof(ctx, "Retriable error fetching %s: %v (will retry)", resourceType, err)
+				c.log.Debugf(ctx, "Retriable error fetching %s: %v (will retry)", resourceType, err)
 				return nil, err // Retry
 			}
 			// Non-retriable error - stop retrying
-			c.log.V(2).Infof(ctx, "Non-retriable error fetching %s: %v (will not retry)", resourceType, err)
+			c.log.Debugf(ctx, "Non-retriable error fetching %s: %v (will not retry)", resourceType, err)
 			return nil, backoff.Permanent(err)
 		}
 		return resources, nil
@@ -217,14 +222,35 @@ func labelSelectorToSearchString(labelSelector map[string]string) string {
 	return strings.Join(parts, " and ")
 }
 
+// buildSearchString combines label selectors and additional TSL filters into a
+// single search query string. Label selectors are converted to TSL format
+// (e.g., "labels.key='value'") and joined with additional filters using "and".
+func buildSearchString(labelSelector map[string]string, additionalFilters []string) string {
+	parts := make([]string, 0, len(additionalFilters)+1)
+
+	labelSearch := labelSelectorToSearchString(labelSelector)
+	if labelSearch != "" {
+		parts = append(parts, labelSearch)
+	}
+
+	for _, f := range additionalFilters {
+		if f != "" {
+			parts = append(parts, f)
+		}
+	}
+
+	return strings.Join(parts, " and ")
+}
+
 // fetchResourcesOnce performs a single fetch operation without retry logic
 func (c *HyperFleetClient) fetchResourcesOnce(
 	ctx context.Context,
 	resourceType ResourceType,
 	labelSelector map[string]string,
+	additionalFilters []string,
 ) ([]Resource, error) {
-	// Build search parameter from label selector
-	searchParam := labelSelectorToSearchString(labelSelector)
+	// Build search parameter from label selector and additional filters
+	searchParam := buildSearchString(labelSelector, additionalFilters)
 
 	// Call appropriate endpoint based on resource type
 	switch resourceType {
