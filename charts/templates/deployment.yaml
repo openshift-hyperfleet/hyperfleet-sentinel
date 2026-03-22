@@ -87,6 +87,9 @@ spec:
             mountPath: /etc/sentinel/broker.yaml
             subPath: broker.yaml
             readOnly: true
+          {{- with .Values.extraVolumeMounts }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
         resources:
           {{- toYaml .Values.resources | nindent 12 }}
       volumes:
@@ -96,6 +99,9 @@ spec:
         - name: broker-config
           configMap:
             name: {{ include "sentinel.fullname" . }}-broker-config
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
