@@ -84,7 +84,8 @@ func createClusterList(count int) map[string]any {
 
 func fakeClusterID(i int) string {
 	// Knuth multiplicative hash (2654435761 ≈ 2^32 × φ⁻¹) to spread IDs across the hex space.
-	return fmt.Sprintf("1%07x%08x%08x%08x", i%0xFFFFFFF, i*2654435761, i*40503, i*12345678)
+	return fmt.Sprintf("1%07x%08x%08x%08x",
+		i&0xFFFFFFF, uint32(i*2654435761), uint32(i*40503), uint32(i*12345678))
 }
 
 func fakeUUID(i int) string {
