@@ -65,7 +65,7 @@ func clusterCountFromEnv() int {
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil {
-		log.Printf("Invalid CLUSTER_COUNT %q: %v, using default %d", s, err,  defaultClusterCount)
+		log.Printf("Invalid CLUSTER_COUNT %q: %v, using default %d", s, err, defaultClusterCount)
 		return defaultClusterCount
 	}
 	return n
@@ -99,12 +99,11 @@ func fakeClusterID(i int) string {
 }
 
 func fakeUUID(i int) string {
-	h := fmt.Sprintf("%032x", i+1)
-	return h[:8] + "-" + h[8:12] + "-4" + h[13:16] + "-a" + h[17:20] + "-" + h[20:32]
+	return fmt.Sprintf("00000000-0000-4000-a000-%012x", i+1)
 }
 
 func fakeSubID(i int) string {
-	return fmt.Sprintf("%032x", i+100001)
+	return fmt.Sprintf("s%031x", i+1)
 }
 
 func createCluster(i int) map[string]any {
@@ -139,6 +138,7 @@ func buildOCMSpec(i int, id, uuid string) map[string]any {
 	minor := 3 + (i % 15) // OCP versions 4.3 – 4.17, the range seen in production
 	patch := i % 30
 	provider := providers[i%len(providers)]
+	state := clusterState(i)
 	createdAt := time.Date(2020, time.Month(i%12)+1, 1+(i%28), i%24, i%60, 0, 0, time.UTC)
 
 	display := uuid
@@ -147,6 +147,7 @@ func buildOCMSpec(i int, id, uuid string) map[string]any {
 	}
 
 	clusterHref := ocmClusters + "/" + id
+
 	ecHref := clusterHref + "/external_configuration"
 
 	spec := map[string]any{
@@ -165,13 +166,9 @@ func buildOCMSpec(i int, id, uuid string) map[string]any {
 			"url": fmt.Sprintf(
 				"https://console-openshift-console.apps.cluster-%d.example.com", i),
 		},
-		"api": map[string]any{"listening": "external"},
-		"nodes": map[string]any{
-			"master":  0,
-			"infra":   0,
-			"compute": 0,
-		},
-		"state": clusterState(i),
+		"api":   map[string]any{"listening": "external"},
+		"nodes": map[string]any{"master": 0, "infra": 0, "compute": 0},
+		"state": state,
 		"groups": map[string]any{
 			"kind": "GroupListLink",
 			"href": clusterHref + "/groups",
@@ -193,9 +190,9 @@ func buildOCMSpec(i int, id, uuid string) map[string]any {
 				"href": ecHref + "/manifests",
 			},
 		},
-		"multi_az": i%3 == 0,
-		"managed":  i%2 == 0,
-		"ccs":      map[string]any{"enabled": false, "disable_scp_checks": false},
+		"multi_az":            i%3 == 0,
+		"managed":             i%2 == 0,
+		"ccs":                 map[string]any{"enabled": false, "disable_scp_checks": false},
 		"storage_quota":       map[string]any{"value": 0, "unit": "B"},
 		"load_balancer_quota": 0,
 		"identity_providers": map[string]any{
@@ -218,8 +215,8 @@ func buildOCMSpec(i int, id, uuid string) map[string]any {
 			"kind": "ProductLink", "id": "ocp",
 			"href": ocmBase + "/products/ocp",
 		},
-		"status":                buildOCMStatus(i),
-		"node_drain_grace_period": map[string]any{"value": 60, "unit": "minutes"},
+		"status":                           buildOCMStatus(i, state),
+		"node_drain_grace_period":          map[string]any{"value": 60, "unit": "minutes"},
 		"etcd_encryption":                  false,
 		"billing_model":                    "standard",
 		"disable_user_workload_monitoring": false,
@@ -248,7 +245,7 @@ func buildOCMSpec(i int, id, uuid string) map[string]any {
 		},
 	}
 
-	addProviderRegion(spec, provider, i)
+	addProviderRegion(spec, provider, i, clusterHref)
 	addVersionInfo(spec, i, minor, patch)
 	return spec
 }
@@ -267,9 +264,9 @@ func clusterState(i int) string {
 	return states[i%len(states)]
 }
 
-func buildOCMStatus(i int) map[string]any {
+func buildOCMStatus(i int, state string) map[string]any {
 	return map[string]any{
-		"state":                        clusterState(i),
+		"state":                        state,
 		"dns_ready":                    i%4 != 0,
 		"oidc_ready":                   false,
 		"provision_error_message":      "",
@@ -278,10 +275,7 @@ func buildOCMStatus(i int) map[string]any {
 	}
 }
 
-func addProviderRegion(spec map[string]any, provider string, i int) {
-	id, _ := spec["external_id"].(string)
-	clusterHref := ocmClusters + "/" + id
-
+func addProviderRegion(spec map[string]any, provider string, i int, clusterHref string) {
 	switch provider {
 	case "aws":
 		region := awsRegions[i%len(awsRegions)]
@@ -317,7 +311,7 @@ func addProviderRegion(spec map[string]any, provider string, i int) {
 				"kind": "RedHatCloudAccount",
 			},
 		}
-	// azure, vsphere, openstack, libvirt: cloud_provider only, no region
+		// azure, vsphere, openstack, libvirt: cloud_provider only, no region
 	}
 }
 
@@ -328,13 +322,13 @@ func addVersionInfo(spec map[string]any, i, minor, patch int) {
 	}
 	versionID := fmt.Sprintf("openshift-v4.%d.%d", minor, patch)
 	spec["version"] = map[string]any{
-		"kind":                "VersionLink",
-		"id":                  versionID,
-		"href":                ocmBase + "/versions/" + versionID,
-		"raw_id":              fmt.Sprintf("4.%d.%d", minor, patch),
-		"channel_group":       "stable",
-		"available_upgrades":  upgrades,
-		"available_channels":  []string{"stable-4." + fmt.Sprintf("%d", minor)},
+		"kind":                  "VersionLink",
+		"id":                    versionID,
+		"href":                  ocmBase + "/versions/" + versionID,
+		"raw_id":                fmt.Sprintf("4.%d.%d", minor, patch),
+		"channel_group":         "stable",
+		"available_upgrades":    upgrades,
+		"available_channels":    []string{"stable-4." + fmt.Sprintf("%d", minor)},
 		"end_of_life_timestamp": "2026-12-01T00:00:00Z",
 	}
 }
