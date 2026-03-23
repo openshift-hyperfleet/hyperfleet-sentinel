@@ -53,7 +53,7 @@ func clusterCountFromEnv() int {
 	}
 	n, err := strconv.Atoi(s)
 	if err != nil {
-		log.Printf("Invalid CLUSTER_COUNT %q, using default %d", s, defaultClusterCount)
+		log.Printf("Invalid CLUSTER_COUNT %q: %v, using default %d", s, err,  defaultClusterCount)
 		return defaultClusterCount
 	}
 	return n
