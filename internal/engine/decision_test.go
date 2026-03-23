@@ -1,399 +1,184 @@
 package engine
 
 import (
-	"strings"
 	"testing"
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 )
 
-// Test helpers and factories
+// Test helpers
 
-// newTestResource creates a test resource with the given parameters
-// This follows TRex pattern of using test factories for consistent test data
-func newTestResource(ready bool, lastUpdated time.Time) *client.Resource {
+const (
+	testResourceID   = "test-cluster-1"
+	testResourceKind = "Cluster"
+)
+
+// newDefaultDecisionConfig returns the default message decision config
+// matching the sentinel architecture: ref_time, is_ready, is_new_resource,
+// ready_and_stale, not_ready_and_debounced.
+func newDefaultDecisionConfig() *config.MessageDecisionConfig {
+	return config.DefaultMessageDecision()
+}
+
+// newTestDecisionEngine creates a decision engine with the default config.
+func newTestDecisionEngine(t *testing.T) *DecisionEngine {
+	t.Helper()
+	cfg := newDefaultDecisionConfig()
+	engine, err := NewDecisionEngine(cfg)
+	if err != nil {
+		t.Fatalf("NewDecisionEngine failed: %v", err)
+	}
+	return engine
+}
+
+// newResourceWithCondition creates a test resource with a single "Ready" condition.
+func newResourceWithCondition(status string, lastUpdated time.Time, generation int32) *client.Resource {
 	return &client.Resource{
 		ID:          testResourceID,
 		Kind:        testResourceKind,
-		Generation:  1,                              // Default generation
-		CreatedTime: time.Now().Add(-1 * time.Hour), // Default: created 1 hour ago
-		Status: client.ResourceStatus{
-			Ready:              ready,
-			LastUpdated:        lastUpdated,
-			ObservedGeneration: 1, // Default: in sync with generation
-		},
-	}
-}
-
-// newTestResourceWithCreatedTime creates a test resource with explicit created_time
-func newTestResourceWithCreatedTime(id, kind string, ready bool, createdTime, lastUpdated time.Time) *client.Resource {
-	return &client.Resource{
-		ID:          id,
-		Kind:        kind,
-		Generation:  1, // Default generation
-		CreatedTime: createdTime,
-		Status: client.ResourceStatus{
-			Ready:              ready,
-			LastUpdated:        lastUpdated,
-			ObservedGeneration: 1, // Default: in sync with generation
-		},
-	}
-}
-
-// newTestResourceWithGeneration creates a test resource with explicit
-// generation values
-func newTestResourceWithGeneration(
-	id, kind string,
-	ready bool,
-	lastUpdated time.Time,
-	generation, observedGeneration int32,
-) *client.Resource {
-	return &client.Resource{
-		ID:          id,
-		Kind:        kind,
 		Generation:  generation,
-		CreatedTime: time.Now().Add(-1 * time.Hour), // Default: created 1 hour ago
+		CreatedTime: time.Now().Add(-1 * time.Hour),
 		Status: client.ResourceStatus{
-			Ready:              ready,
-			LastUpdated:        lastUpdated,
-			ObservedGeneration: observedGeneration,
+			Conditions: []client.Condition{
+				{
+					Type:            "Ready",
+					Status:          status,
+					LastUpdatedTime: lastUpdated,
+				},
+			},
 		},
 	}
 }
 
-// newTestEngine creates a decision engine with standard test values
-func newTestEngine() *DecisionEngine {
-	return NewDecisionEngine(testMaxAgeNotReady, testMaxAgeReady)
-}
-
-// assertDecision verifies a decision matches expected values
-func assertDecision(t *testing.T, got Decision, wantPublish bool, wantReasonContains string) {
-	t.Helper()
-
-	if got.ShouldPublish != wantPublish {
-		t.Errorf("ShouldPublish = %v, want %v", got.ShouldPublish, wantPublish)
-	}
-
-	if wantReasonContains != "" && !strings.Contains(got.Reason, wantReasonContains) {
-		t.Errorf("Reason = %q, want it to contain %q", got.Reason, wantReasonContains)
-	}
-
-	if got.Reason == "" {
-		t.Error("Reason should never be empty")
+// newResourceNoConditions creates a test resource with no conditions.
+func newResourceNoConditions(generation int32) *client.Resource {
+	return &client.Resource{
+		ID:          testResourceID,
+		Kind:        testResourceKind,
+		Generation:  generation,
+		CreatedTime: time.Now().Add(-1 * time.Hour),
+		Status:      client.ResourceStatus{},
 	}
 }
-
-// Test constants
-const (
-	testMaxAgeNotReady = 10 * time.Second
-	testMaxAgeReady    = 30 * time.Minute
-	testResourceID     = "test-cluster-1"
-	testResourceKind   = "Cluster"
-)
 
 func TestNewDecisionEngine(t *testing.T) {
-	engine := newTestEngine()
+	t.Run("valid config", func(t *testing.T) {
+		engine, err := NewDecisionEngine(newDefaultDecisionConfig())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if engine == nil {
+			t.Fatal("engine is nil")
+		}
+	})
 
-	if engine == nil {
-		t.Fatal("NewDecisionEngine returned nil")
-	}
+	t.Run("nil config", func(t *testing.T) {
+		_, err := NewDecisionEngine(nil)
+		if err == nil {
+			t.Fatal("expected error for nil config")
+		}
+	})
 
-	if engine.maxAgeNotReady != testMaxAgeNotReady {
-		t.Errorf("maxAgeNotReady = %v, want %v", engine.maxAgeNotReady, testMaxAgeNotReady)
-	}
+	t.Run("invalid CEL expression", func(t *testing.T) {
+		cfg := &config.MessageDecisionConfig{
+			Params: map[string]string{
+				"bad": "this is not valid CEL !!!",
+			},
+			Result: "bad",
+		}
+		_, err := NewDecisionEngine(cfg)
+		if err == nil {
+			t.Fatal("expected error for invalid CEL expression")
+		}
+	})
 
-	if engine.maxAgeReady != testMaxAgeReady {
-		t.Errorf("maxAgeReady = %v, want %v", engine.maxAgeReady, testMaxAgeReady)
-	}
+	t.Run("invalid result expression", func(t *testing.T) {
+		cfg := &config.MessageDecisionConfig{
+			Params: map[string]string{},
+			Result: "not valid !!!",
+		}
+		_, err := NewDecisionEngine(cfg)
+		if err == nil {
+			t.Fatal("expected error for invalid result expression")
+		}
+	})
+
+	t.Run("simple boolean result", func(t *testing.T) {
+		cfg := &config.MessageDecisionConfig{
+			Params: map[string]string{},
+			Result: "true",
+		}
+		engine, err := NewDecisionEngine(cfg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if engine == nil {
+			t.Fatal("engine is nil")
+		}
+	})
 }
 
 func TestDecisionEngine_Evaluate(t *testing.T) {
 	now := time.Now()
-	engine := newTestEngine()
+	engine := newTestDecisionEngine(t)
 
 	tests := []struct {
-		lastUpdated        time.Time
-		now                time.Time
-		name               string
-		wantReasonContains string
-		description        string
-		ready              bool
-		wantShouldPublish  bool
-	}{
-		// Zero LastUpdated tests - should publish immediately as never processed
-		{
-			name:               "zero LastUpdated - ready",
-			ready:              true,
-			lastUpdated:        time.Time{}, // Zero time - never processed
-			now:                now,
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonNeverProcessed,
-			description:        "Resources with zero LastUpdated should publish immediately (never processed)",
-		},
-		{
-			name:               "zero LastUpdated - not ready",
-			ready:              false,
-			lastUpdated:        time.Time{}, // Zero time - never processed
-			now:                now,
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonNeverProcessed,
-			description:        "Resources with zero LastUpdated should publish immediately (never processed)",
-		},
-
-		// Not-ready resources (10s max age)
-		{
-			name:               "not ready - max age exceeded",
-			ready:              false,
-			lastUpdated:        now.Add(-11 * time.Second), // 11s ago (> 10s max age)
-			now:                now,
-			wantShouldPublish:  true,
-			wantReasonContains: "max age exceeded",
-			description:        "Not-ready resources with exceeded max age should publish",
-		},
-		{
-			name:               "not ready - max age not exceeded",
-			ready:              false,
-			lastUpdated:        now.Add(-5 * time.Second), // 5s ago (< 10s max age)
-			now:                now,
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "Not-ready resources within max age should not publish",
-		},
-		{
-			name:               "not ready - max age exactly exceeded",
-			ready:              false,
-			lastUpdated:        now.Add(-10 * time.Second), // Exactly 10s ago
-			now:                now,
-			wantShouldPublish:  true,
-			wantReasonContains: "max age exceeded",
-			description:        "Not-ready resources with exactly exceeded max age should publish",
-		},
-
-		// Ready resources (30m max age)
-		{
-			name:               "ready - max age exceeded",
-			ready:              true,
-			lastUpdated:        now.Add(-31 * time.Minute), // 31m ago (> 30m max age)
-			now:                now,
-			wantShouldPublish:  true,
-			wantReasonContains: "max age exceeded",
-			description:        "Ready resources with exceeded max age should publish",
-		},
-		{
-			name:               "ready - max age not exceeded",
-			ready:              true,
-			lastUpdated:        now.Add(-15 * time.Minute), // 15m ago (< 30m max age)
-			now:                now,
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "Ready resources within max age should not publish",
-		},
-		{
-			name:               "ready - max age exactly exceeded",
-			ready:              true,
-			lastUpdated:        now.Add(-30 * time.Minute), // Exactly 30m ago
-			now:                now,
-			wantShouldPublish:  true,
-			wantReasonContains: "max age exceeded",
-			description:        "Ready resources with exactly exceeded max age should publish",
-		},
-
-		// Edge cases
-		{
-			name:               "LastUpdated in future - ready",
-			ready:              true,
-			lastUpdated:        now.Add(1 * time.Hour), // 1 hour in the future
-			now:                now,
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "Resources with LastUpdated in future should not publish (clock skew protection)",
-		},
-		{
-			name:               "LastUpdated in future - not ready",
-			ready:              false,
-			lastUpdated:        now.Add(1 * time.Minute), // 1 minute in the future
-			now:                now,
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "Not-ready resources with LastUpdated in future should not publish",
-		},
-		{
-			name:               "LastUpdated very old - ready",
-			ready:              true,
-			lastUpdated:        now.Add(-24 * time.Hour), // 24 hours ago
-			now:                now,
-			wantShouldPublish:  true,
-			wantReasonContains: "max age exceeded",
-			description:        "Very old resources should publish (max age long exceeded)",
-		},
-		{
-			name:               "LastUpdated very recent - not ready",
-			ready:              false,
-			lastUpdated:        now.Add(-1 * time.Millisecond), // Just 1ms ago
-			now:                now,
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "Very recent updates should not publish immediately",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resource := newTestResource(tt.ready, tt.lastUpdated)
-			decision := engine.Evaluate(resource, tt.now)
-
-			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
-
-			// Additional context on failure
-			if t.Failed() {
-				t.Logf("Test description: %s", tt.description)
-			}
-		})
-	}
-}
-
-// TestDecisionEngine_Evaluate_ZeroMaxAge tests edge case with zero max age intervals
-func TestDecisionEngine_Evaluate_ZeroMaxAge(t *testing.T) {
-	now := time.Now()
-
-	tests := []struct {
-		lastUpdated       time.Time
-		name              string
-		maxAgeNotReady    time.Duration
-		maxAgeReady       time.Duration
-		ready             bool
-		wantShouldPublish bool
-	}{
-		{
-			name:              "zero maxAgeNotReady - not ready",
-			maxAgeNotReady:    0,
-			maxAgeReady:       30 * time.Minute,
-			ready:             false,
-			lastUpdated:       now, // Even with now, should publish due to zero max age
-			wantShouldPublish: true,
-		},
-		{
-			name:              "zero maxAgeReady - ready",
-			maxAgeNotReady:    10 * time.Second,
-			maxAgeReady:       0,
-			ready:             true,
-			lastUpdated:       now, // Even with now, should publish due to zero max age
-			wantShouldPublish: true,
-		},
-		{
-			name:              "both zero max ages - ready",
-			maxAgeNotReady:    0,
-			maxAgeReady:       0,
-			ready:             true,
-			lastUpdated:       now,
-			wantShouldPublish: true,
-		},
-		{
-			name:              "both zero max ages - not ready",
-			maxAgeNotReady:    0,
-			maxAgeReady:       0,
-			ready:             false,
-			lastUpdated:       now,
-			wantShouldPublish: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			engine := NewDecisionEngine(tt.maxAgeNotReady, tt.maxAgeReady)
-			resource := newTestResource(tt.ready, tt.lastUpdated)
-			decision := engine.Evaluate(resource, now)
-
-			assertDecision(t, decision, tt.wantShouldPublish, "")
-		})
-	}
-}
-
-// TestDecisionEngine_Evaluate_NegativeMaxAge tests edge case with negative max age intervals
-func TestDecisionEngine_Evaluate_NegativeMaxAge(t *testing.T) {
-	now := time.Now()
-	lastUpdated := now.Add(-5 * time.Second)
-
-	tests := []struct {
-		name              string
-		maxAgeNotReady    time.Duration
-		maxAgeReady       time.Duration
-		ready             bool
-		wantShouldPublish bool
-	}{
-		{
-			name:              "negative maxAgeNotReady",
-			maxAgeNotReady:    -10 * time.Second,
-			maxAgeReady:       30 * time.Minute,
-			ready:             false,
-			wantShouldPublish: true, // Negative max age means nextEventTime is in the past
-		},
-		{
-			name:              "negative maxAgeReady",
-			maxAgeNotReady:    10 * time.Second,
-			maxAgeReady:       -10 * time.Minute,
-			ready:             true,
-			wantShouldPublish: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			engine := NewDecisionEngine(tt.maxAgeNotReady, tt.maxAgeReady)
-			resource := newTestResource(tt.ready, lastUpdated)
-			decision := engine.Evaluate(resource, now)
-
-			assertDecision(t, decision, tt.wantShouldPublish, "")
-		})
-	}
-}
-
-// TestDecisionEngine_Evaluate_ConsistentBehavior tests that multiple calls with same inputs produce same results
-func TestDecisionEngine_Evaluate_ConsistentBehavior(t *testing.T) {
-	engine := newTestEngine()
-	now := time.Now()
-	resource := newTestResource(true, now.Add(-31*time.Minute))
-
-	// Call multiple times - should get same result
-	decision1 := engine.Evaluate(resource, now)
-	decision2 := engine.Evaluate(resource, now)
-	decision3 := engine.Evaluate(resource, now)
-
-	if decision1.ShouldPublish != decision2.ShouldPublish || decision1.ShouldPublish != decision3.ShouldPublish {
-		t.Error("Evaluate should return consistent results for same inputs")
-	}
-
-	if decision1.Reason != decision2.Reason || decision1.Reason != decision3.Reason {
-		t.Error("Evaluate should return consistent reason for same inputs")
-	}
-}
-
-// TestDecisionEngine_Evaluate_InvalidInputs tests handling of invalid inputs
-func TestDecisionEngine_Evaluate_InvalidInputs(t *testing.T) {
-	engine := newTestEngine()
-	now := time.Now()
-
-	tests := []struct {
-		now               time.Time
 		resource          *client.Resource
+		now               time.Time
 		name              string
 		wantReason        string
 		wantShouldPublish bool
 	}{
 		{
-			name:              "nil resource",
+			name:              "ready and stale - should publish",
+			resource:          newResourceWithCondition("True", now.Add(-31*time.Minute), 2),
+			now:               now,
+			wantShouldPublish: true,
+			wantReason:        "message decision matched",
+		},
+		{
+			name:              "ready and recent - should not publish",
+			resource:          newResourceWithCondition("True", now.Add(-5*time.Minute), 2),
+			now:               now,
+			wantShouldPublish: false,
+			wantReason:        "message decision result is false",
+		},
+		{
+			name:              "not ready and debounced - should publish",
+			resource:          newResourceWithCondition("False", now.Add(-11*time.Second), 2),
+			now:               now,
+			wantShouldPublish: true,
+			wantReason:        "message decision matched",
+		},
+		{
+			name:              "not ready and too recent - should not publish",
+			resource:          newResourceWithCondition("False", now.Add(-3*time.Second), 2),
+			now:               now,
+			wantShouldPublish: false,
+			wantReason:        "message decision result is false",
+		},
+		{
+			name:              "new resource (generation 1, not ready) - should publish",
+			resource:          newResourceWithCondition("False", now, 1),
+			now:               now,
+			wantShouldPublish: true,
+			wantReason:        "message decision matched",
+		},
+		{
+			name:              "nil resource - should not publish",
 			resource:          nil,
 			now:               now,
 			wantShouldPublish: false,
-			wantReason:        ReasonNilResource,
+			wantReason:        "resource is nil",
 		},
 		{
-			name:              "zero now time",
-			resource:          newTestResource(true, now),
-			now:               time.Time{}, // Zero time
+			name:              "zero now time - should not publish",
+			resource:          newResourceWithCondition("True", now, 2),
+			now:               time.Time{},
 			wantShouldPublish: false,
-			wantReason:        ReasonZeroNow,
+			wantReason:        "now time is zero",
 		},
 	}
 
@@ -404,7 +189,6 @@ func TestDecisionEngine_Evaluate_InvalidInputs(t *testing.T) {
 			if decision.ShouldPublish != tt.wantShouldPublish {
 				t.Errorf("ShouldPublish = %v, want %v", decision.ShouldPublish, tt.wantShouldPublish)
 			}
-
 			if decision.Reason != tt.wantReason {
 				t.Errorf("Reason = %q, want %q", decision.Reason, tt.wantReason)
 			}
@@ -412,303 +196,352 @@ func TestDecisionEngine_Evaluate_InvalidInputs(t *testing.T) {
 	}
 }
 
-// TestDecisionEngine_Evaluate_NeverProcessedResources tests the never-processed reconciliation
-// When lastUpdated is zero, resources are published immediately with "never processed" reason
-func TestDecisionEngine_Evaluate_NeverProcessedResources(t *testing.T) {
-	engine := newTestEngine()
+func TestDecisionEngine_Evaluate_MissingCondition(t *testing.T) {
+	now := time.Now()
+	engine := newTestDecisionEngine(t)
+
+	// Resource with no conditions at all - condition("Ready") returns zero-value.
+	// Zero-value: status="" (not "True"), last_updated_time is zero time (very old).
+	// is_ready = false, is_new_resource depends on generation.
+	t.Run("no conditions generation 1 - new resource publishes", func(t *testing.T) {
+		resource := newResourceNoConditions(1)
+		decision := engine.Evaluate(resource, now)
+
+		if !decision.ShouldPublish {
+			t.Errorf("expected ShouldPublish=true for new resource with no conditions, got false")
+		}
+	})
+
+	t.Run("no conditions generation 2 - no ref_time so debounce skipped", func(t *testing.T) {
+		resource := newResourceNoConditions(2)
+		decision := engine.Evaluate(resource, now)
+
+		// No conditions → ref_time="" → has_ref_time=false → debounce guard skips
+		if decision.ShouldPublish {
+			t.Errorf("expected ShouldPublish=false for resource with no conditions and gen>1, got true")
+		}
+	})
+}
+
+func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 	now := time.Now()
 
+	t.Run("always true", func(t *testing.T) {
+		cfg := &config.MessageDecisionConfig{
+			Params: map[string]string{},
+			Result: "true",
+		}
+		engine, err := NewDecisionEngine(cfg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		resource := newResourceWithCondition("True", now, 2)
+		decision := engine.Evaluate(resource, now)
+
+		if !decision.ShouldPublish {
+			t.Error("expected ShouldPublish=true for always-true result")
+		}
+	})
+
+	t.Run("always false", func(t *testing.T) {
+		cfg := &config.MessageDecisionConfig{
+			Params: map[string]string{},
+			Result: "false",
+		}
+		engine, err := NewDecisionEngine(cfg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		resource := newResourceWithCondition("True", now, 2)
+		decision := engine.Evaluate(resource, now)
+
+		if decision.ShouldPublish {
+			t.Error("expected ShouldPublish=false for always-false result")
+		}
+	})
+
+	t.Run("param chain with dependencies", func(t *testing.T) {
+		cfg := &config.MessageDecisionConfig{
+			Params: map[string]string{
+				"gen":        "resource.generation",
+				"is_first":   "gen == 1",
+				"should_pub": "is_first",
+			},
+			Result: "should_pub",
+		}
+		engine, err := NewDecisionEngine(cfg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// generation 1 → should publish
+		resource := newResourceWithCondition("False", now, 1)
+		decision := engine.Evaluate(resource, now)
+		if !decision.ShouldPublish {
+			t.Error("expected ShouldPublish=true for generation 1")
+		}
+
+		// generation 2 → should not publish
+		resource2 := newResourceWithCondition("False", now, 2)
+		decision2 := engine.Evaluate(resource2, now)
+		if decision2.ShouldPublish {
+			t.Error("expected ShouldPublish=false for generation 2")
+		}
+	})
+
+	t.Run("condition function with custom condition name", func(t *testing.T) {
+		cfg := &config.MessageDecisionConfig{
+			Params: map[string]string{
+				"is_available": `condition("Available").status == "True"`,
+			},
+			Result: "is_available",
+		}
+		engine, err := NewDecisionEngine(cfg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		resource := &client.Resource{
+			ID:         testResourceID,
+			Kind:       testResourceKind,
+			Generation: 1,
+			Status: client.ResourceStatus{
+				Conditions: []client.Condition{
+					{Type: "Available", Status: "True", LastUpdatedTime: now},
+				},
+			},
+		}
+
+		decision := engine.Evaluate(resource, now)
+		if !decision.ShouldPublish {
+			t.Error("expected ShouldPublish=true for Available=True condition")
+		}
+
+		// Missing Available condition → zero-value → status="" → false
+		resource2 := &client.Resource{
+			ID:         testResourceID,
+			Kind:       testResourceKind,
+			Generation: 1,
+			Status: client.ResourceStatus{
+				Conditions: []client.Condition{
+					{Type: "Ready", Status: "True", LastUpdatedTime: now},
+				},
+			},
+		}
+
+		decision2 := engine.Evaluate(resource2, now)
+		if decision2.ShouldPublish {
+			t.Error("expected ShouldPublish=false when Available condition is missing")
+		}
+	})
+}
+
+func TestDecisionEngine_Evaluate_ConsistentBehavior(t *testing.T) {
+	engine := newTestDecisionEngine(t)
+	now := time.Now()
+	resource := newResourceWithCondition("True", now.Add(-31*time.Minute), 2)
+
+	decision1 := engine.Evaluate(resource, now)
+	decision2 := engine.Evaluate(resource, now)
+	decision3 := engine.Evaluate(resource, now)
+
+	if decision1.ShouldPublish != decision2.ShouldPublish || decision1.ShouldPublish != decision3.ShouldPublish {
+		t.Error("Evaluate should return consistent results for same inputs")
+	}
+	if decision1.Reason != decision2.Reason || decision1.Reason != decision3.Reason {
+		t.Error("Evaluate should return consistent reason for same inputs")
+	}
+}
+
+func TestDecisionEngine_Evaluate_ReadyBoundary(t *testing.T) {
+	now := time.Now()
+	engine := newTestDecisionEngine(t)
+
+	// Default ready_and_stale threshold is 30m (strictly greater than)
 	tests := []struct {
-		createdTime        time.Time
-		lastUpdated        time.Time
-		name               string
-		wantReasonContains string
-		description        string
-		ready              bool
-		wantShouldPublish  bool
+		name              string
+		lastUpdated       time.Duration
+		wantShouldPublish bool
 	}{
-		{
-			name:               "never processed - not ready",
-			createdTime:        now.Add(-1 * time.Hour), // Doesn't affect decision
-			lastUpdated:        time.Time{},             // Zero - never processed
-			ready:              false,
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonNeverProcessed,
-			description:        "Should publish immediately (never processed)",
-		},
-		{
-			name:               "never processed - ready",
-			createdTime:        now.Add(-1 * time.Hour), // Doesn't affect decision
-			lastUpdated:        time.Time{},             // Zero - never processed
-			ready:              true,
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonNeverProcessed,
-			description:        "Should publish immediately (never processed)",
-		},
-		{
-			name:               "processed resource - use lastUpdated for max age",
-			createdTime:        now.Add(-1 * time.Hour),   // Irrelevant once processed
-			lastUpdated:        now.Add(-5 * time.Second), // Updated recently
-			ready:              false,
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "Should use lastUpdated for max age calculation (5s < 10s max age)",
-		},
+		{"exactly 30m - should not publish (> not >=)", -30 * time.Minute, false},
+		{"29m59s - should not publish", -29*time.Minute - 59*time.Second, false},
+		{"31m - should publish", -31 * time.Minute, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resource := newTestResourceWithCreatedTime(
-				testResourceID,
-				testResourceKind,
-				tt.ready,
-				tt.createdTime,
-				tt.lastUpdated,
-			)
+			resource := newResourceWithCondition("True", now.Add(tt.lastUpdated), 2)
 			decision := engine.Evaluate(resource, now)
 
-			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
-
-			// Additional context on failure
-			if t.Failed() {
-				t.Logf("Test description: %s", tt.description)
-				t.Logf("Created time: %v", tt.createdTime)
-				t.Logf("LastUpdated: %v", tt.lastUpdated)
+			if decision.ShouldPublish != tt.wantShouldPublish {
+				t.Errorf("ShouldPublish = %v, want %v (lastUpdated offset: %v)",
+					decision.ShouldPublish, tt.wantShouldPublish, tt.lastUpdated)
 			}
 		})
 	}
 }
 
-// TestDecisionEngine_Evaluate_GenerationBasedReconciliation tests generation-based reconciliation
-func TestDecisionEngine_Evaluate_GenerationBasedReconciliation(t *testing.T) {
-	engine := newTestEngine()
+func TestDecisionEngine_Evaluate_NotReadyBoundary(t *testing.T) {
 	now := time.Now()
+	engine := newTestDecisionEngine(t)
 
+	// Default not_ready_and_debounced threshold is 10s (strictly greater than)
 	tests := []struct {
-		lastUpdated        time.Time
-		name               string
-		wantReasonContains string
-		description        string
-		generation         int32
-		observedGeneration int32
-		ready              bool
-		wantShouldPublish  bool
+		name              string
+		lastUpdated       time.Duration
+		wantShouldPublish bool
 	}{
-		// Generation mismatch tests - should publish immediately
-		{
-			name:               "generation ahead by 1 - ready",
-			generation:         2,
-			observedGeneration: 1,
-			ready:              true,
-			lastUpdated:        now, // Even with recent update, should publish due to generation
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonGenerationChanged,
-			description:        "Spec change should trigger immediate reconciliation (ready)",
-		},
-		{
-			name:               "generation ahead by 1 - not ready",
-			generation:         3,
-			observedGeneration: 2,
-			ready:              false,
-			lastUpdated:        now, // Even with recent update, should publish due to generation
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonGenerationChanged,
-			description:        "Spec change should trigger immediate reconciliation (not ready)",
-		},
-		{
-			name:               "generation ahead by many - ready",
-			generation:         10,
-			observedGeneration: 5,
-			ready:              true,
-			lastUpdated:        now,
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonGenerationChanged,
-			description:        "Multiple spec changes should trigger immediate reconciliation",
-		},
-		{
-			name:               "generation ahead - zero observedGeneration",
-			generation:         1,
-			observedGeneration: 0,
-			ready:              true,
-			lastUpdated:        now,
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonGenerationChanged,
-			description:        "Generation mismatch triggers immediate reconciliation",
-		},
-
-		// Generation in sync tests - should follow normal max age logic
-		{
-			name:               "generation in sync - recent update - ready",
-			generation:         5,
-			observedGeneration: 5,
-			ready:              true,
-			lastUpdated:        now.Add(-15 * time.Minute), // 15m ago (< 30m max age)
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "When generations match, follow normal max age logic (ready)",
-		},
-		{
-			name:               "generation in sync - recent update - not ready",
-			generation:         2,
-			observedGeneration: 2,
-			ready:              false,
-			lastUpdated:        now.Add(-5 * time.Second), // 5s ago (< 10s max age)
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "When generations match, follow normal max age logic (not ready)",
-		},
-		{
-			name:               "generation in sync - max age exceeded - ready",
-			generation:         3,
-			observedGeneration: 3,
-			ready:              true,
-			lastUpdated:        now.Add(-31 * time.Minute), // 31m ago (> 30m max age)
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonMaxAgeExceeded,
-			description:        "When generations match and max age exceeded, publish (ready)",
-		},
-		{
-			name:               "generation in sync - max age exceeded - not ready",
-			generation:         1,
-			observedGeneration: 1,
-			ready:              false,
-			lastUpdated:        now.Add(-11 * time.Second), // 11s ago (> 10s max age)
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonMaxAgeExceeded,
-			description:        "When generations match and max age exceeded, publish (not ready)",
-		},
-
-		// Edge cases
-		{
-			name:               "both generation and observedGeneration are zero",
-			generation:         0,
-			observedGeneration: 0,
-			ready:              true,
-			lastUpdated:        now.Add(-5 * time.Minute),
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "Zero generations should be treated as in sync (defensive)",
-		},
-		{
-			name:               "observedGeneration ahead of generation (defensive)",
-			generation:         5,
-			observedGeneration: 10,
-			ready:              true,
-			lastUpdated:        now.Add(-5 * time.Minute),
-			wantShouldPublish:  false,
-			wantReasonContains: "max age not exceeded",
-			description:        "ObservedGeneration > Generation shouldn't happen, but handle defensively",
-		},
+		{"exactly 10s - should not publish (> not >=)", -10 * time.Second, false},
+		{"9s - should not publish", -9 * time.Second, false},
+		{"11s - should publish", -11 * time.Second, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resource := newTestResourceWithGeneration(
-				testResourceID,
-				testResourceKind,
-				tt.ready,
-				tt.lastUpdated,
-				tt.generation,
-				tt.observedGeneration,
-			)
+			resource := newResourceWithCondition("False", now.Add(tt.lastUpdated), 2)
 			decision := engine.Evaluate(resource, now)
 
-			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
-
-			// Additional context on failure
-			if t.Failed() {
-				t.Logf("Test description: %s", tt.description)
-				t.Logf("Generation: %d, ObservedGeneration: %d", tt.generation, tt.observedGeneration)
-				t.Logf("Ready: %t, LastUpdated: %v", tt.ready, tt.lastUpdated)
+			if decision.ShouldPublish != tt.wantShouldPublish {
+				t.Errorf("ShouldPublish = %v, want %v (lastUpdated offset: %v)",
+					decision.ShouldPublish, tt.wantShouldPublish, tt.lastUpdated)
 			}
 		})
 	}
 }
 
-// TestDecisionEngine_Evaluate_NeverProcessedPrecedence tests the precedence of checks
-// when both "never processed" and "generation changed" conditions are true.
-//
-// For brand-new resources (generation=1, observedGeneration=0, lastUpdated=zero),
-// both the LastUpdated.IsZero() check and the generation mismatch check would fire.
-// This test ensures that the "never processed" check takes precedence since it runs
-// first, and protects against future reordering of these checks.
-func TestDecisionEngine_Evaluate_NeverProcessedPrecedence(t *testing.T) {
-	engine := newTestEngine()
+func TestBuildConditionsLookup(t *testing.T) {
 	now := time.Now()
-
-	tests := []struct {
-		lastUpdated        time.Time
-		name               string
-		wantReasonContains string
-		description        string
-		generation         int32
-		observedGeneration int32
-		ready              bool
-		wantShouldPublish  bool
-	}{
+	conditions := []client.Condition{
 		{
-			name:               "brand-new resource - never processed wins over generation changed",
-			generation:         1,
-			observedGeneration: 0,
-			ready:              false,
-			lastUpdated:        time.Time{}, // Zero - triggers "never processed"
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonNeverProcessed, // Should be "never processed", not "generation changed"
-			description:        "Both checks fire, but never-processed check runs first and wins",
+			Type:               "Ready",
+			Status:             "True",
+			LastUpdatedTime:    now,
+			LastTransitionTime: now.Add(-1 * time.Hour),
+			ObservedGeneration: 3,
 		},
 		{
-			name:               "brand-new resource - ready - never processed wins",
-			generation:         1,
-			observedGeneration: 0,
-			ready:              true,
-			lastUpdated:        time.Time{}, // Zero - triggers "never processed"
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonNeverProcessed,
-			description:        "Both checks fire, but never-processed check runs first and wins (ready)",
-		},
-		{
-			name:               "generation mismatch with non-zero lastUpdated - generation changed wins",
-			generation:         1,
-			observedGeneration: 0,
-			ready:              true,
-			lastUpdated:        now, // Non-zero - skips "never processed" check
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonGenerationChanged, // Should be "generation changed"
-			description:        "Only generation check fires since lastUpdated is non-zero",
-		},
-		{
-			name:               "multiple generation changes on never-processed resource",
-			generation:         5,
-			observedGeneration: 0,
-			ready:              false,
-			lastUpdated:        time.Time{}, // Zero - triggers "never processed"
-			wantShouldPublish:  true,
-			wantReasonContains: ReasonNeverProcessed, // Still "never processed", not "generation changed"
-			description:        "Never-processed check takes precedence even with large generation gap",
+			Type:               "Available",
+			Status:             "False",
+			LastUpdatedTime:    now.Add(-5 * time.Minute),
+			LastTransitionTime: now.Add(-10 * time.Minute),
+			ObservedGeneration: 2,
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			resource := newTestResourceWithGeneration(
-				testResourceID,
-				testResourceKind,
-				tt.ready,
-				tt.lastUpdated,
-				tt.generation,
-				tt.observedGeneration,
-			)
-			decision := engine.Evaluate(resource, now)
+	lookup := buildConditionsLookup(conditions)
 
-			assertDecision(t, decision, tt.wantShouldPublish, tt.wantReasonContains)
+	if len(lookup) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(lookup))
+	}
 
-			// Additional context on failure
-			if t.Failed() {
-				t.Logf("Test description: %s", tt.description)
-				t.Logf("Generation: %d, ObservedGeneration: %d", tt.generation, tt.observedGeneration)
-				t.Logf("LastUpdated.IsZero(): %v", tt.lastUpdated.IsZero())
-				t.Logf("Expected reason containing: %q, got: %q", tt.wantReasonContains, decision.Reason)
-			}
-		})
+	ready, ok := lookup["Ready"]
+	if !ok {
+		t.Fatal("missing Ready condition")
+	}
+	if ready["status"] != "True" {
+		t.Errorf("Ready status = %v, want True", ready["status"])
+	}
+	if ready["observed_generation"] != int64(3) {
+		t.Errorf("Ready observed_generation = %v, want 3", ready["observed_generation"])
+	}
+
+	avail, ok := lookup["Available"]
+	if !ok {
+		t.Fatal("missing Available condition")
+	}
+	if avail["status"] != "False" {
+		t.Errorf("Available status = %v, want False", avail["status"])
+	}
+}
+
+func TestBuildConditionsLookup_Empty(t *testing.T) {
+	lookup := buildConditionsLookup(nil)
+	if len(lookup) != 0 {
+		t.Errorf("expected empty map, got %d entries", len(lookup))
+	}
+}
+
+func TestZeroCondition(t *testing.T) {
+	zero := zeroCondition()
+
+	if zero["status"] != "" {
+		t.Errorf("status = %q, want empty string", zero["status"])
+	}
+	if zero["observed_generation"] != int64(0) {
+		t.Errorf("observed_generation = %v, want 0", zero["observed_generation"])
+	}
+	if zero["last_updated_time"] != "" {
+		t.Errorf("last_updated_time = %q, want empty string", zero["last_updated_time"])
+	}
+	if zero["last_transition_time"] != "" {
+		t.Errorf("last_transition_time = %q, want empty string", zero["last_transition_time"])
+	}
+}
+
+func TestResourceToMap(t *testing.T) {
+	now := time.Now()
+	resource := &client.Resource{
+		ID:          "res-1",
+		Href:        "/api/v1/clusters/res-1",
+		Kind:        "Cluster",
+		Generation:  3,
+		CreatedTime: now,
+		UpdatedTime: now,
+		Labels:      map[string]string{"env": "prod"},
+		OwnerReferences: &client.OwnerReference{
+			ID:   "owner-1",
+			Href: "/api/v1/owners/owner-1",
+			Kind: "Owner",
+		},
+	}
+
+	m := resourceToMap(resource)
+
+	if m["id"] != "res-1" {
+		t.Errorf("id = %v, want res-1", m["id"])
+	}
+	if m["kind"] != "Cluster" {
+		t.Errorf("kind = %v, want Cluster", m["kind"])
+	}
+	if m["generation"] != int64(3) {
+		t.Errorf("generation = %v, want 3", m["generation"])
+	}
+
+	labels, ok := m["labels"].(map[string]interface{})
+	if !ok {
+		t.Fatal("labels not found or wrong type")
+	}
+	if labels["env"] != "prod" {
+		t.Errorf("labels.env = %v, want prod", labels["env"])
+	}
+
+	owner, ok := m["owner_references"].(map[string]interface{})
+	if !ok {
+		t.Fatal("owner_references not found or wrong type")
+	}
+	if owner["id"] != "owner-1" {
+		t.Errorf("owner_references.id = %v, want owner-1", owner["id"])
+	}
+}
+
+func TestResourceToMap_NoOptionalFields(t *testing.T) {
+	resource := &client.Resource{
+		ID:         "res-2",
+		Kind:       "NodePool",
+		Generation: 1,
+	}
+
+	m := resourceToMap(resource)
+
+	if _, ok := m["labels"]; ok {
+		t.Error("labels should not be present when empty")
+	}
+	if _, ok := m["owner_references"]; ok {
+		t.Error("owner_references should not be present when nil")
+	}
+	if _, ok := m["metadata"]; ok {
+		t.Error("metadata should not be present when nil")
 	}
 }

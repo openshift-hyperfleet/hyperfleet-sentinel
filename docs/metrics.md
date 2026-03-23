@@ -60,7 +60,7 @@ sum by (resource_type) (hyperfleet_sentinel_pending_resources)
 **Labels:**
 - `resource_type`: Type of resource
 - `resource_selector`: Label selector
-- `reason`: Reason for publishing the event (e.g., `max_age_exceeded`, `generation_mismatch`)
+- `reason`: Reason for publishing the event (e.g., `message decision matched`)
 
 **Use Cases:**
 - Monitor event publishing rate
@@ -87,7 +87,7 @@ sum by (reason) (rate(hyperfleet_sentinel_events_published_total[5m]))
 **Labels:**
 - `resource_type`: Type of resource
 - `resource_selector`: Label selector
-- `reason`: Reason for skipping (e.g., `within_max_age`, `generation_match`)
+- `reason`: Reason for skipping (e.g., `message decision result is false`)
 
 **Use Cases:**
 - Monitor decision engine effectiveness

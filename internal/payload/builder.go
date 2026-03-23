@@ -136,13 +136,9 @@ func (b *Builder) BuildPayload(ctx context.Context, resource *client.Resource, r
 
 // resourceToMap converts a Resource into a plain map[string]interface{} for CEL evaluation.
 // Time fields are formatted as RFC3339Nano strings to match their JSON representation.
+// Status data is accessed only through conditions (no flattened fields).
 func resourceToMap(r *client.Resource) map[string]interface{} {
-	status := map[string]interface{}{
-		"ready":                r.Status.Ready,
-		"last_transition_time": r.Status.LastTransitionTime.Format(time.RFC3339Nano),
-		"last_updated":         r.Status.LastUpdated.Format(time.RFC3339Nano),
-		"observed_generation":  r.Status.ObservedGeneration,
-	}
+	status := map[string]interface{}{}
 	if len(r.Status.Conditions) > 0 {
 		conditions := make([]interface{}, len(r.Status.Conditions))
 		for i, c := range r.Status.Conditions {

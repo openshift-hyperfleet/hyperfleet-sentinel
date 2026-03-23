@@ -533,8 +533,6 @@ gcloud projects remove-iam-policy-binding ${GCP_PROJECT} \
 # sentinel-config.yaml
 resource_type: clusters
 poll_interval: 5s
-max_age_not_ready: 10s
-max_age_ready: 30m
 
 # Watch all clusters (no filtering)
 resource_selector: []
@@ -556,8 +554,6 @@ message_data:
 # sentinel-dev-config.yaml
 resource_type: clusters
 poll_interval: 10s      # Slower polling for dev
-max_age_not_ready: 30s  # Longer intervals for dev
-max_age_ready: 2h
 
 resource_selector:
   - label: environment

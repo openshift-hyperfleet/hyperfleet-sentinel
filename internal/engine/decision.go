@@ -2,33 +2,15 @@ package engine
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
+	"github.com/google/cel-go/cel"
+	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/common/types/ref"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 )
-
-// Decision reasons
-const (
-	ReasonMaxAgeExceeded    = "max age exceeded"
-	ReasonGenerationChanged = "generation changed"
-	ReasonNeverProcessed    = "never processed"
-	ReasonNilResource       = "resource is nil"
-	ReasonZeroNow           = "now time is zero"
-)
-
-// DecisionEngine evaluates whether a resource needs an event published
-type DecisionEngine struct {
-	maxAgeNotReady time.Duration
-	maxAgeReady    time.Duration
-}
-
-// NewDecisionEngine creates a new decision engine
-func NewDecisionEngine(maxAgeNotReady, maxAgeReady time.Duration) *DecisionEngine {
-	return &DecisionEngine{
-		maxAgeNotReady: maxAgeNotReady,
-		maxAgeReady:    maxAgeReady,
-	}
-}
 
 // Decision represents the result of evaluating a resource
 type Decision struct {
@@ -36,91 +18,243 @@ type Decision struct {
 	ShouldPublish bool   // Indicates whether an event should be published for the resource
 }
 
+// DecisionEngine evaluates whether a resource needs an event published
+// using configurable CEL expressions.
+type DecisionEngine struct {
+	resultProg       cel.Program
+	paramProgs       map[string]cel.Program
+	conditionsLookup map[string]map[string]interface{}
+	paramOrder       []string
+	mu               sync.Mutex
+}
+
+// NewDecisionEngine creates a new CEL-based decision engine from a MessageDecisionConfig.
+// All CEL expressions are compiled at creation time for fail-fast validation.
+func NewDecisionEngine(cfg *config.MessageDecisionConfig) (*DecisionEngine, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("message_decision config is required")
+	}
+
+	// Resolve param evaluation order
+	paramOrder, err := cfg.TopologicalSort()
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve param dependencies: %w", err)
+	}
+
+	de := &DecisionEngine{
+		paramOrder: paramOrder,
+	}
+
+	// Build CEL environment with all variables and the condition() function.
+	// The function declaration includes the implementation via FunctionBinding,
+	// which reads from the engine's conditionsLookup (updated per-evaluation).
+	envOpts := []cel.EnvOption{
+		cel.Variable("resource", cel.DynType),
+		cel.Variable("now", cel.TimestampType),
+		cel.Function("condition",
+			cel.Overload("condition_string_to_dyn",
+				[]*cel.Type{cel.StringType},
+				cel.DynType,
+				cel.UnaryBinding(func(val ref.Val) ref.Val {
+					name, ok := val.Value().(string)
+					if !ok {
+						return types.DefaultTypeAdapter.NativeToValue(zeroCondition())
+					}
+					de.mu.Lock()
+					lookup := de.conditionsLookup
+					de.mu.Unlock()
+					if cond, exists := lookup[name]; exists {
+						return types.DefaultTypeAdapter.NativeToValue(cond)
+					}
+					return types.DefaultTypeAdapter.NativeToValue(zeroCondition())
+				}),
+			),
+		),
+	}
+
+	// Declare all param names as DynType variables for inter-param references
+	for name := range cfg.Params {
+		envOpts = append(envOpts, cel.Variable(name, cel.DynType))
+	}
+
+	env, err := cel.NewEnv(envOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
+	}
+
+	// Compile all param expressions
+	paramProgs := make(map[string]cel.Program, len(cfg.Params))
+	for name, expr := range cfg.Params {
+		ast, issues := env.Compile(expr)
+		if issues != nil && issues.Err() != nil {
+			return nil, fmt.Errorf("failed to compile param %q expression %q: %w", name, expr, issues.Err())
+		}
+		prg, prgErr := env.Program(ast)
+		if prgErr != nil {
+			return nil, fmt.Errorf("failed to create program for param %q: %w", name, prgErr)
+		}
+		paramProgs[name] = prg
+	}
+
+	// Compile result expression
+	resultAST, issues := env.Compile(cfg.Result)
+	if issues != nil && issues.Err() != nil {
+		return nil, fmt.Errorf("failed to compile result expression %q: %w", cfg.Result, issues.Err())
+	}
+	resultPrg, err := env.Program(resultAST)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create result program: %w", err)
+	}
+
+	de.paramProgs = paramProgs
+	de.resultProg = resultPrg
+
+	return de, nil
+}
+
 // Evaluate determines if an event should be published for the resource.
-//
-// Decision Logic (in priority order):
-//  1. Never-processed reconciliation: If status.LastUpdated is zero, publish immediately
-//     (resource has never been processed by any adapter)
-//  2. Generation-based reconciliation: If resource.Generation > status.ObservedGeneration,
-//     publish immediately (spec has changed, adapter needs to reconcile)
-//  3. Time-based reconciliation: If max age exceeded since last update, publish
-//     - Uses status.LastUpdated as reference timestamp
-//
-// Max Age Intervals:
-//   - Resources with Ready=true: maxAgeReady (default 30m)
-//   - Resources with Ready=false: maxAgeNotReady (default 10s)
-//
-// Adapter Contract:
-//   - Adapters MUST update status.LastUpdated on EVERY evaluation
-//   - Adapters MUST update status.ObservedGeneration to resource.Generation when processing
-//   - This prevents infinite event loops when adapters skip work due to unmet preconditions
-//
-// Returns a Decision indicating whether to publish and why. Returns ShouldPublish=false
-// for invalid inputs (nil resource, zero now time).
+// Returns a Decision indicating whether to publish and why.
 func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Decision {
-	// Validate inputs
 	if resource == nil {
-		return Decision{
-			ShouldPublish: false,
-			Reason:        ReasonNilResource,
-		}
+		return Decision{ShouldPublish: false, Reason: "resource is nil"}
 	}
-
 	if now.IsZero() {
+		return Decision{ShouldPublish: false, Reason: "now time is zero"}
+	}
+
+	// Build resource map for CEL evaluation
+	resourceMap := resourceToMap(resource)
+
+	// Update the conditions lookup for the condition() function binding
+	e.mu.Lock()
+	e.conditionsLookup = buildConditionsLookup(resource.Status.Conditions)
+	e.mu.Unlock()
+
+	// Build base activation with resource and now
+	activation := map[string]interface{}{
+		"resource": resourceMap,
+		"now":      now,
+	}
+
+	// Evaluate params in topological order
+	paramValues := make(map[string]interface{}, len(e.paramOrder))
+	for _, name := range e.paramOrder {
+		prg := e.paramProgs[name]
+
+		// Merge param values into activation for inter-param references
+		evalActivation := make(map[string]interface{}, len(activation)+len(paramValues))
+		for k, v := range activation {
+			evalActivation[k] = v
+		}
+		for k, v := range paramValues {
+			evalActivation[k] = v
+		}
+
+		out, _, err := prg.Eval(evalActivation)
+		if err != nil {
+			return Decision{
+				ShouldPublish: false,
+				Reason:        fmt.Sprintf("param %q evaluation failed: %v", name, err),
+			}
+		}
+		paramValues[name] = out.Value()
+	}
+
+	// Evaluate result expression
+	resultActivation := make(map[string]interface{}, len(activation)+len(paramValues))
+	for k, v := range activation {
+		resultActivation[k] = v
+	}
+	for k, v := range paramValues {
+		resultActivation[k] = v
+	}
+
+	out, _, err := e.resultProg.Eval(resultActivation)
+	if err != nil {
 		return Decision{
 			ShouldPublish: false,
-			Reason:        ReasonZeroNow,
+			Reason:        fmt.Sprintf("result evaluation failed: %v", err),
 		}
 	}
 
-	// Check if resource has never been processed by an adapter
-	// LastUpdated is zero means no adapter has updated the status yet
-	// This ensures first-time resources are published immediately
-	if resource.Status.LastUpdated.IsZero() {
-		return Decision{
-			ShouldPublish: true,
-			Reason:        ReasonNeverProcessed,
-		}
-	}
-
-	// Check for generation mismatch
-	// This triggers immediate reconciliation regardless of max age
-	if resource.Generation > resource.Status.ObservedGeneration {
-		return Decision{
-			ShouldPublish: true,
-			Reason:        ReasonGenerationChanged,
-		}
-	}
-
-	// Determine the reference timestamp for max age calculation
-	// At this point, we know LastUpdated is not zero (checked above)
-	// so we can use it directly for the max age calculation
-	referenceTime := resource.Status.LastUpdated
-
-	// Determine the appropriate max age based on resource ready status
-	var maxAge time.Duration
-	if resource.Status.Ready {
-		maxAge = e.maxAgeReady
-	} else {
-		maxAge = e.maxAgeNotReady
-	}
-
-	// Calculate the next event time based on reference timestamp
-	// Adapters update LastUpdated on every check, enabling proper max age
-	// calculation even when resources stay in the same status
-	nextEventTime := referenceTime.Add(maxAge)
-
-	// Check if enough time has passed
-	if now.Before(nextEventTime) {
-		timeUntilNext := nextEventTime.Sub(now)
+	shouldPublish, ok := out.Value().(bool)
+	if !ok {
 		return Decision{
 			ShouldPublish: false,
-			Reason:        fmt.Sprintf("max age not exceeded (waiting %s)", timeUntilNext),
+			Reason:        fmt.Sprintf("result expression did not return bool, got %T", out.Value()),
+		}
+	}
+
+	if shouldPublish {
+		return Decision{
+			ShouldPublish: true,
+			Reason:        "message decision matched",
 		}
 	}
 
 	return Decision{
-		ShouldPublish: true,
-		Reason:        ReasonMaxAgeExceeded,
+		ShouldPublish: false,
+		Reason:        "message decision result is false",
 	}
+}
+
+// buildConditionsLookup creates a map from condition type name to condition data
+// for use by the condition() CEL function.
+func buildConditionsLookup(conditions []client.Condition) map[string]map[string]interface{} {
+	lookup := make(map[string]map[string]interface{}, len(conditions))
+	for _, c := range conditions {
+		lookup[c.Type] = map[string]interface{}{
+			"status":               c.Status,
+			"observed_generation":  int64(c.ObservedGeneration),
+			"last_updated_time":    c.LastUpdatedTime.Format(time.RFC3339Nano),
+			"last_transition_time": c.LastTransitionTime.Format(time.RFC3339Nano),
+		}
+	}
+	return lookup
+}
+
+// zeroCondition returns a zero-value condition map for safe field access
+// when a condition is not found. Time fields are empty strings so that
+// CEL expressions can guard against missing conditions with `ref_time != ""`.
+func zeroCondition() map[string]interface{} {
+	return map[string]interface{}{
+		"status":               "",
+		"observed_generation":  int64(0),
+		"last_updated_time":    "",
+		"last_transition_time": "",
+	}
+}
+
+// resourceToMap converts a Resource into a plain map for CEL evaluation.
+func resourceToMap(r *client.Resource) map[string]interface{} {
+	m := map[string]interface{}{
+		"id":           r.ID,
+		"href":         r.Href,
+		"kind":         r.Kind,
+		"created_time": r.CreatedTime.Format(time.RFC3339Nano),
+		"updated_time": r.UpdatedTime.Format(time.RFC3339Nano),
+		"generation":   int64(r.Generation),
+	}
+
+	if len(r.Labels) > 0 {
+		labels := make(map[string]interface{}, len(r.Labels))
+		for k, v := range r.Labels {
+			labels[k] = v
+		}
+		m["labels"] = labels
+	}
+
+	if r.OwnerReferences != nil {
+		m["owner_references"] = map[string]interface{}{
+			"id":   r.OwnerReferences.ID,
+			"href": r.OwnerReferences.Href,
+			"kind": r.OwnerReferences.Kind,
+		}
+	}
+
+	if r.Metadata != nil {
+		m["metadata"] = r.Metadata
+	}
+
+	return m
 }

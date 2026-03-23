@@ -9,8 +9,6 @@ data:
     # Sentinel configuration
     resource_type: {{ .Values.config.resourceType }}
     poll_interval: {{ .Values.config.pollInterval }}
-    max_age_not_ready: {{ .Values.config.maxAgeNotReady }}
-    max_age_ready: {{ .Values.config.maxAgeReady }}
 
     {{- if .Values.config.resourceSelector }}
     # Resource selector for horizontal sharding
@@ -25,6 +23,18 @@ data:
     hyperfleet_api:
       endpoint: {{ .Values.config.hyperfleetApi.baseUrl }}
       timeout: {{ .Values.config.hyperfleetApi.timeout }}
+
+    {{- if .Values.config.messageDecision }}
+    # Configurable CEL-based decision logic
+    message_decision:
+      {{- if .Values.config.messageDecision.params }}
+      params:
+        {{- range $name, $expr := .Values.config.messageDecision.params }}
+        {{ $name }}: {{ $expr | quote }}
+        {{- end }}
+      {{- end }}
+      result: {{ .Values.config.messageDecision.result | quote }}
+    {{- end }}
 
     {{- if .Values.config.messageData }}
     # CloudEvents data payload configuration

@@ -249,8 +249,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set config.resourceType=nodepools \
-		--set config.pollInterval=10s \
-		--set config.maxAgeReady=1h > /dev/null
+		--set config.pollInterval=10s > /dev/null
 	@echo "Custom resource selector template OK"
 	@echo ""
 	@echo "All Helm chart tests passed!"

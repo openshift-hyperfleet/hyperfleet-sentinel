@@ -1,6 +1,6 @@
 # hyperfleet-sentinel
 
-HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, makes orchestration decisions, and publishes events. Features configurable max age intervals, horizontal sharding via SentinelConfig CRD, and broker abstraction (GCP Pub/Sub, RabbitMQ, Stub). Centralized reconciliation logic.
+HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, makes orchestration decisions, and publishes events. Features configurable CEL-based decision logic, horizontal sharding via SentinelConfig CRD, and broker abstraction (GCP Pub/Sub, RabbitMQ, Stub). Centralized reconciliation logic.
 
 ## Development Setup
 
@@ -125,8 +125,7 @@ Create a configuration file based on the examples in the `configs/` directory:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `poll_interval` | duration | `5s` | How often to poll the API for resource updates |
-| `max_age_not_ready` | duration | `10s` | Max age interval for resources not ready |
-| `max_age_ready` | duration | `30m` | Max age interval for ready resources |
+| `message_decision` | object | See below | CEL-based decision logic (params + result) |
 | `hyperfleet_api.timeout` | duration | `5s` | Request timeout for API calls |
 | `resource_selector` | array | `[]` | Label selectors for filtering resources (enables sharding) |
 | `message_data` | map | `{}` | Template fields for CloudEvents data payload |
@@ -231,8 +230,16 @@ This uses all defaults. Broker configuration is managed via `broker.yaml` or env
 ```yaml
 resource_type: clusters
 poll_interval: 5s
-max_age_not_ready: 10s
-max_age_ready: 30m
+
+message_decision:
+  params:
+    ref_time: 'condition("Ready").last_updated_time'
+    is_ready: 'condition("Ready").status == "True"'
+    has_ref_time: 'ref_time != ""'
+    is_new_resource: '!is_ready && resource.generation == 1'
+    ready_and_stale: 'is_ready && has_ref_time && now - timestamp(ref_time) > duration("30m")'
+    not_ready_and_debounced: '!is_ready && has_ref_time && now - timestamp(ref_time) > duration("10s")'
+  result: "is_new_resource || ready_and_stale || not_ready_and_debounced"
 
 resource_selector:
   - label: shard

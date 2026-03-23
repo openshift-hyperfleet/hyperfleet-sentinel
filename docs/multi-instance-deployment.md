@@ -206,7 +206,7 @@ Memory: 64Mi + (5 × 32Mi) + 16Mi = 240Mi
 │  resource_selector: │  │  resource_selector: │  │  resource_selector: │
 │  - label: region    │  │  - label: region    │  │  - label: region    │
 │    value: us-east   │  │    value: us-west   │  │    value: eu-west   │
-│  max_age_ready=30m  │  │  max_age_ready=1h   │  │  max_age_ready=45m  │
+│  ready_stale=30m    │  │  ready_stale=1h     │  │  ready_stale=45m    │
 └──────────┬──────────┘  └──────────┬──────────┘  └──────────┬──────────┘
            │                        │                        │
            │                        ▼                        │
