@@ -100,9 +100,9 @@ func fakeClusterID(i int) string {
 
 func fakeUUID(i int) string {
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-		i*2654435761, (i*40503)&0xFFFF,
+		uint32(i*2654435761), (i*40503)&0xFFFF,
 		0x4000|((i*12345)&0x0FFF), 0x8000|((i*6789)&0x3FFF),
-		i*1099511627776+i)
+		(i*1099511627776+i)&0xFFFFFFFFFFFF)
 }
 
 func fakeSubID(i int) string {
