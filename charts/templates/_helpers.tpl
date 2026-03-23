@@ -34,9 +34,7 @@ Common labels
 {{- define "sentinel.labels" -}}
 helm.sh/chart: {{ include "sentinel.chart" . }}
 {{ include "sentinel.selectorLabels" . }}
-{{- if .Chart.AppVersion }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-{{- end }}
+app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end }}
 
@@ -63,14 +61,15 @@ Create the name of the service account to use
 Validate required values that must not remain as placeholders.
 */}}
 {{- define "sentinel.validateValues" -}}
-{{- $effectiveRegistry := ((.Values.global).imageRegistry) | default .Values.image.registry -}}
-{{- if eq $effectiveRegistry "CHANGE_ME" -}}
+{{- $effectiveRegistry := trim (toString (((.Values.global).imageRegistry) | default .Values.image.registry)) -}}
+{{- if or (not $effectiveRegistry) (eq $effectiveRegistry "CHANGE_ME") -}}
 {{- fail "image.registry must be set (e.g. --set image.registry=quay.io)" -}}
 {{- end -}}
-{{- if eq .Values.image.repository "CHANGE_ME" -}}
+{{- $repository := trim (toString .Values.image.repository) -}}
+{{- if or (not $repository) (eq $repository "CHANGE_ME") -}}
 {{- fail "image.repository must be set (e.g. --set image.repository=openshift-hyperfleet/hyperfleet-sentinel)" -}}
 {{- end -}}
-{{- if not .Values.image.tag -}}
+{{- if not (trim (toString .Values.image.tag)) -}}
 {{- fail "image.tag must be set (e.g. --set image.tag=abc1234)" -}}
 {{- end -}}
 {{- end }}
