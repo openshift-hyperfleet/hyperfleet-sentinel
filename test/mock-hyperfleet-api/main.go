@@ -263,7 +263,7 @@ func buildSubscription(i int) map[string]any {
 }
 
 func clusterState(i int) string {
-	states := []string{"ready", "ready", "ready", "ready", "installing", "error", "hibernating"}
+	states := []string{"ready", "installing", "error", "hibernating"}
 	return states[i%len(states)]
 }
 
