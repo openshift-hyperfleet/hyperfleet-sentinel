@@ -14,20 +14,17 @@ const (
 	port                = 8888
 	defaultClusterCount = 100
 	clustersPath        = "/api/hyperfleet/v1/clusters"
-	ocmBase             = "/api/clusters_mgmt/v1"
-	ocmClusters         = ocmBase + "/clusters"
-	maxUpgradePatches   = 20
+	releaseImageBase = "quay.io/openshift-release-dev/ocp-release"
 )
 
 var (
 	adapterNames = []string{"validator", "dns", "provisioner", "networking"}
-	providers    = []string{"aws", "gcp", "azure", "vsphere", "openstack", "libvirt"}
+	platforms    = []string{"AWS", "GCP", "Azure", "KubeVirt"}
 	awsRegions   = []string{"us-east-1", "us-east-2", "us-west-2", "eu-west-1", "eu-central-1"}
 	gcpRegions   = []string{"us-central1", "europe-west1", "europe-west4", "asia-east1"}
-	displayNames = []string{
-		"Home Lab", "Energy Lab v2", "Test CRC", "My Cluster Luigi",
-		"Oak Cottage Private", "Home-Lab", "Pietro Cluster", "Test-swatch",
-	}
+	azureRegions = []string{"eastus", "westus2", "westeurope", "northeurope"}
+	networkTypes = []string{"OVNKubernetes", "OpenShiftSDN"}
+	availPolicy  = []string{"HighlyAvailable", "SingleReplica"}
 )
 
 func main() {
@@ -102,8 +99,8 @@ func fakeUUID(i int) string {
 	return fmt.Sprintf("00000000-0000-4000-a000-%012x", i+1)
 }
 
-func fakeSubID(i int) string {
-	return fmt.Sprintf("s%031x", i+1)
+func fakeInfraID(i int) string {
+	return fmt.Sprintf("hc-%012x", i+1)
 }
 
 func createCluster(i int) map[string]any {
@@ -122,7 +119,7 @@ func createCluster(i int) map[string]any {
 			"environment": "production",
 			"team":        "platform",
 		},
-		"spec":         buildOCMSpec(i, id, uuid),
+		"spec":         buildHostedClusterSpec(i, uuid),
 		"created_time": createdAt.Format(time.RFC3339),
 		"updated_time": updatedAt.Format(time.RFC3339),
 		"created_by":   fmt.Sprintf("user-%d@example.com", i%20),
@@ -134,203 +131,119 @@ func createCluster(i int) map[string]any {
 	}
 }
 
-func buildOCMSpec(i int, id, uuid string) map[string]any {
-	minor := 3 + (i % 15) // OCP versions 4.3 – 4.17, the range seen in production
+func buildHostedClusterSpec(i int, clusterID string) map[string]any {
+	minor := 3 + (i % 15) // OCP versions 4.3 – 4.17
 	patch := i % 30
-	provider := providers[i%len(providers)]
-	state := clusterState(i)
-	createdAt := time.Date(2020, time.Month(i%12)+1, 1+(i%28), i%24, i%60, 0, 0, time.UTC)
-
-	display := uuid
-	if i%8 < len(displayNames) && i%5 == 0 { // 20% of clusters get a human-readable display name
-		display = displayNames[i%len(displayNames)]
-	}
-
-	clusterHref := ocmClusters + "/" + id
-
-	ecHref := clusterHref + "/external_configuration"
+	platform := platforms[i%len(platforms)]
+	netType := networkTypes[i%len(networkTypes)]
+	infraID := fakeInfraID(i)
 
 	spec := map[string]any{
-		"external_id":        uuid,
-		"display_name":       display,
-		"creation_timestamp": createdAt.Format(time.RFC3339),
-		"activity_timestamp": createdAt.Format(time.RFC3339),
-		"cloud_provider": map[string]any{
-			"kind": "CloudProviderLink",
-			"id":   provider,
-			"href": ocmBase + "/cloud_providers/" + provider,
+		"release": map[string]any{
+			"image": fmt.Sprintf("%s:4.%d.%d-x86_64", releaseImageBase, minor, patch),
 		},
-		"openshift_version": fmt.Sprintf("4.%d.%d", minor, patch),
-		"subscription":      buildSubscription(i),
-		"console": map[string]any{
-			"url": fmt.Sprintf(
-				"https://console-openshift-console.apps.cluster-%d.example.com", i),
-		},
-		"api":   map[string]any{"listening": "external"},
-		"nodes": map[string]any{"master": 0, "infra": 0, "compute": 0},
-		"state": state,
-		"groups": map[string]any{
-			"kind": "GroupListLink",
-			"href": clusterHref + "/groups",
-		},
-		"network": map[string]any{"type": "OpenShiftSDN", "host_prefix": 23},
-		"external_configuration": map[string]any{
-			"kind": "ExternalConfiguration",
-			"href": ecHref,
-			"syncsets": map[string]any{
-				"kind": "SyncsetListLink",
-				"href": ecHref + "/syncsets",
-			},
-			"labels": map[string]any{
-				"kind": "LabelListLink",
-				"href": ecHref + "/labels",
-			},
-			"manifests": map[string]any{
-				"kind": "ManifestListLink",
-				"href": ecHref + "/manifests",
+		"clusterID":    clusterID,
+		"infraID":      infraID,
+		"channel":      fmt.Sprintf("stable-4.%d", minor),
+		"platform":     buildPlatform(platform, i),
+		"dns":          map[string]any{"baseDomain": fmt.Sprintf("cluster-%d.example.com", i)},
+		"networking":   buildNetworking(netType, i),
+		"etcd": map[string]any{
+			"managementType": "Managed",
+			"managed": map[string]any{
+				"storage": map[string]any{
+					"type": "PersistentVolume",
+					"persistentVolume": map[string]any{
+						"size": "8Gi",
+					},
+				},
 			},
 		},
-		"multi_az":            i%3 == 0,
-		"managed":             i%2 == 0,
-		"ccs":                 map[string]any{"enabled": false, "disable_scp_checks": false},
-		"storage_quota":       map[string]any{"value": 0, "unit": "B"},
-		"load_balancer_quota": 0,
-		"identity_providers": map[string]any{
-			"kind": "IdentityProviderListLink",
-			"href": clusterHref + "/identity_providers",
-		},
-		"ingresses": map[string]any{
-			"kind": "IngressListLink",
-			"href": clusterHref + "/ingresses",
-		},
-		"machine_pools": map[string]any{
-			"kind": "MachinePoolListLink",
-			"href": clusterHref + "/machine_pools",
-		},
-		"inflight_checks": map[string]any{
-			"kind": "InflightCheckListLink",
-			"href": clusterHref + "/inflight_checks",
-		},
-		"product": map[string]any{
-			"kind": "ProductLink", "id": "ocp",
-			"href": ocmBase + "/products/ocp",
-		},
-		"status":                           buildOCMStatus(i, state),
-		"node_drain_grace_period":          map[string]any{"value": 60, "unit": "minutes"},
-		"etcd_encryption":                  false,
-		"billing_model":                    "standard",
-		"disable_user_workload_monitoring": false,
-		"managed_service":                  map[string]any{"enabled": false, "managed": false},
-		"hypershift":                       map[string]any{"enabled": false},
-		"byo_oidc":                         map[string]any{"enabled": false},
-		"delete_protection": map[string]any{
-			"href":    clusterHref + "/delete_protection",
-			"enabled": false,
-		},
-		"external_auth_config": map[string]any{
-			"kind": "ExternalAuthConfig",
-			"href": clusterHref + "/external_auth_config",
-			"external_auths": map[string]any{
-				"href": clusterHref + "/external_auth_config/external_auths",
+		"services":     buildServices(),
+		"pullSecret":   map[string]any{"name": "pull-secret"},
+		"sshKey":       map[string]any{"name": "ssh-key"},
+		"issuerURL":    fmt.Sprintf("https://oidc.example.com/%s", infraID),
+		"fips":         i%10 == 0,
+		"controllerAvailabilityPolicy":     availPolicy[i%len(availPolicy)],
+		"infrastructureAvailabilityPolicy": availPolicy[(i+1)%len(availPolicy)],
+		"secretEncryption": map[string]any{
+			"type": "aescbc",
+			"aescbc": map[string]any{
+				"activeKey": map[string]any{"name": fmt.Sprintf("etcd-encryption-key-%d", i)},
 			},
-			"enabled": false,
 		},
-		"multi_arch_enabled": false,
-		"image_registry":     map[string]any{"state": "enabled"},
-		"control_plane": map[string]any{
-			"log_forwarders": map[string]any{
-				"kind": "LogForwarderListLink",
-				"href": clusterHref + "/control_plane/log_forwarders",
+		"configuration": map[string]any{
+			"apiServer": map[string]any{
+				"audit": map[string]any{"profile": "Default"},
 			},
 		},
 	}
 
-	addProviderRegion(spec, provider, i, clusterHref)
-	addVersionInfo(spec, i, minor, patch)
 	return spec
 }
 
-func buildSubscription(i int) map[string]any {
-	subID := fakeSubID(i)
-	return map[string]any{
-		"kind": "SubscriptionLink",
-		"id":   subID,
-		"href": "/api/accounts_mgmt/v1/subscriptions/" + subID,
-	}
-}
-
-func clusterState(i int) string {
-	states := []string{"ready", "installing", "error", "hibernating"}
-	return states[i%len(states)]
-}
-
-func buildOCMStatus(i int, state string) map[string]any {
-	return map[string]any{
-		"state":                        state,
-		"dns_ready":                    i%4 != 0,
-		"oidc_ready":                   false,
-		"provision_error_message":      "",
-		"provision_error_code":         "",
-		"limited_support_reason_count": 0,
-	}
-}
-
-func addProviderRegion(spec map[string]any, provider string, i int, clusterHref string) {
-	switch provider {
-	case "aws":
+func buildPlatform(platformType string, i int) map[string]any {
+	p := map[string]any{"type": platformType}
+	switch platformType {
+	case "AWS":
 		region := awsRegions[i%len(awsRegions)]
-		spec["region"] = map[string]any{
-			"kind": "CloudRegionLink",
-			"id":   region,
-			"href": ocmBase + "/cloud_providers/aws/regions/" + region,
-		}
-		spec["aws"] = map[string]any{
-			"private_link": false,
-			"private_link_configuration": map[string]any{
-				"kind": "PrivateLinkConfigurationLink",
-				"href": clusterHref + "/aws/private_link_configuration",
+		arnPrefix := fmt.Sprintf("arn:aws:iam::123456789012:role/hc-%d", i)
+		p["aws"] = map[string]any{
+			"region": region,
+			"rolesRef": map[string]any{
+				"ingressARN":              arnPrefix + "-ingress",
+				"imageRegistryARN":        arnPrefix + "-image-registry",
+				"storageARN":              arnPrefix + "-storage",
+				"networkARN":              arnPrefix + "-network",
+				"kubeCloudControllerARN":  arnPrefix + "-kube-controller",
+				"nodePoolManagementARN":   arnPrefix + "-nodepool-mgmt",
+				"controlPlaneOperatorARN": arnPrefix + "-cpo",
 			},
-			"audit_log":                map[string]any{"role_arn": ""},
-			"ec2_metadata_http_tokens": "optional",
+			"endpointAccess": "Public",
 		}
-		spec["aws_infrastructure_access_role_grants"] = map[string]any{
-			"kind": "AWSInfrastructureAccessRoleGrantLink",
-			"href": clusterHref + "/aws_infrastructure_access_role_grants",
-		}
-	case "gcp":
+	case "GCP":
 		region := gcpRegions[i%len(gcpRegions)]
-		spec["region"] = map[string]any{
-			"kind": "CloudRegionLink",
-			"id":   region,
-			"href": ocmBase + "/cloud_providers/gcp/regions/" + region,
+		p["gcp"] = map[string]any{
+			"projectID": fmt.Sprintf("hyperfleet-project-%d", i%5),
+			"region":    region,
 		}
-		spec["gcp"] = map[string]any{
-			"project_id": "",
-			"security":   map[string]any{"secure_boot": false},
-			"authentication": map[string]any{
-				"kind": "RedHatCloudAccount",
-			},
+	case "Azure":
+		region := azureRegions[i%len(azureRegions)]
+		p["azure"] = map[string]any{
+			"location":       region,
+			"subscriptionID": fmt.Sprintf("00000000-0000-0000-0000-%012x", i+1),
+			"resourceGroup":  fmt.Sprintf("hc-rg-%d", i),
 		}
-		// azure, vsphere, openstack, libvirt: cloud_provider only, no region
+	case "KubeVirt":
+		p["kubevirt"] = map[string]any{
+			"baseDomainPassthrough": i%2 == 0,
+		}
+	}
+	return p
+}
+
+func buildNetworking(netType string, i int) map[string]any {
+	clusterNet := fmt.Sprintf("10.%d.0.0/14", 128+(i%32)*4)
+	serviceNet := fmt.Sprintf("172.%d.0.0/16", 16+i%16)
+	return map[string]any{
+		"networkType": netType,
+		"clusterNetwork": []map[string]any{
+			{"cidr": clusterNet, "hostPrefix": 23},
+		},
+		"serviceNetwork": []map[string]any{
+			{"cidr": serviceNet},
+		},
 	}
 }
 
-func addVersionInfo(spec map[string]any, i, minor, patch int) {
-	upgrades := make([]string, 0, i%maxUpgradePatches)
-	for p := patch + 1; p <= patch+(i%maxUpgradePatches); p++ {
-		upgrades = append(upgrades, fmt.Sprintf("4.%d.%d", minor, p))
+func buildServices() []map[string]any {
+	routeStrategy := map[string]any{"type": "Route"}
+	services := []string{"APIServer", "OAuthServer", "OIDC", "Konnectivity", "Ignition"}
+	result := make([]map[string]any, len(services))
+	for i, svc := range services {
+		result[i] = map[string]any{"service": svc, "servicePublishingStrategy": routeStrategy}
 	}
-	versionID := fmt.Sprintf("openshift-v4.%d.%d", minor, patch)
-	spec["version"] = map[string]any{
-		"kind":                  "VersionLink",
-		"id":                    versionID,
-		"href":                  ocmBase + "/versions/" + versionID,
-		"raw_id":                fmt.Sprintf("4.%d.%d", minor, patch),
-		"channel_group":         "stable",
-		"available_upgrades":    upgrades,
-		"available_channels":    []string{"stable-4." + fmt.Sprintf("%d", minor)},
-		"end_of_life_timestamp": "2026-12-01T00:00:00Z",
-	}
+	return result
 }
 
 func buildConditions(generation int32) []map[string]any {
