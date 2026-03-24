@@ -208,6 +208,8 @@ func buildConditionsLookup(conditions []client.Condition) map[string]map[string]
 			"observed_generation":  int64(c.ObservedGeneration),
 			"last_updated_time":    c.LastUpdatedTime.Format(time.RFC3339Nano),
 			"last_transition_time": c.LastTransitionTime.Format(time.RFC3339Nano),
+			"reason":               c.Reason,
+			"message":              c.Message,
 		}
 	}
 	return lookup
@@ -222,6 +224,8 @@ func zeroCondition() map[string]interface{} {
 		"observed_generation":  int64(0),
 		"last_updated_time":    "",
 		"last_transition_time": "",
+		"reason":               "",
+		"message":              "",
 	}
 }
 

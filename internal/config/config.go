@@ -74,10 +74,11 @@ func DefaultMessageDecision() *MessageDecisionConfig {
 			"is_ready":                `condition("Ready").status == "True"`,
 			"has_ref_time":            `ref_time != ""`,
 			"is_new_resource":         `!is_ready && resource.generation == 1`,
+			"generation_mismatch":     `resource.generation > condition("Ready").observed_generation`,
 			"ready_and_stale":         `is_ready && has_ref_time && now - timestamp(ref_time) > duration("30m")`,
 			"not_ready_and_debounced": `!is_ready && has_ref_time && now - timestamp(ref_time) > duration("10s")`,
 		},
-		Result: "is_new_resource || ready_and_stale || not_ready_and_debounced",
+		Result: "is_new_resource || generation_mismatch || ready_and_stale || not_ready_and_debounced",
 	}
 }
 

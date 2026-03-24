@@ -147,6 +147,7 @@ Sentinel uses a configurable CEL-based decision engine (`message_decision`) that
 | Default Check | CEL Expression | Rationale |
 |---------------|---------------|-----------|
 | **New resource** | `!is_ready && resource.generation == 1` | Always publish for never-processed resources |
+| **Generation mismatch** | `resource.generation > condition("Ready").observed_generation` | Immediate reconciliation when spec changes |
 | **Ready and stale** | `is_ready && has_ref_time && now - timestamp(ref_time) > duration("30m")` | Lower frequency drift detection on stable resources |
 | **Not ready and debounced** | `!is_ready && has_ref_time && now - timestamp(ref_time) > duration("10s")` | Faster reconciliation for transitional states |
 
@@ -157,21 +158,23 @@ The `condition("Ready")` CEL function accesses the resource's status conditions.
 1. Extract reference time: `ref_time = condition("Ready").last_updated_time`
 2. Determine readiness: `is_ready = condition("Ready").status == "True"`
 3. Guard against missing conditions: `has_ref_time = ref_time != ""`
-4. Evaluate checks: `is_new_resource`, `ready_and_stale`, `not_ready_and_debounced`
-5. Result: `is_new_resource || ready_and_stale || not_ready_and_debounced`
+4. Evaluate checks: `is_new_resource`, `generation_mismatch`, `ready_and_stale`, `not_ready_and_debounced`
+5. Result: `is_new_resource || generation_mismatch || ready_and_stale || not_ready_and_debounced`
 
 If the result is `true` → **Publish event** (reason: "message decision matched")
 Otherwise → **Skip** (reason: "message decision result is false")
 
 #### 2.1.4 Complete Decision Flow
 
-The three reconciliation checks work together in priority order to determine when to publish events:
+The four reconciliation checks work together in priority order to determine when to publish events:
 
 ```mermaid
 graph TD
     START[Poll Resource] --> CHECK1{is_new_resource?<br>gen==1 && !ready}
     CHECK1 -->|Yes| PUB1[Publish: new resource]
-    CHECK1 -->|No| CHECK2{has_ref_time?}
+    CHECK1 -->|No| CHECK1B{generation_mismatch?<br>gen > observed_gen}
+    CHECK1B -->|Yes| PUB1B[Publish: spec changed]
+    CHECK1B -->|No| CHECK2{has_ref_time?}
     CHECK2 -->|No| SKIP[Skip: no condition data]
     CHECK2 -->|Yes| CHECK3{is_ready?}
     CHECK3 -->|Yes| CHECK4{"now - ref_time > 30m?"}
@@ -187,6 +190,8 @@ graph TD
 - **Never-processed takes absolute priority** - New resources always publish immediately
 - **State changes override max age** - Spec changes don't wait for intervals
 - **Max age is the fallback** - Ensures eventual consistency when nothing else triggers
+
+> **Scalability note:** The CEL decision engine evaluates all resources matching the label selector in-memory each poll cycle. At large scale (thousands of resources), use `resource_selector` to shard resources across multiple Sentinel instances. A future `server_filters` config field is planned to allow server-side pre-filtering before CEL evaluation.
 
 ### 2.2 Resource Filtering
 

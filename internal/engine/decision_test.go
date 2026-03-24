@@ -43,9 +43,32 @@ func newResourceWithCondition(status string, lastUpdated time.Time, generation i
 		Status: client.ResourceStatus{
 			Conditions: []client.Condition{
 				{
-					Type:            "Ready",
-					Status:          status,
-					LastUpdatedTime: lastUpdated,
+					Type:               "Ready",
+					Status:             status,
+					LastUpdatedTime:    lastUpdated,
+					ObservedGeneration: generation,
+				},
+			},
+		},
+	}
+}
+
+// newResourceWithGenerationMismatch creates a test resource where generation > observed_generation.
+func newResourceWithGenerationMismatch(
+	status string, lastUpdated time.Time, generation, observedGeneration int32,
+) *client.Resource {
+	return &client.Resource{
+		ID:          testResourceID,
+		Kind:        testResourceKind,
+		Generation:  generation,
+		CreatedTime: time.Now().Add(-1 * time.Hour),
+		Status: client.ResourceStatus{
+			Conditions: []client.Condition{
+				{
+					Type:               "Ready",
+					Status:             status,
+					LastUpdatedTime:    lastUpdated,
+					ObservedGeneration: observedGeneration,
 				},
 			},
 		},
@@ -167,6 +190,27 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 			wantReason:        "message decision matched",
 		},
 		{
+			name:              "generation mismatch (ready, recent) - should publish immediately",
+			resource:          newResourceWithGenerationMismatch("True", now.Add(-1*time.Minute), 3, 2),
+			now:               now,
+			wantShouldPublish: true,
+			wantReason:        "message decision matched",
+		},
+		{
+			name:              "generation mismatch (not ready, recent) - should publish immediately",
+			resource:          newResourceWithGenerationMismatch("False", now.Add(-1*time.Second), 5, 4),
+			now:               now,
+			wantShouldPublish: true,
+			wantReason:        "message decision matched",
+		},
+		{
+			name:              "no generation mismatch (ready, recent) - should not publish",
+			resource:          newResourceWithGenerationMismatch("True", now.Add(-1*time.Minute), 2, 2),
+			now:               now,
+			wantShouldPublish: false,
+			wantReason:        "message decision result is false",
+		},
+		{
 			name:              "nil resource - should not publish",
 			resource:          nil,
 			now:               now,
@@ -212,13 +256,13 @@ func TestDecisionEngine_Evaluate_MissingCondition(t *testing.T) {
 		}
 	})
 
-	t.Run("no conditions generation 2 - no ref_time so debounce skipped", func(t *testing.T) {
+	t.Run("no conditions generation 2 - generation mismatch publishes", func(t *testing.T) {
 		resource := newResourceNoConditions(2)
 		decision := engine.Evaluate(resource, now)
 
-		// No conditions → ref_time="" → has_ref_time=false → debounce guard skips
-		if decision.ShouldPublish {
-			t.Errorf("expected ShouldPublish=false for resource with no conditions and gen>1, got true")
+		// No conditions → observed_generation=0, generation=2 → generation_mismatch triggers
+		if !decision.ShouldPublish {
+			t.Errorf("expected ShouldPublish=true for resource with generation mismatch (gen=2, observed=0), got false")
 		}
 	})
 }

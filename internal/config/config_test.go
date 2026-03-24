@@ -77,8 +77,8 @@ func TestLoadConfig_ValidComplete(t *testing.T) {
 	if cfg.MessageDecision.Result == "" {
 		t.Error("Expected message_decision.result to be set")
 	}
-	if len(cfg.MessageDecision.Params) != 6 {
-		t.Errorf("Expected 6 message_decision params, got %d", len(cfg.MessageDecision.Params))
+	if len(cfg.MessageDecision.Params) != 7 {
+		t.Errorf("Expected 7 message_decision params, got %d", len(cfg.MessageDecision.Params))
 	}
 
 	// Verify message data
@@ -114,8 +114,8 @@ func TestLoadConfig_Minimal(t *testing.T) {
 	if cfg.MessageDecision.Result == "" {
 		t.Error("Expected default message_decision.result to be set")
 	}
-	if len(cfg.MessageDecision.Params) != 6 {
-		t.Errorf("Expected 6 default message_decision params, got %d", len(cfg.MessageDecision.Params))
+	if len(cfg.MessageDecision.Params) != 7 {
+		t.Errorf("Expected 7 default message_decision params, got %d", len(cfg.MessageDecision.Params))
 	}
 }
 
@@ -674,8 +674,8 @@ func TestLoadConfig_FullWorkflow(t *testing.T) {
 	if cfg.MessageDecision == nil {
 		t.Fatal("Expected message_decision to be set")
 	}
-	if len(cfg.MessageDecision.Params) != 6 {
-		t.Errorf("Expected 6 message_decision params, got %d", len(cfg.MessageDecision.Params))
+	if len(cfg.MessageDecision.Params) != 7 {
+		t.Errorf("Expected 7 message_decision params, got %d", len(cfg.MessageDecision.Params))
 	}
 }
 

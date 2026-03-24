@@ -318,8 +318,8 @@ func TestTrigger_MixedResources(t *testing.T) {
 		createMockCluster("", 1, 1, false, now.Add(-15*time.Second)),
 		// Should publish (ready, stale: 31min > 30min)
 		createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)),
-		// Should not publish (ready, recent: 5min < 30min, generation > 1)
-		createMockCluster("cluster-4", 5, 4, true, now.Add(-5*time.Minute)),
+		// Should not publish (ready, recent: 5min < 30min, no generation mismatch)
+		createMockCluster("cluster-4", 5, 5, true, now.Add(-5*time.Minute)),
 	})
 	defer server.Close()
 

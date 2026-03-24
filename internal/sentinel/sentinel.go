@@ -114,7 +114,11 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	// Convert label selectors to map for filtering
 	labelSelector := s.config.ResourceSelector.ToMap()
 
-	// Fetch all resources matching label selectors
+	// Fetch all resources matching label selectors.
+	// TODO(HYPERFLEET-805): Add optional server_filters config for server-side pre-filtering
+	// to reduce the result set before CEL evaluation. Currently fetches the full result set
+	// and evaluates each resource in-memory. At large scale, use resource_selector labels
+	// to shard across multiple Sentinel instances.
 	rt := client.ResourceType(s.config.ResourceType)
 	resources, err := s.client.FetchResources(ctx, rt, labelSelector)
 	if err != nil {
