@@ -1,7 +1,5 @@
 resource_type: nodepools
 poll_interval: 3s
-max_age_not_ready: 5s
-max_age_ready: 15m
 
 resource_selector:
   - label: cluster-id
@@ -12,6 +10,17 @@ resource_selector:
 hyperfleet_api:
   endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
   timeout: 20s
+
+message_decision:
+  params:
+    ref_time: 'condition("Ready").last_updated_time'
+    is_ready: 'condition("Ready").status == "True"'
+    has_ref_time: 'ref_time != ""'
+    is_new_resource: '!is_ready && resource.generation == 1'
+    generation_mismatch: 'resource.generation > condition("Ready").observed_generation'
+    ready_and_stale: 'is_ready && has_ref_time && now - timestamp(ref_time) > duration("15m")'
+    not_ready_and_debounced: '!is_ready && has_ref_time && now - timestamp(ref_time) > duration("5s")'
+  result: 'is_new_resource || generation_mismatch || ready_and_stale || not_ready_and_debounced'
 
 message_data:
   id: "resource.id"

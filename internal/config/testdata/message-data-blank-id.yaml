@@ -2,8 +2,16 @@
 # it has a nil in the message_data.id property
 resource_type: clusters
 poll_interval: 2s
-max_age_not_ready: 5s
-max_age_ready: 2m
+message_decision:
+  params:
+    ref_time: 'condition("Ready").last_updated_time'
+    is_ready: 'condition("Ready").status == "True"'
+    has_ref_time: 'ref_time != ""'
+    is_new_resource: '!is_ready && resource.generation == 1'
+    generation_mismatch: 'resource.generation > condition("Ready").observed_generation'
+    ready_and_stale: 'is_ready && has_ref_time && now - timestamp(ref_time) > duration("2m")'
+    not_ready_and_debounced: '!is_ready && has_ref_time && now - timestamp(ref_time) > duration("5s")'
+  result: "is_new_resource || generation_mismatch || ready_and_stale || not_ready_and_debounced"
 hyperfleet_api:
   endpoint: http://localhost:8000
   timeout: 10s

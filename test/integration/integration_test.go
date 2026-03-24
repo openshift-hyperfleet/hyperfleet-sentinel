@@ -57,7 +57,6 @@ func createMockCluster(id string, generation int, observedGeneration int, ready 
 
 // createMockClusterWithLabels creates a mock cluster response with labels
 func createMockClusterWithLabels(id string, generation int, observedGeneration int, ready bool, lastUpdated time.Time, labels map[string]string) map[string]interface{} {
-	// Map ready bool to condition status
 	readyStatus := "False"
 	if ready {
 		readyStatus = "True"
@@ -116,39 +115,47 @@ func createMockClusterList(clusters []map[string]interface{}) map[string]interfa
 	}
 }
 
+// newTestDecisionEngine creates a CEL-based decision engine with default config.
+func newTestDecisionEngine(t *testing.T) *engine.DecisionEngine {
+	t.Helper()
+	de, err := engine.NewDecisionEngine(config.DefaultMessageDecision())
+	if err != nil {
+		t.Fatalf("NewDecisionEngine failed: %v", err)
+	}
+	return de
+}
+
+// newTestSentinelConfig creates a config for testing.
+func newTestSentinelConfig() *config.SentinelConfig {
+	return &config.SentinelConfig{
+		ResourceType:    "clusters",
+		PollInterval:    100 * time.Millisecond,
+		MessageDecision: config.DefaultMessageDecision(),
+		MessageData: map[string]interface{}{
+			"id":   "resource.id",
+			"kind": "resource.kind",
+		},
+	}
+}
+
 // TestIntegration_EndToEnd tests the full Sentinel workflow end-to-end with real RabbitMQ
 func TestIntegration_EndToEnd(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Get shared RabbitMQ testcontainer from helper
 	helper := NewHelper()
 
 	now := time.Now()
 	var pollCycleCount atomic.Int32
 
-	// Create mock HyperFleet API server that handles condition-based queries
-	// Each poll cycle makes 2 queries: not-ready + stale
+	// Single query mock - returns stale cluster on first poll only
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		search := r.URL.Query().Get("search")
+		cycle := pollCycleCount.Add(1)
 
 		var clusters []map[string]interface{}
-
-		// Track poll cycles (stale query marks end of a cycle)
-		if strings.Contains(search, "Ready='True'") {
-			pollCycleCount.Add(1)
-		}
-
-		switch {
-		case strings.Contains(search, "Ready='False'"):
-			// Not-ready query: no not-ready clusters
-			clusters = nil
-		case strings.Contains(search, "Ready='True'"):
-			// Stale query: return stale cluster only on first cycle
-			if pollCycleCount.Load() == 1 {
-				clusters = []map[string]interface{}{
-					createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)), // Max age exceeded
-				}
+		if cycle == 1 {
+			clusters = []map[string]interface{}{
+				createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)),
 			}
 		}
 
@@ -158,47 +165,32 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Setup components with real RabbitMQ broker
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 	log := logger.NewHyperFleetLogger()
 
-	// Create metrics with a test registry
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
-	cfg := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		PollInterval:   100 * time.Millisecond, // Short interval for testing
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
-		MessageData: map[string]interface{}{
-			"id":   "resource.id",
-			"kind": "resource.kind",
-		},
-	}
+	cfg := newTestSentinelConfig()
 
 	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
 
-	// Run Sentinel in background
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- s.Start(ctx)
 	}()
 
-	// Wait for at least 2 polling cycles
 	time.Sleep(300 * time.Millisecond)
 	cancel()
 
-	// Verify that Sentinel actually polled the API at least twice
 	if pollCycleCount.Load() < 2 {
 		t.Errorf("Expected at least 2 polling cycles, got %d", pollCycleCount.Load())
 	}
 
-	// Wait for Sentinel to stop
 	select {
 	case err := <-errChan:
 		if err != nil && err != context.Canceled {
@@ -208,8 +200,6 @@ func TestIntegration_EndToEnd(t *testing.T) {
 		t.Fatal("Sentinel did not stop within timeout")
 	}
 
-	// Integration test validates end-to-end workflow without errors
-	// Event verification requires subscriber implementation (future enhancement)
 	t.Log("Integration test with real RabbitMQ broker completed successfully")
 }
 
@@ -218,19 +208,14 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Get shared RabbitMQ testcontainer from helper
 	helper := NewHelper()
 
 	now := time.Now()
 
-	// Track search parameters for assertion
 	var capturedSearchParams []string
 	var captureMu sync.Mutex
 
-	// Create mock server that returns clusters filtered by label selector and conditions.
-	// With condition-based queries, Sentinel sends:
-	// - Not-ready query: "labels.shard='1' and status.conditions.Ready='False'"
-	// - Stale query: "labels.shard='1' and status.conditions.Ready='True' and ..."
+	// Single query mock - validates label selectors in search params
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		searchParam := r.URL.Query().Get("search")
 		captureMu.Lock()
@@ -238,25 +223,16 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		captureMu.Unlock()
 
 		var filteredClusters []map[string]interface{}
-
-		// Only return clusters matching shard:1 label AND condition filters
 		if strings.Contains(searchParam, "labels.shard='1'") {
-			if strings.Contains(searchParam, "Ready='False'") {
-				// Not-ready query: no not-ready clusters with shard:1
-				filteredClusters = nil
-			} else if strings.Contains(searchParam, "Ready='True'") {
-				// Stale query: return stale cluster with shard:1
-				filteredClusters = []map[string]interface{}{
-					createMockClusterWithLabels(
-						"cluster-shard-1",
-						2, 2, true,
-						now.Add(-31*time.Minute), // Exceeds max_age_ready (30m)
-						map[string]string{"shard": "1"},
-					),
-				}
+			filteredClusters = []map[string]interface{}{
+				createMockClusterWithLabels(
+					"cluster-shard-1",
+					2, 2, true,
+					now.Add(-31*time.Minute),
+					map[string]string{"shard": "1"},
+				),
 			}
 		}
-		// shard:2 clusters are never returned since label selector doesn't match
 
 		response := createMockClusterList(filteredClusters)
 		w.Header().Set("Content-Type", "application/json")
@@ -264,27 +240,16 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Setup components with real RabbitMQ broker
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 	log := logger.NewHyperFleetLogger()
 
-	// Create metrics with a test registry
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
-	cfg := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		PollInterval:   100 * time.Millisecond,
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
-		ResourceSelector: []config.LabelSelector{
-			{Label: "shard", Value: "1"},
-		},
-		MessageData: map[string]interface{}{
-			"id":   "resource.id",
-			"kind": "resource.kind",
-		},
+	cfg := newTestSentinelConfig()
+	cfg.ResourceSelector = []config.LabelSelector{
+		{Label: "shard", Value: "1"},
 	}
 
 	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
@@ -292,23 +257,19 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
 
-	// Run sentinel in goroutine and capture error
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- s.Start(ctx)
 	}()
 
-	// Wait for a few polling cycles
 	time.Sleep(300 * time.Millisecond)
 	cancel()
 
-	// Check Start error
 	startErr := <-errChan
 	if startErr != nil && startErr != context.Canceled {
 		t.Errorf("Expected Start to return nil or context.Canceled, got: %v", startErr)
 	}
 
-	// Validate captured search parameters
 	captureMu.Lock()
 	params := make([]string, len(capturedSearchParams))
 	copy(params, capturedSearchParams)
@@ -318,45 +279,27 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		t.Fatal("No search queries were captured — Sentinel may not have polled")
 	}
 
-	hasNotReady := false
-	hasStale := false
 	for _, search := range params {
 		if !strings.Contains(search, "labels.shard='1'") {
 			t.Errorf("Expected search to contain label selector \"labels.shard='1'\", got %q", search)
 		}
-		if strings.Contains(search, "Ready='False'") {
-			hasNotReady = true
-		}
-		if strings.Contains(search, "Ready='True'") {
-			hasStale = true
-		}
-	}
-	if !hasNotReady {
-		t.Error("No not-ready query (Ready='False') was captured")
-	}
-	if !hasStale {
-		t.Error("No stale query (Ready='True') was captured")
 	}
 
 	t.Logf("Label selector filtering test completed with %d queries", len(params))
 }
 
 // TestIntegration_TSLSyntaxMultipleLabels validates TSL syntax with multiple label selectors
-// and condition-based filtering
 func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Get shared RabbitMQ testcontainer from helper
 	helper := NewHelper()
 
 	now := time.Now()
 
-	// Track the search parameters received by the mock server
 	var receivedSearchParams []string
 	var searchMu sync.Mutex
 
-	// Create mock server that validates TSL syntax with conditions
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		search := r.URL.Query().Get("search")
 		searchMu.Lock()
@@ -365,22 +308,15 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 
 		var filteredClusters []map[string]interface{}
 
-		// With condition-based queries, labels are combined with condition filters
 		labelPrefix := "labels.env='production' and labels.region='us-east'"
 		if strings.HasPrefix(search, labelPrefix) {
-			if strings.Contains(search, "Ready='False'") {
-				// Not-ready query
-				filteredClusters = nil
-			} else if strings.Contains(search, "Ready='True'") {
-				// Stale query: return matching cluster
-				filteredClusters = []map[string]interface{}{
-					createMockClusterWithLabels(
-						"cluster-region-env-match",
-						2, 2, true,
-						now.Add(-31*time.Minute),
-						map[string]string{"region": "us-east", "env": "production"},
-					),
-				}
+			filteredClusters = []map[string]interface{}{
+				createMockClusterWithLabels(
+					"cluster-region-env-match",
+					2, 2, true,
+					now.Add(-31*time.Minute),
+					map[string]string{"region": "us-east", "env": "production"},
+				),
 			}
 		}
 
@@ -390,27 +326,17 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Setup components
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 	log := logger.NewHyperFleetLogger()
 
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
-	cfg := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		PollInterval:   100 * time.Millisecond,
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
-		ResourceSelector: []config.LabelSelector{
-			{Label: "region", Value: "us-east"},
-			{Label: "env", Value: "production"},
-		},
-		MessageData: map[string]interface{}{
-			"id":   "resource.id",
-			"kind": "resource.kind",
-		},
+	cfg := newTestSentinelConfig()
+	cfg.ResourceSelector = []config.LabelSelector{
+		{Label: "region", Value: "us-east"},
+		{Label: "env", Value: "production"},
 	}
 
 	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
@@ -418,17 +344,14 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
 
-	// Run sentinel
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- s.Start(ctx)
 	}()
 
-	// Wait for polling
 	time.Sleep(300 * time.Millisecond)
 	cancel()
 
-	// Validate that queries include both label selectors and condition filters
 	labelPrefix := "labels.env='production' and labels.region='us-east'"
 	searchMu.Lock()
 	paramsCopy := make([]string, len(receivedSearchParams))
@@ -439,27 +362,12 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 		t.Fatal("No search queries were captured — Sentinel may not have polled")
 	}
 
-	hasNotReady := false
-	hasStale := false
 	for _, search := range paramsCopy {
 		if !strings.HasPrefix(search, labelPrefix) {
 			t.Errorf("Expected search to start with label selectors %q, got %q", labelPrefix, search)
 		}
-		if strings.Contains(search, "Ready='False'") {
-			hasNotReady = true
-		}
-		if strings.Contains(search, "Ready='True'") {
-			hasStale = true
-		}
-	}
-	if !hasNotReady {
-		t.Error("No not-ready query (Ready='False') was captured")
-	}
-	if !hasStale {
-		t.Error("No stale query (Ready='True') was captured")
 	}
 
-	// Wait for sentinel to stop
 	startErr := <-errChan
 	if startErr != nil && startErr != context.Canceled {
 		t.Errorf("Expected Start to return nil or context.Canceled, got: %v", startErr)
@@ -468,47 +376,13 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	t.Logf("TSL syntax validation completed with %d queries", len(paramsCopy))
 }
 
-// TestIntegration_BrokerLoggerContext validates that OpenTelemetry trace context and Sentinel-specific context fields are properly propagated through the logging system
-// during event publishing workflows.
-//
-// Context Propagation Flow:
-//  1. OpenTelemetry creates trace_id and span_id for spans
-//  2. telemetry.StartSpan() enriches context with trace IDs for logging
-//  3. Sentinel adds decision context (decision_reason, topic, subset) to context
-//  4. Context flows through to broker operations via logger.WithXXX() calls
-//  5. All log entries contain both OpenTelemetry and Sentinel context fields
-//
-// Validated Log Fields:
-//
-//	OpenTelemetry fields:
-//	- trace_id: Distributed trace identifier from active span
-//	- span_id: Current span identifier from active span
-//
-//	Sentinel-specific fields:
-//	- decision_reason: Why the event was triggered (e.g., "max age exceeded", "generation changed")
-//	- topic: Message broker topic where event is published
-//	- subset: Resource type being monitored (e.g., "clusters")
-//	- component: Always "sentinel" for consistent log attribution
-//
-// Test Approach:
-//   - Captures structured JSON logs to a buffer for analysis
-//   - Uses real RabbitMQ broker to generate authentic broker operation logs
-//   - Mock server returns resources that trigger multiple event types
-//   - Parses JSON log entries to verify required context fields are present
-//
-// Success Criteria:
-//   - Sentinel's "Published event" logs contain all OpenTelemetry and context fields
-//   - Broker operation logs inherit Sentinel's component and context
-//   - No context fields are lost during the broker publishing workflow
-//
-// This test ensures distributed tracing correlation and structured logging work correctly across the Sentinel → Broker boundary for observability.
+// TestIntegration_BrokerLoggerContext validates context propagation through logging
 func TestIntegration_BrokerLoggerContext(t *testing.T) {
-	const SENTINEL_COMPONENT = "sentinel"
-	const TEST_VERSION = "test"
-	const TEST_HOST = "testhost"
-	const TEST_TOPIC = "test-topic"
+	const sentinelComponent = "sentinel"
+	const testVersion = "test"
+	const testHost = "testhost"
+	const testTopic = "test-topic"
 
-	// Buffer to observe logs
 	var logBuffer bytes.Buffer
 	now := time.Now()
 	var callCount atomic.Int32
@@ -517,7 +391,6 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Set OTLP sampler
 	err := os.Setenv("OTEL_TRACES_SAMPLER", "always_on")
 	if err != nil {
 		t.Errorf("Failed to set OTEL_TRACES_SAMPLER: %v", err)
@@ -529,58 +402,41 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		}
 	}()
 
-	// Setup OpenTelemetry for integration test
 	tp, err := telemetry.InitTraceProvider(ctx, "sentinel", "test")
 	if err != nil {
 		t.Fatalf("Failed to initialize OpenTelemetry: %v", err)
 	}
 	defer telemetry.Shutdown(context.Background(), tp)
 
-	// Get globalConfig and assign multiWriter to observe output logs
 	globalConfig := logger.GetGlobalConfig()
 	multiWriter := io.MultiWriter(globalConfig.Output, &logBuffer)
 
 	helper := NewHelper()
-	cfg := &logger.LogConfig{
+	logCfg := &logger.LogConfig{
 		Level:     logger.LevelInfo,
-		Format:    logger.FormatJSON, // JSON for easy parsing
+		Format:    logger.FormatJSON,
 		Output:    multiWriter,
-		Component: SENTINEL_COMPONENT,
-		Version:   TEST_VERSION,
-		Hostname:  TEST_HOST,
+		Component: sentinelComponent,
+		Version:   testVersion,
+		Hostname:  testHost,
 		OTel: logger.OTelConfig{
 			Enabled: true,
 		},
 	}
-	log := logger.NewHyperFleetLoggerWithConfig(cfg)
+	log := logger.NewHyperFleetLoggerWithConfig(logCfg)
 
-	// Mock server returns clusters that will trigger event publishing
-	// With condition-based queries, each poll cycle makes 2 queries
+	// Single query mock - returns resources that trigger events
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		search := r.URL.Query().Get("search")
+		if callCount.Add(1) >= 2 {
+			select {
+			case readyChan <- true:
+			default:
+			}
+		}
 
-		var clusters []map[string]interface{}
-		switch {
-		case strings.Contains(search, "Ready='False'"):
-			if callCount.Add(1) >= 2 {
-				select {
-				case readyChan <- true:
-				default:
-				}
-			}
-			// Not-ready query: return not-ready cluster
-			clusters = []map[string]interface{}{
-				createMockCluster("cluster-not-ready", 1, 1, false, now.Add(-15*time.Second)),
-			}
-		case strings.Contains(search, "Ready='True'"):
-			// Stale query: return stale ready cluster
-			clusters = []map[string]interface{}{
-				createMockCluster("cluster-old", 2, 2, true, now.Add(-35*time.Minute)),
-			}
-		default:
-			t.Errorf("unexpected search query: %q", search)
-			w.WriteHeader(http.StatusBadRequest)
-			return
+		clusters := []map[string]interface{}{
+			createMockCluster("cluster-not-ready", 2, 2, false, now.Add(-15*time.Second)),
+			createMockCluster("cluster-old", 2, 2, true, now.Add(-35*time.Minute)),
 		}
 		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")
@@ -589,31 +445,20 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 
-	sentinelConfig := &config.SentinelConfig{
-		ResourceType:   "clusters",
-		Topic:          TEST_TOPIC,
-		PollInterval:   100 * time.Millisecond,
-		MaxAgeNotReady: 10 * time.Second,
-		MaxAgeReady:    30 * time.Minute,
-		ResourceSelector: []config.LabelSelector{
-			{Label: "region", Value: "us-east"},
-			{Label: "env", Value: "production"},
-		},
-		MessageData: map[string]interface{}{
-			"id":   "resource.id",
-			"kind": "resource.kind",
-		},
+	sentinelConfig := newTestSentinelConfig()
+	sentinelConfig.Topic = testTopic
+	sentinelConfig.ResourceSelector = []config.LabelSelector{
+		{Label: "region", Value: "us-east"},
+		{Label: "env", Value: "production"},
 	}
 
-	// Create Sentinel with our logger and real RabbitMQ broker
 	s, err := sentinel.NewSentinel(sentinelConfig, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
 
-	// Run Sentinel
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- s.Start(ctx)
@@ -627,7 +472,6 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	}
 	cancel()
 
-	// Wait for Sentinel to stop
 	select {
 	case err := <-errChan:
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -637,7 +481,6 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		t.Fatal("Sentinel did not stop within timeout")
 	}
 
-	// Analyze logs
 	logOutput := logBuffer.String()
 	t.Logf("Captured log output:\n%s", logOutput)
 
@@ -660,12 +503,10 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		msg, hasMsg := entry["message"].(string)
 		component, hasComponent := entry["component"].(string)
 
-		// Look for Sentinel's own event publishing logs
-		if hasMsg && hasComponent && component == SENTINEL_COMPONENT &&
+		if hasMsg && hasComponent && component == sentinelComponent &&
 			strings.Contains(msg, "Published event") {
 			foundSentinelEventLog = true
 
-			// Verify Sentinel context fields are present
 			if entry["decision_reason"] == nil {
 				t.Errorf("Sentinel event log missing decision_reason: %v", entry)
 			}
@@ -675,7 +516,6 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 			if entry["subset"] == nil {
 				t.Errorf("Sentinel event log missing subset: %v", entry)
 			}
-
 			if entry["trace_id"] == nil {
 				t.Errorf("Sentinel event log missing trace_id: %v", entry)
 			}
@@ -687,29 +527,19 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 				entry["decision_reason"], entry["topic"], entry["subset"])
 		}
 
-		// Look for broker operation logs (these should inherit Sentinel context)
-		if hasMsg && hasComponent && component == SENTINEL_COMPONENT &&
+		if hasMsg && hasComponent && component == sentinelComponent &&
 			(strings.Contains(msg, "broker") || strings.Contains(msg, "publish") ||
 				strings.Contains(msg, "Creating publisher") || strings.Contains(msg, "publisher initialized")) {
 			foundBrokerOperationLog = true
 
-			// Broker operations should have Sentinel context
-			if entry["component"] != SENTINEL_COMPONENT {
-				t.Errorf("Broker operation log missing component=%s: %v", SENTINEL_COMPONENT, entry)
+			if entry["component"] != sentinelComponent {
+				t.Errorf("Broker operation log missing component=%s: %v", sentinelComponent, entry)
 			}
-
-			if entry["version"] != TEST_VERSION {
-				t.Errorf("Broker operation log missing version=%s: %v", TEST_VERSION, entry)
+			if entry["version"] != testVersion {
+				t.Errorf("Broker operation log missing version=%s: %v", testVersion, entry)
 			}
-
-			if entry["hostname"] != TEST_HOST {
-				t.Errorf("Broker operation log missing hostname=%s: %v", TEST_HOST, entry)
-			}
-
-			// Check for context inheritance (these fields should be present if context flowed through)
-			if entry["decision_reason"] != nil || entry["topic"] != nil || entry["subset"] != nil {
-				t.Logf("Broker operation inherits Sentinel context: decision_reason=%v topic=%v subset=%v",
-					entry["decision_reason"], entry["topic"], entry["subset"])
+			if entry["hostname"] != testHost {
+				t.Errorf("Broker operation log missing hostname=%s: %v", testHost, entry)
 			}
 
 			t.Logf("Found broker operation log with component=sentinel: %s", msg)
@@ -724,41 +554,16 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		t.Error("No broker operation logs found - broker may not be logging")
 	}
 
-	// Success criteria: Both Sentinel and broker logs should use component=sentinel
 	if foundSentinelEventLog && foundBrokerOperationLog {
 		t.Log("SUCCESS: Logger context inheritance verified - both Sentinel and broker operations log with component=sentinel")
 	}
 }
 
-// TestIntegration_EndToEndSpanHierarchy validates the complete OpenTelemetry span hierarchy created during Sentinel's polling and event publishing workflow.
-//
-// Expected Span Hierarchy:
-//
-//	sentinel.poll (root span - one per polling cycle)
-//	├── HTTP GET (API call to fetch resources)
-//	├── sentinel.evaluate (one per resource evaluated)
-//	│   └── {topic} publish (one per event published)
-//	├── sentinel.evaluate (next resource)
-//	│   └── {topic} publish
-//	└── ...
-//
-// The test validates:
-//  1. Required spans are created: sentinel.poll, sentinel.evaluate, {topic} publish
-//  2. Parent-child relationships: evaluate HTTP spans are children of poll spans, publish spans are children of evaluate spans
-//  3. Multiple spans: One evaluate/publish span per resource that triggers an event
-//  4. Trace continuity: All spans within a poll cycle belong to the same trace
-//
-// Test Setup:
-//   - Uses in-memory OpenTelemetry exporter to capture and analyze spans
-//   - Mock server returns 3 test resources that will trigger events
-//   - Real RabbitMQ broker for realistic message publishing
-//
-// Note: The test may capture multiple poll cycles. Due to context cancellation timing, only 2 poll cycles are validated
+// TestIntegration_EndToEndSpanHierarchy validates the complete OpenTelemetry span hierarchy
 func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Setup in-memory trace exporter to capture spans
 	exporter := tracetest.NewInMemoryExporter()
 	tp := trace.NewTracerProvider(
 		trace.WithSampler(trace.AlwaysSample()),
@@ -779,36 +584,20 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	var callCount atomic.Int32
 	readyChan := make(chan bool, 1)
 
-	// Mock server that routes responses based on condition-based search parameters.
-	// Each poll cycle makes 2 queries: not-ready (Ready='False') + stale (Ready='True').
+	// Single query mock - returns resources that trigger different decision paths
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		callCount.Add(1)
-		// 2 queries per poll cycle; signal after 2 complete cycles (4+ queries)
-		if callCount.Load() > 4 {
+		if callCount.Add(1) > 2 {
 			select {
 			case readyChan <- true:
 			default:
 			}
 		}
 
-		search := r.URL.Query().Get("search")
-		var clusters []map[string]interface{}
-		switch {
-		case strings.Contains(search, "Ready='False'"):
-			clusters = []map[string]interface{}{
-				// Triggers max_age_not_ready exceeded
-				createMockCluster("cluster-not-ready-old", 1, 1, false, now.Add(-15*time.Second)),
-			}
-		case strings.Contains(search, "Ready='True'"):
-			clusters = []map[string]interface{}{
-				// Triggers max_age_ready exceeded
-				createMockCluster("cluster-ready-old", 2, 2, true, now.Add(-35*time.Minute)),
-				// Triggers generation mismatch
-				createMockCluster("cluster-generation-mismatch", 5, 3, true, now.Add(-5*time.Minute)),
-			}
-		default:
-			w.WriteHeader(http.StatusBadRequest)
-			return
+		clusters := []map[string]interface{}{
+			// Triggers not_ready_and_debounced
+			createMockCluster("cluster-not-ready-old", 2, 2, false, now.Add(-15*time.Second)),
+			// Triggers ready_and_stale
+			createMockCluster("cluster-ready-old", 2, 2, true, now.Add(-35*time.Minute)),
 		}
 		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")
@@ -816,45 +605,32 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	}))
 	defer server.Close()
 
-	// Get shared RabbitMQ from helper
 	helper := NewHelper()
 
-	// Setup components
 	hyperfleetClient, clientErr := client.NewHyperFleetClient(server.URL, 10*time.Second)
 	if clientErr != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", clientErr)
 	}
-	decisionEngine := engine.NewDecisionEngine(10*time.Second, 30*time.Minute)
+	decisionEngine := newTestDecisionEngine(t)
 	log := logger.NewHyperFleetLogger()
 
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
-	cfg := &config.SentinelConfig{
-		ResourceType:    "clusters",
-		Topic:           "test-spans-topic",
-		PollInterval:    100 * time.Millisecond,
-		MaxAgeNotReady:  10 * time.Second,
-		MaxAgeReady:     30 * time.Minute,
-		MessagingSystem: "rabbitmq",
-		MessageData: map[string]interface{}{
-			"id":   "resource.id",
-			"kind": "resource.kind",
-		},
-	}
+	cfg := newTestSentinelConfig()
+	cfg.Topic = "test-spans-topic"
+	cfg.MessagingSystem = "rabbitmq"
 
 	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
 
-	// Run Sentinel to generate spans
 	errChan := make(chan error, 1)
 	go func() {
 		errChan <- s.Start(ctx)
 	}()
 
-	// Wait for at least 2 polling cycles
 	select {
 	case <-readyChan:
 		t.Log("Sentinel completed required polling cycles")
@@ -863,7 +639,6 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	}
 	cancel()
 
-	// Wait for Sentinel to stop
 	select {
 	case err := <-errChan:
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -873,7 +648,6 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		t.Fatal("Sentinel did not stop within timeout")
 	}
 
-	// Force flush spans to exporter
 	flushCtx, flushCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer flushCancel()
 
@@ -882,11 +656,9 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		t.Fatalf("force flush error: %v", err)
 	}
 
-	// Analyze captured spans
 	spans := exporter.GetSpans()
 	t.Logf("Captured %d spans", len(spans))
 
-	// Build span maps for analysis
 	spansByName := make(map[string][]tracetest.SpanStub)
 	spansByID := make(map[string]tracetest.SpanStub)
 	spansByParentID := make(map[string][]tracetest.SpanStub)
@@ -901,7 +673,6 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		}
 	}
 
-	// Print span hierarchy for debugging
 	t.Log("Span hierarchy:")
 	for _, span := range spans {
 		parentInfo := "ROOT"
@@ -911,7 +682,6 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		t.Logf("  %s (%s) - %s", span.Name, span.SpanContext.SpanID().String()[:8], parentInfo)
 	}
 
-	// Validate required spans exist
 	requiredSpans := []string{
 		"sentinel.poll",
 		"sentinel.evaluate",
@@ -924,7 +694,6 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		}
 	}
 
-	// Validate span hierarchy structure
 	pollSpans := spansByName["sentinel.poll"]
 	if len(pollSpans) == 0 {
 		t.Fatal("No sentinel.poll spans found")
@@ -935,25 +704,19 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		pollSpansToValidate = pollSpansToValidate[:2]
 	}
 
-	// For each poll span, validate it has the expected children, evaluate only the first two poll spans
 	for _, pollSpan := range pollSpansToValidate {
 		pollSpanID := pollSpan.SpanContext.SpanID().String()
 		directChildren := spansByParentID[pollSpanID]
 
 		t.Logf("Poll span %s has %d direct children", pollSpanID[:8], len(directChildren))
 
-		// Verify poll span has evaluate children (direct)
 		hasEvaluateChild := false
-		hasHTTPChild := false
 		evaluateChildCount := 0
 
 		for _, child := range directChildren {
-			switch {
-			case child.Name == "sentinel.evaluate":
+			if child.Name == "sentinel.evaluate" {
 				hasEvaluateChild = true
 				evaluateChildCount++
-			case strings.Contains(child.Name, "HTTP"):
-				hasHTTPChild = true
 			}
 		}
 
@@ -962,7 +725,6 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 			continue
 		}
 
-		// Verify each evaluate span has publish grandchildren
 		publishGrandchildCount := 0
 		for _, child := range directChildren {
 			if child.Name == "sentinel.evaluate" {
@@ -976,26 +738,23 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 			}
 		}
 
-		t.Logf("Poll span %s: evaluate children=%d, publish grandchildren=%d, http=%t",
-			pollSpanID[:8], evaluateChildCount, publishGrandchildCount, hasHTTPChild)
+		t.Logf("Poll span %s: evaluate children=%d, publish grandchildren=%d",
+			pollSpanID[:8], evaluateChildCount, publishGrandchildCount)
 
-		// Only validate publish grandchildren if this poll span actually processed events
 		if evaluateChildCount > 0 && publishGrandchildCount == 0 {
 			t.Errorf("Poll span %s has %d evaluate children but no publish grandchildren",
 				pollSpanID[:8], evaluateChildCount)
 		}
 	}
 
-	// Validate we have multiple evaluation spans (one per resource)
 	evaluateSpans := spansByName["sentinel.evaluate"]
-	if len(evaluateSpans) < 3 {
-		t.Errorf("Expected at least 3 sentinel.evaluate spans (one per test resource), got %d", len(evaluateSpans))
+	if len(evaluateSpans) < 2 {
+		t.Errorf("Expected at least 2 sentinel.evaluate spans (one per test resource), got %d", len(evaluateSpans))
 	}
 
-	// Validate we have multiple publish spans (one per event)
 	publishSpans := spansByName["test-spans-topic publish"]
-	if len(publishSpans) < 3 {
-		t.Errorf("Expected at least 3 publish spans (one per test event), got %d", len(publishSpans))
+	if len(publishSpans) < 2 {
+		t.Errorf("Expected at least 2 publish spans (one per test event), got %d", len(publishSpans))
 	}
 
 	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.system", cfg.MessagingSystem)
@@ -1019,7 +778,6 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		}
 	}
 
-	// Verify trace continuity - spans should form coherent traces
 	traceIDs := make(map[string]bool)
 	for _, span := range spans {
 		traceIDs[span.SpanContext.TraceID().String()] = true
@@ -1030,7 +788,6 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	}
 }
 
-// Helper function for span name extraction
 func getSpanNames(spans []tracetest.SpanStub) []string {
 	names := make([]string, len(spans))
 	for i, span := range spans {

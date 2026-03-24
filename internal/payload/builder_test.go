@@ -118,7 +118,13 @@ func makeTestResource() *client.Resource {
 		Href:       "/api/v1/clusters/cls-abc",
 		Generation: 3,
 		Status: client.ResourceStatus{
-			Ready: true,
+			Conditions: []client.Condition{
+				{
+					Type:            "Ready",
+					Status:          "True",
+					LastUpdatedTime: time.Now(),
+				},
+			},
 		},
 		Labels:      map[string]string{"region": "us-east"},
 		CreatedTime: time.Now(),
@@ -133,7 +139,13 @@ func makeTestNodePoolResource() *client.Resource {
 		Href:       "/api/v1/nodepools/np-xyz",
 		Generation: 2,
 		Status: client.ResourceStatus{
-			Ready: true,
+			Conditions: []client.Condition{
+				{
+					Type:            "Ready",
+					Status:          "True",
+					LastUpdatedTime: time.Now(),
+				},
+			},
 		},
 		OwnerReferences: &client.OwnerReference{
 			ID:   "cluster-123",
@@ -191,7 +203,7 @@ func TestBuildPayload_NestedObject(t *testing.T) {
 
 func TestBuildPayload_CELConditional(t *testing.T) {
 	buildDef := map[string]interface{}{
-		"status": `resource.status.ready == true ? "Ready" : "NotReady"`,
+		"gen_check": `resource.generation > 2 ? "high" : "low"`,
 	}
 	b, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
 	if err != nil {
@@ -200,8 +212,8 @@ func TestBuildPayload_CELConditional(t *testing.T) {
 
 	payload := b.BuildPayload(context.Background(), makeTestResource(), "")
 
-	if payload["status"] != "Ready" {
-		t.Errorf("expected status 'Ready', got %v", payload["status"])
+	if payload["gen_check"] != "high" {
+		t.Errorf("expected gen_check 'high', got %v", payload["gen_check"])
 	}
 }
 
@@ -243,9 +255,9 @@ func TestBuildPayload_CELStringLiteral(t *testing.T) {
 
 func TestBuildPayload_MixedTypes(t *testing.T) {
 	buildDef := map[string]interface{}{
-		"id":     "resource.id",
-		"origin": `"sentinel"`,
-		"status": `resource.status.ready == true ? "Ready" : "NotReady"`,
+		"id":        "resource.id",
+		"origin":    `"sentinel"`,
+		"gen_check": `resource.generation > 2 ? "high" : "low"`,
 		"nested": map[string]interface{}{
 			"kind": "resource.kind",
 		},
@@ -263,8 +275,8 @@ func TestBuildPayload_MixedTypes(t *testing.T) {
 	if payload["origin"] != "sentinel" {
 		t.Errorf("expected origin 'sentinel', got %v", payload["origin"])
 	}
-	if payload["status"] != "Ready" {
-		t.Errorf("expected status 'Ready', got %v", payload["status"])
+	if payload["gen_check"] != "high" {
+		t.Errorf("expected gen_check 'high', got %v", payload["gen_check"])
 	}
 	nested, ok := payload["nested"].(map[string]interface{})
 	if !ok {

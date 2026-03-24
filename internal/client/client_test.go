@@ -106,8 +106,11 @@ func TestFetchResources_Success(t *testing.T) {
 	if resources[0].Generation != 5 {
 		t.Errorf("Expected generation 5, got %d", resources[0].Generation)
 	}
-	if !resources[0].Status.Ready {
-		t.Errorf("Expected Ready=true, got %t", resources[0].Status.Ready)
+	if len(resources[0].Status.Conditions) == 0 {
+		t.Fatal("Expected at least one condition")
+	}
+	if resources[0].Status.Conditions[0].Status != "True" {
+		t.Errorf("Expected Ready condition status 'True', got %s", resources[0].Status.Conditions[0].Status)
 	}
 }
 
@@ -430,8 +433,11 @@ func TestFetchResources_NilStatus(t *testing.T) {
 		t.Errorf("Expected cluster-2 (valid status), got %s", resources[0].ID)
 	}
 
-	if !resources[0].Status.Ready {
-		t.Errorf("Expected Ready=true, got %t", resources[0].Status.Ready)
+	if len(resources[0].Status.Conditions) == 0 {
+		t.Fatal("Expected at least one condition")
+	}
+	if resources[0].Status.Conditions[0].Status != "True" {
+		t.Errorf("Expected Ready condition status 'True', got %s", resources[0].Status.Conditions[0].Status)
 	}
 }
 
@@ -618,8 +624,11 @@ func TestFetchResources_NodePools(t *testing.T) {
 	if resources[0].Generation != 3 {
 		t.Errorf("Expected generation 3 for nodepool, got %d", resources[0].Generation)
 	}
-	if resources[0].Status.ObservedGeneration != 3 {
-		t.Errorf("Expected observed generation 3, got %d", resources[0].Status.ObservedGeneration)
+	if len(resources[0].Status.Conditions) == 0 {
+		t.Fatal("Expected at least one condition for nodepool")
+	}
+	if resources[0].Status.Conditions[0].ObservedGeneration != 3 {
+		t.Errorf("Expected observed generation 3, got %d", resources[0].Status.Conditions[0].ObservedGeneration)
 	}
 	if resources[0].OwnerReferences == nil {
 		t.Fatal("Expected OwnerReferences to be set, got nil")

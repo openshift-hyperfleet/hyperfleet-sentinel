@@ -2,7 +2,6 @@ package sentinel
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -19,15 +18,6 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-)
-
-const (
-	// notReadyFilter selects resources whose Ready condition is False.
-	notReadyFilter = "status.conditions.Ready='False'"
-
-	// staleReadyFilterFmt selects resources whose Ready condition is True but
-	// last_updated_time is older than the given cutoff (RFC 3339 timestamp).
-	staleReadyFilterFmt = "status.conditions.Ready='True' and status.conditions.Ready.last_updated_time<='%s'"
 )
 
 // Sentinel polls the HyperFleet API and triggers reconciliation events
@@ -77,8 +67,8 @@ func (s *Sentinel) LastSuccessfulPoll() time.Time {
 
 // Start starts the polling loop
 func (s *Sentinel) Start(ctx context.Context) error {
-	s.logger.Infof(ctx, "Starting sentinel resource_type=%s poll_interval=%s max_age_not_ready=%s max_age_ready=%s",
-		s.config.ResourceType, s.config.PollInterval, s.config.MaxAgeNotReady, s.config.MaxAgeReady)
+	s.logger.Infof(ctx, "Starting sentinel resource_type=%s poll_interval=%s",
+		s.config.ResourceType, s.config.PollInterval)
 
 	ticker := time.NewTicker(s.config.PollInterval)
 	defer ticker.Stop()
@@ -124,10 +114,13 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	// Convert label selectors to map for filtering
 	labelSelector := s.config.ResourceSelector.ToMap()
 
-	// Fetch resources using condition-based server-side filtering:
-	// Query 1: Not-ready resources (need frequent reconciliation)
-	// Query 2: Stale ready resources (exceeded max age)
-	resources, err := s.fetchFilteredResources(ctx, labelSelector)
+	// Fetch all resources matching label selectors.
+	// TODO(HYPERFLEET-805): Add optional server_filters config for server-side pre-filtering
+	// to reduce the result set before CEL evaluation. Currently fetches the full result set
+	// and evaluates each resource in-memory. At large scale, use resource_selector labels
+	// to shard across multiple Sentinel instances.
+	rt := client.ResourceType(s.config.ResourceType)
+	resources, err := s.client.FetchResources(ctx, rt, labelSelector)
 	if err != nil {
 		// Record API error
 		pollSpan.RecordError(err)
@@ -212,8 +205,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Record successful event publication
 			metrics.UpdateEventsPublishedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.Infof(eventCtx, "Published event resource_id=%s ready=%t",
-				resource.ID, resource.Status.Ready)
+			s.logger.Infof(eventCtx, "Published event resource_id=%s",
+				resource.ID)
 			published++
 		} else {
 			// Add decision reason to context for structured logging
@@ -222,8 +215,8 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Record skipped resource
 			metrics.UpdateResourcesSkippedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.Debugf(skipCtx, "Skipped resource resource_id=%s ready=%t",
-				resource.ID, resource.Status.Ready)
+			s.logger.Debugf(skipCtx, "Skipped resource resource_id=%s",
+				resource.ID)
 			skipped++
 		}
 
@@ -246,64 +239,6 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	metrics.UpdateLastSuccessfulPollTimestampMetric()
 
 	return nil
-}
-
-// fetchFilteredResources makes two targeted API queries to fetch only resources
-// that likely need reconciliation, reducing network traffic compared to fetching
-// all resources:
-//
-//  1. Not-ready resources: status.conditions.Ready='False'
-//  2. Stale ready resources: Ready='True' with last_updated_time older than max_age_ready
-//
-// Results are merged and deduplicated by resource ID. The DecisionEngine still
-// evaluates the filtered set in memory (e.g., for generation-based checks).
-func (s *Sentinel) fetchFilteredResources(
-	ctx context.Context,
-	labelSelector map[string]string,
-) ([]client.Resource, error) {
-	rt := client.ResourceType(s.config.ResourceType)
-
-	// Query 1: Not-ready resources
-	notReadyResources, err := s.client.FetchResources(ctx, rt, labelSelector, notReadyFilter)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch not-ready resources: %w", err)
-	}
-	s.logger.Debugf(ctx, "Fetched not-ready resources count=%d", len(notReadyResources))
-
-	// Query 2: Stale ready resources (last_updated_time exceeded max_age_ready)
-	cutoff := time.Now().Add(-s.config.MaxAgeReady)
-	staleFilter := fmt.Sprintf(staleReadyFilterFmt, cutoff.Format(time.RFC3339))
-	staleResources, err := s.client.FetchResources(ctx, rt, labelSelector, staleFilter)
-	if err != nil {
-		// Propagate context cancellation/timeout — the caller must see these
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-			return nil, err
-		}
-		// Graceful degradation: for transient/API errors, continue with not-ready results
-		s.logger.Errorf(ctx, "Failed to fetch stale resources, continuing with not-ready only: %v", err)
-		return notReadyResources, nil
-	}
-	s.logger.Debugf(ctx, "Fetched stale ready resources count=%d", len(staleResources))
-
-	return mergeResources(notReadyResources, staleResources), nil
-}
-
-// mergeResources combines two resource slices, deduplicating by resource ID.
-// Resources from the first slice take precedence when duplicates are found.
-func mergeResources(a, b []client.Resource) []client.Resource {
-	seen := make(map[string]struct{}, len(a))
-	result := make([]client.Resource, 0, len(a)+len(b))
-
-	for i := range a {
-		seen[a[i].ID] = struct{}{}
-		result = append(result, a[i])
-	}
-	for i := range b {
-		if _, exists := seen[b[i].ID]; !exists {
-			result = append(result, b[i])
-		}
-	}
-	return result
 }
 
 // buildEventData builds the CloudEvent data payload for a resource using the

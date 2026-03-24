@@ -156,11 +156,11 @@ labels:
   component: sentinel
 annotations:
   summary: "High resource skip ratio in Sentinel"
-  description: "{{ $value | humanizePercentage }} of resources are being skipped. This may indicate max_age configuration issues."
+  description: "{{ $value | humanizePercentage }} of resources are being skipped. This may indicate message_decision configuration issues."
 ```
-**Impact**: May indicate max age intervals too long or adapter status update issues.
+**Impact**: May indicate decision thresholds too restrictive or adapter status update issues.
 
-**Response**: Review max age configuration and adapter health.
+**Response**: Review message_decision configuration and adapter health.
 
 ---
 

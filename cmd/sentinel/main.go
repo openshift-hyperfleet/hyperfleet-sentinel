@@ -217,7 +217,11 @@ func runServe(
 	}
 	log.Info(ctx, "Initialized HyperFleet client")
 
-	decisionEngine := engine.NewDecisionEngine(cfg.MaxAgeNotReady, cfg.MaxAgeReady)
+	decisionEngine, err := engine.NewDecisionEngine(cfg.MessageDecision)
+	if err != nil {
+		log.Errorf(ctx, "Failed to create decision engine: %v", err)
+		return fmt.Errorf("failed to create decision engine: %w", err)
+	}
 
 	// Initialize broker metrics recorder
 	// Broker metrics (messages_published_total, errors_total, etc.) are registered

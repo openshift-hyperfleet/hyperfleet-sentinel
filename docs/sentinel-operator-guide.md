@@ -142,45 +142,47 @@ Time-based reconciliation ensures **eventual consistency** by publishing events 
 
 **How It Works:**
 
-Sentinel uses two configurable max age intervals based on the resource's status (`Ready` condition):
+Sentinel uses a configurable CEL-based decision engine (`message_decision`) that evaluates named parameters and a boolean result expression:
 
-| Resource State | Default Interval | Rationale                                                                              |
-|----------------|------------------|----------------------------------------------------------------------------------------|
-| **Not Ready** (`Ready` condition status = False) | `10s` | Faster reconciliation for transitional states requires more frequent checks to complete quickly |
-| **Ready** (`Ready` condition status = True) | `30m` | Lower frequency for drift detection on stable resources to avoid excessive load            |
+| Default Check | CEL Expression | Rationale |
+|---------------|---------------|-----------|
+| **New resource** | `!is_ready && resource.generation == 1` | Always publish for never-processed resources |
+| **Generation mismatch** | `resource.generation > condition("Ready").observed_generation` | Immediate reconciliation when spec changes |
+| **Ready and stale** | `is_ready && has_ref_time && now - timestamp(ref_time) > duration("30m")` | Lower frequency drift detection on stable resources |
+| **Not ready and debounced** | `!is_ready && has_ref_time && now - timestamp(ref_time) > duration("10s")` | Faster reconciliation for transitional states |
 
 **Decision Logic:**
 
-At this point, we know `status.last_updated` is not zero, so we can use it as the reference timestamp:
+The `condition("Ready")` CEL function accesses the resource's status conditions. Named params are evaluated in dependency order (topological sort):
 
-1. Determine max age interval based on ready status:
-   - If resource is ready (`Ready` condition status == True) → use `max_age_ready` (default: 30m)
-   - If resource is not ready (`Ready` condition status == False) → use `max_age_not_ready` (default: 10s)
+1. Extract reference time: `ref_time = condition("Ready").last_updated_time`
+2. Determine readiness: `is_ready = condition("Ready").status == "True"`
+3. Guard against missing conditions: `has_ref_time = ref_time != ""`
+4. Evaluate checks: `is_new_resource`, `generation_mismatch`, `ready_and_stale`, `not_ready_and_debounced`
+5. Result: `is_new_resource || generation_mismatch || ready_and_stale || not_ready_and_debounced`
 
-2. Calculate next event time:
-   - `next_event = last_updated + max_age_interval`
-
-3. Compare with current time:
-   - If `now >= next_event` → **Publish event** (reason: "max age exceeded")
-   - Otherwise → **Skip** (reason: "max age not exceeded")
+If the result is `true` → **Publish event** (reason: "message decision matched")
+Otherwise → **Skip** (reason: "message decision result is false")
 
 #### 2.1.4 Complete Decision Flow
 
-The three reconciliation checks work together in priority order to determine when to publish events:
+The four reconciliation checks work together in priority order to determine when to publish events:
 
 ```mermaid
 graph TD
-    START[Poll Resource] --> CHECK1{last_updated == zero?}
-    CHECK1 -->|Yes| PUB1[Publish: never processed]
-    CHECK1 -->|No| CHECK2{Generation > ObservedGeneration?}
-    CHECK2 -->|Yes| PUB2[Publish: generation changed]
-    CHECK2 -->|No| CHECK3{Resource Ready?}
-    CHECK3 -->|Yes| AGE1[Max Age = 30m]
-    CHECK3 -->|No| AGE2[Max Age = 10s]
-    AGE1 --> CHECK4{now >= last_updated + max_age?}
-    AGE2 --> CHECK4
-    CHECK4 -->|Yes| PUB3[Publish: max age exceeded]
-    CHECK4 -->|No| SKIP[Skip: within max age]
+    START[Poll Resource] --> CHECK1{is_new_resource?<br>gen==1 && !ready}
+    CHECK1 -->|Yes| PUB1[Publish: new resource]
+    CHECK1 -->|No| CHECK1B{generation_mismatch?<br>gen > observed_gen}
+    CHECK1B -->|Yes| PUB1B[Publish: spec changed]
+    CHECK1B -->|No| CHECK2{has_ref_time?}
+    CHECK2 -->|No| SKIP[Skip: no condition data]
+    CHECK2 -->|Yes| CHECK3{is_ready?}
+    CHECK3 -->|Yes| CHECK4{"now - ref_time > 30m?"}
+    CHECK3 -->|No| CHECK5{"now - ref_time > 10s?"}
+    CHECK4 -->|Yes| PUB2[Publish: ready and stale]
+    CHECK4 -->|No| SKIP2[Skip: within threshold]
+    CHECK5 -->|Yes| PUB3[Publish: not ready, debounced]
+    CHECK5 -->|No| SKIP2
 ```
 
 **Key Takeaways:**
@@ -188,6 +190,8 @@ graph TD
 - **Never-processed takes absolute priority** - New resources always publish immediately
 - **State changes override max age** - Spec changes don't wait for intervals
 - **Max age is the fallback** - Ensures eventual consistency when nothing else triggers
+
+> **Scalability note:** The CEL decision engine evaluates all resources matching the label selector in-memory each poll cycle. At large scale (thousands of resources), use `resource_selector` to shard resources across multiple Sentinel instances. A future `server_filters` config field is planned to allow server-side pre-filtering before CEL evaluation.
 
 ### 2.2 Resource Filtering
 
@@ -284,10 +288,8 @@ Sentinel uses YAML-based configuration with environment variable overrides for s
 # Required: Resource type to watch
 resource_type: clusters
 
-# Optional: Polling and age intervals
+# Optional: Polling interval
 poll_interval: 5s
-max_age_not_ready: 10s
-max_age_ready: 30m
 
 # Optional: Resource filtering
 resource_selector:
@@ -329,8 +331,7 @@ These fields have sensible defaults and can be omitted:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `poll_interval` | duration | `5s` | How often to poll the API for resource updates |
-| `max_age_not_ready` | duration | `10s` | Max age interval for not-ready resources |
-| `max_age_ready` | duration | `30m` | Max age interval for ready resources |
+| `message_decision` | object | See defaults | CEL-based decision logic (params + result expression) |
 | `hyperfleet_api.timeout` | duration | `5s` | Request timeout for API calls |
 | `resource_selector` | array | `[]` | Label selectors for filtering (empty = all resources) |
 | `message_data` | map | `{}` | CEL expressions for CloudEvents payload |
@@ -385,18 +386,14 @@ message_data:
   # Nested field access
   cluster_id: "resource.owner_references.id"
 
-  # Conditionals (ternary operator)
-  ready_status: 'resource.status.ready ? "Ready" : "NotReady"'
+  # Conditionals (ternary operator) — use condition() function to access status conditions
+  ready_status: 'condition("Ready").status == "True" ? "Ready" : "NotReady"'
 
   # String literals (must use quotes inside CEL expression)
   source: '"hyperfleet-sentinel"'
 
   # Numeric/boolean literals
   generation: "resource.generation"
-  is_ready: "resource.status.ready"
-
-  # Complex conditionals with CEL filter
-  ready_condition: 'resource.status.conditions.filter(c, c.type=="Ready")[0].value == "True" ? "Ready" : "NotReady"'
 
   # Nested objects
   owner_references: "resource.owner_references"
@@ -572,10 +569,9 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
 
 **Configure Reconciliation Parameters**
 
-- [ ] Review and adjust polling intervals:
+- [ ] Review and adjust polling and decision parameters:
   - `poll_interval` - How often to poll the HyperFleet API (default: `5s`)
-  - `max_age_not_ready` - Reconciliation interval for not-ready resources (default: `10s`)
-  - `max_age_ready` - Reconciliation interval for ready resources (default: `30m`)
+  - `message_decision` - CEL-based decision logic with configurable thresholds
   - Reference: [Optional Fields](#optional-fields)
 
 **Design CloudEvents Payload**
@@ -692,7 +688,7 @@ For detailed deployment guidance, see [docs/running-sentinel.md](running-sentine
 | Symptom                                                                                                                      | Likely Cause | Solution                                                                                                                                                                                                                                                                                                                 |
 |------------------------------------------------------------------------------------------------------------------------------|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Events not published, resources not found** | Resource selector mismatch | Verify `resource_selector` matches resource labels. Empty selector watches ALL resources. Check logs: `kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel`                                                                                                                                             |
-| **Events not published, resources found but skipped**                                                                           | Max age not exceeded | Normal behavior. Events publish when `generation > observed_generation` OR max age interval elapsed (`max_age_ready`: 30m, `max_age_not_ready`: 10s).                                                                                                                                                                    |
+| **Events not published, resources found but skipped**                                                                           | Decision result is false | Normal behavior. Events publish when the CEL decision expression evaluates to true (new resource, ready and stale >30m, or not ready and debounced >10s by default).                                                                                                                                                                    |
 | **API connection errors, DNS lookup fails**                                                                                  | Wrong service name or namespace | Verify endpoint format: `http://<service>.<namespace>.svc.cluster.local:8000`. Check API is running: `kubectl get pods -n hyperfleet-system -l app=hyperfleet-api`                                                                                                                                                       |
 | **API returns 401 Unauthorized**                                                                                             | Missing authentication | Add auth headers to `hyperfleet_api` config if API requires authentication.                                                                                                                                                                                                                                              |
 | **API returns 404 Not Found**                                                                                                | Wrong API version in path | Verify endpoint uses correct API version: `/api/v1/clusters` or `/api/hyperfleet/v1/clusters`                                                                                                                                                                                                                            |
