@@ -14,7 +14,7 @@ const (
 	port                = 8888
 	defaultClusterCount = 100
 	clustersPath        = "/api/hyperfleet/v1/clusters"
-	releaseImageBase = "quay.io/openshift-release-dev/ocp-release"
+	releaseImageBase    = "quay.io/openshift-release-dev/ocp-release"
 )
 
 var (
