@@ -15,7 +15,7 @@ Samples `kubectl top` every 60 seconds and writes results to a timestamped CSV i
 | Variable        | Default | Description                                          |
 |-----------------|---------|------------------------------------------------------|
 | `CLUSTER_COUNT` | `100`   | Cluster count (used in the output filename)          |
-| `DURATION_MIN`  | `5`     | How long to record, in minutes (= number of samples) |
+| `DURATION_MIN`  | `5`     | How long to record, in minutes                       |
 
 ```bash
 CLUSTER_COUNT=1000 DURATION_MIN=10 sh ./test/profiling/profile.sh
