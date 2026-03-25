@@ -108,7 +108,8 @@ func createCluster(i int) map[string]any {
 	uuid := fakeUUID(i)
 	createdAt := time.Date(2020, time.Month(i%12)+1, 1+(i%28), i%24, i%60, 0, 0, time.UTC)
 	updatedAt := createdAt.Add(time.Duration(i%720) * time.Hour)
-	generation := int32(1 + i%5)
+	generation := int32(2 + i%5)
+	observedGeneration := generation - 1
 
 	return map[string]any{
 		"kind": "Cluster",
@@ -126,7 +127,7 @@ func createCluster(i int) map[string]any {
 		"updated_by":   fmt.Sprintf("user-%d@example.com", i%20),
 		"generation":   generation,
 		"status": map[string]any{
-			"conditions": buildConditions(generation),
+			"conditions": buildConditions(observedGeneration),
 		},
 	}
 }
