@@ -51,3 +51,7 @@ pkg/api/openapi/
 # Downloaded OpenAPI spec (fetched during make generate)
 openapi/openapi.yaml
 .claude/
+
+# Profiling results
+profile-*.csv
+test/profiling/results/
