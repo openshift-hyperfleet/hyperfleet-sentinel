@@ -5,6 +5,38 @@ import re
 from pathlib import Path
 from typing import Optional
 
+_QUANTITY_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*([a-zA-Z]*)$")
+
+_MEM_TO_MI = {"Ki": 1 / 1024, "Mi": 1, "Gi": 1024}
+
+
+def parse_cpu_millicores(raw: str) -> int:
+    """Parse a Kubernetes CPU quantity to millicores (e.g. '100m' -> 100, '1' -> 1000)."""
+    m = _QUANTITY_RE.match(raw.strip())
+    if not m:
+        raise ValueError(raw)
+    value, suffix = float(m.group(1)), m.group(2)
+    if suffix == "m":
+        return round(value)
+    if suffix == "n":
+        return round(value / 1_000_000)
+    if suffix == "":
+        return round(value * 1000)
+    raise ValueError(raw)
+
+
+def parse_memory_mi(raw: str) -> int:
+    """Parse a Kubernetes memory quantity to MiB (e.g. '128Mi' -> 128, '1Gi' -> 1024)."""
+    m = _QUANTITY_RE.match(raw.strip())
+    if not m:
+        raise ValueError(raw)
+    value, suffix = float(m.group(1)), m.group(2)
+    if suffix in _MEM_TO_MI:
+        return round(value * _MEM_TO_MI[suffix])
+    if suffix == "":
+        return round(value / (1024 * 1024))
+    raise ValueError(raw)
+
 
 # Matches filenames produced by profile.sh:
 #   profile-<cluster_count>-clusters-<YYYYMMDD>-<HHMMSS>.csv
@@ -34,12 +66,9 @@ def parse_profile(path: Path) -> Optional[dict]:
     for row in data:
         raw_cpu = row.get("CPU", "")
         raw_mem = row.get("MEMORY", "")
-        if not raw_cpu.endswith("m") or not raw_mem.endswith("Mi"):
-            skipped += 1
-            continue
         try:
-            cpu.append(int(raw_cpu.removesuffix("m")))
-            mem.append(int(raw_mem.removesuffix("Mi")))
+            cpu.append(parse_cpu_millicores(raw_cpu))
+            mem.append(parse_memory_mi(raw_mem))
         except ValueError:
             skipped += 1
 
@@ -53,12 +82,12 @@ def parse_profile(path: Path) -> Optional[dict]:
         "cluster_count": cluster_count,
         "timestamp":     timestamp,
         "samples":       len(cpu),
-        "cpu_low":       min(cpu),
-        "cpu_high":      max(cpu),
-        "cpu_avg":       round(sum(cpu) / len(cpu)),
-        "mem_low":       min(mem),
-        "mem_high":      max(mem),
-        "mem_avg":       round(sum(mem) / len(mem)),
+        "cpu_low_m":     min(cpu),
+        "cpu_high_m":    max(cpu),
+        "cpu_avg_m":     round(sum(cpu) / len(cpu)),
+        "mem_low_mi":    min(mem),
+        "mem_high_mi":   max(mem),
+        "mem_avg_mi":    round(sum(mem) / len(mem)),
     }
 
 
@@ -83,11 +112,7 @@ def main():
 
     summary = results_dir / "summary.csv"
     with open(summary, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=[
-            "cluster_count", "timestamp", "samples",
-            "cpu_low", "cpu_high", "cpu_avg",
-            "mem_low", "mem_high", "mem_avg",
-        ])
+        writer = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
 
