@@ -40,7 +40,7 @@ python3 ./test/profiling/analyze.py
 Output: `results/summary.csv`
 
 ```text
-Cluster Count,Date,Samples,CPU Low (m),CPU High (m),CPU Avg (m),Memory Low (Mi),Memory High (Mi),Memory Avg (Mi)
+cluster_count,timestamp,samples,cpu_low_m,cpu_high_m,cpu_avg_m,mem_low_mi,mem_high_mi,mem_avg_mi
 100,2026-03-25 11:46:06,5,36,54,41,11,12,12
 1000,2026-03-25 11:59:14,5,74,88,81,26,29,27
 5000,2026-03-25 12:21:07,5,71,154,98,85,163,128
