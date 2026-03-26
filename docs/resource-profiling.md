@@ -15,7 +15,7 @@ Validate that current resource defaults are appropriately sized under realistic 
 ## Setup
 
 - **Poll interval:** 5s (chart default)
-- **Duration:** 5 min per scenario
+- **Duration:** 15 min per scenario
 - **Sample interval:** 60s (`kubectl top`)
 - **Tracing:** Disabled
 - **Mock API:** In-cluster mock-hyperfleet-api
@@ -24,18 +24,18 @@ Validate that current resource defaults are appropriately sized under realistic 
 
 ## Results
 
-| Clusters | CPU                | Memory               |
-| -------- | ------------------ | -------------------- |
-| 100      | 36–54m (avg 41m)   | 11–12Mi (avg 12Mi)   |
-| 1000     | 74–88m (avg 81m)   | 26–29Mi (avg 27Mi)   |
-| 5000     | 71–154m (avg 98m)  | 85–163Mi (avg 128Mi) |
+| Clusters | CPU                 | Memory               |
+| -------- | ------------------- | -------------------- |
+| 100      | 43–63m (avg 48m)    | 11–13Mi (avg 12Mi)   |
+| 1000     | 84–106m (avg 96m)   | 25–40Mi (avg 28Mi)   |
+| 5000     | 80–172m (avg 101m)  | 84–147Mi (avg 96Mi)  |
 
 ## Findings
 
-- CPU stays well under the current 500m limit at all scales. Peak was 154m at 5000 clusters. No risk of CPU throttling.
-- Memory grows with cluster count. The 5000-cluster run oscillates between ~85Mi and ~163Mi. Peak 163Mi is within the current 512Mi limit with healthy headroom.
-- CPU requests (currently 100m) align well with the 1000-cluster average (81m). Slightly over-provisioned for 100 clusters but reasonable as a default.
-- Memory requests (currently 128Mi) are appropriate up to ~5000 clusters, where the average is 128Mi.
+- CPU stays well under the current 500m limit at all scales. Peak was 172m at 5000 clusters. No risk of CPU throttling.
+- Memory grows with cluster count. The 5000-cluster run ranges between ~84Mi and ~147Mi. Peak 147Mi is within the current 512Mi limit with healthy headroom.
+- CPU requests (currently 100m) are tight at 1000 clusters where the average is 96m and peaks hit 106m. Over-provisioned for 100 clusters (avg 48m) but reasonable as a default.
+- Memory requests (currently 128Mi) are appropriate up to ~1000 clusters. At 5000 clusters the average is 96Mi but peaks reach 147Mi, exceeding 128Mi.
 - At 5000 clusters with a 5s poll interval, cycle time exceeds the interval, so Sentinel runs back-to-back with no idle time.
 
 ## Recommendations
@@ -44,9 +44,9 @@ Right-sized per tier based on observed usage with headroom above peak for unobse
 
 | Scale  | Clusters    | CPU (req / limit) | Memory (req / limit) | Rationale                                    |
 | ------ | ----------- | ----------------- | -------------------- | -------------------------------------------- |
-| Small  | 1–100       | 50m / 150m        | 16Mi / 64Mi          | avg 41m CPU, peak 12Mi mem                   |
-| Medium | 101–1000    | 100m / 200m       | 32Mi / 128Mi         | avg 81m CPU, peak 29Mi mem                   |
-| Large  | 1001–5000   | 125m / 300m       | 175Mi / 256Mi        | avg 98m CPU, peak 154m/163Mi mem             |
+| Small  | 1–100       | 50m / 150m        | 16Mi / 64Mi          | avg 48m CPU, peak 13Mi mem                   |
+| Medium | 101–1000    | 125m / 250m       | 32Mi / 128Mi         | avg 96m CPU, peak 40Mi mem                   |
+| Large  | 1001–5000   | 125m / 300m       | 175Mi / 256Mi        | avg 101m CPU, peak 147Mi mem                 |
 
 At 5000 clusters with a 5s poll interval, Sentinel is saturated with no idle time between cycles. This is the effective maximum for a single instance at the current poll interval. Beyond this point, options include increasing the poll interval to allow idle time between cycles, or splitting the workload across multiple instances using `resourceSelector`. Further profiling would be needed to validate either approach.
 
