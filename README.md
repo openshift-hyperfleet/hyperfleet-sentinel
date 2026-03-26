@@ -336,13 +336,13 @@ This repository enforces [HyperFleet Commit Message Standards](https://github.co
 
 All commits and PR titles must follow Conventional Commits format:
 
-```
+```text
 HYPERFLEET-XXX - type: subject
 ```
 
 **Or without JIRA ticket:**
 
-```
+```text
 type: subject
 ```
 

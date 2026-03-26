@@ -55,5 +55,6 @@ openapi/openapi.yaml
 # Profiling results
 profile-*.csv
 test/profiling/results/
+
+# Node.js dependencies
 node_modules/
-package-lock.json

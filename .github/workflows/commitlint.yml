@@ -36,12 +36,8 @@ jobs:
           echo "PR: ${{ github.event.pull_request.html_url }}"
           echo "::endgroup::"
 
-          # Run commitlint on all commits in PR
-          npx commitlint \
-            --from $GITHUB_BASE_SHA \
-            --to $GITHUB_HEAD_SHA \
-            --verbose \
-            --help-url https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/commit-standard.md
+          # Run commitlint on all commits in PR using npm script
+          npm run commitlint:ci
 
       - name: Comment on PR if validation fails
         if: failure()
