@@ -40,7 +40,9 @@ Right-sized per tier based on observed usage with headroom above peak for unobse
 | ------ | ---------- | ----------------- | -------------------- | -------------------------------------------- |
 | Small  | up to 100  | 50m / 150m        | 16Mi / 64Mi          | avg 41m CPU, peak 12Mi mem                   |
 | Medium | up to 1000 | 100m / 200m       | 32Mi / 128Mi         | avg 81m CPU, peak 29Mi mem                   |
-| Large  | up to 5000 | 100m / 300m       | 150Mi / 256Mi        | avg 98m CPU, peak 163Mi mem                  |
+| Large  | up to 5000 | 125m / 300m       | 175Mi / 256Mi        | avg 98m CPU, peak 154m/163Mi mem             |
+
+At 5000 clusters with a 5s poll interval, Sentinel is saturated with no idle time between cycles. This is the effective maximum for a single instance at the current poll interval. Beyond this point, options include increasing the poll interval to allow idle time between cycles, or splitting the workload across multiple instances using `resourceSelector`. Further profiling would be needed to validate either approach.
 
 ## Additional Notes
 
