@@ -1,0 +1,141 @@
+name: Commitlint
+
+# Trigger on pull request events
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  commitlint:
+    name: Validate Commit Messages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Fetch all history to validate all commits in PR
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install commitlint dependencies
+        run: npm ci
+
+      - name: Validate commit messages
+        env:
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GITHUB_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "::group::Commit validation details"
+          echo "Validating commits from $GITHUB_BASE_SHA to $GITHUB_HEAD_SHA"
+          echo "PR: ${{ github.event.pull_request.html_url }}"
+          echo "::endgroup::"
+
+          # Run commitlint on all commits in PR using npm script
+          npm run commitlint:ci
+
+      - name: Comment on PR if validation fails
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## ❌ Commit Message Validation Failed
+
+            One or more commits in this PR do not follow the [HyperFleet Commit Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/commit-standard.md).
+
+            ### Required Format
+
+            \`\`\`
+            HYPERFLEET-XXX - type: subject
+            \`\`\`
+
+            **Or without JIRA ticket:**
+
+            \`\`\`
+            type: subject
+            \`\`\`
+
+            ### Valid Types
+            \`feat\`, \`fix\`, \`docs\`, \`style\`, \`refactor\`, \`perf\`, \`test\`, \`build\`, \`ci\`, \`chore\`, \`revert\`
+
+            ### Examples
+
+            ✅ **Valid:**
+            - \`HYPERFLEET-123 - feat: add cluster validation\`
+            - \`HYPERFLEET-456 - fix: resolve memory leak in event handler\`
+            - \`docs: update API documentation\`
+
+            ❌ **Invalid:**
+            - \`feat: Add cluster validation\` (subject should be lowercase)
+            - \`HYPERFLEET-123 add validation\` (missing type and colon)
+            - \`added validation feature\` (not conventional format)
+
+            ### How to Fix
+
+            1. Check the workflow logs above for specific errors
+            2. Amend your commits or create new commits with correct format
+            3. Force push to update this PR
+
+            See the [commit standard documentation](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/commit-standard.md) for complete details.
+            `
+            })
+
+  pr-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate PR title follows commit standard
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Validate PR title for squash merges
+          # PR title becomes the commit message when squashed
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+
+          # Scope is optional
+          requireScope: false
+
+          # Allow HYPERFLEET-XXX prefix in PR title
+          # Pattern matches:
+          # - HYPERFLEET-123 - feat: description
+          # - feat: description
+          subjectPattern: ^(?:HYPERFLEET-\d+\s+-\s+)?.+$
+
+          # Custom error message
+          subjectPatternError: |
+            PR title must follow HyperFleet commit standard.
+
+            Valid formats:
+            - "HYPERFLEET-XXX - type: subject"
+            - "type: subject"
+
+            Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert
+
+            Examples:
+            ✅ "HYPERFLEET-123 - feat: add cluster validation"
+            ✅ "fix: resolve memory leak"
+            ❌ "Add validation" (missing type)
+
+            See: https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/commit-standard.md

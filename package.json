@@ -1,0 +1,17 @@
+{
+  "name": "hyperfleet-sentinel",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HyperFleet Sentinel - Cluster Lifecycle Orchestrator",
+  "scripts": {
+    "commitlint": "commitlint --from=HEAD~1 --to=HEAD --verbose",
+    "commitlint:ci": "commitlint --from=$GITHUB_BASE_SHA --to=$GITHUB_HEAD_SHA --verbose"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.6.1",
+    "@commitlint/config-conventional": "^19.6.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

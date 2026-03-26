@@ -328,6 +328,59 @@ Recommended alerts:
 
 See [docs/metrics.md](docs/metrics.md) for complete alerting rules documentation.
 
+## Commit Message Standards
+
+This repository enforces [HyperFleet Commit Message Standards](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/commit-standard.md) via automated CI validation.
+
+### Commit Format
+
+All commits and PR titles must follow Conventional Commits format:
+
+```text
+HYPERFLEET-XXX - type: subject
+```
+
+**Or without JIRA ticket:**
+
+```text
+type: subject
+```
+
+**Valid types:** `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+
+### Examples
+
+✅ **Valid:**
+- `HYPERFLEET-432 - feat: add cluster validation`
+- `HYPERFLEET-618 - fix: resolve memory leak in event handler`
+- `docs: update API documentation`
+
+❌ **Invalid:**
+- `feat: Add cluster validation` (subject should be lowercase)
+- `HYPERFLEET-123 add validation` (missing type and colon)
+- `added validation feature` (not conventional format)
+
+### CI Validation
+
+The GitHub Actions workflow validates:
+- All commit messages in pull requests
+- PR titles (used for squash merge commits)
+
+If validation fails, you'll receive:
+- Detailed error message in the workflow logs
+- Automatic PR comment with examples and fix instructions
+
+### Local Validation (Optional)
+
+Test commit messages locally before pushing:
+
+```bash
+npm install
+npm run commitlint
+```
+
+For complete details, see the [HyperFleet Commit Standard](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/commit-standard.md).
+
 ## Repository Access
 
 All members of the **hyperfleet** team have write access to this repository.
