@@ -8,22 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Initial release of HyperFleet Sentinel Service
-- Kubernetes service that polls HyperFleet API for resource updates
-- Support for clusters and nodepools resource types
-- Configurable polling intervals and max age intervals (not ready vs ready resources)
-- Horizontal sharding via resource selector labels
-- CloudEvents publishing with broker abstraction (GCP Pub/Sub, RabbitMQ, Stub)
-- CEL-based message data templating for custom CloudEvents payloads
-- Prometheus metrics for observability
-- Grafana dashboard for monitoring
-- PodMonitoring support for GKE with Google Cloud Managed Prometheus
-- ServiceMonitor support for Prometheus Operator
-- Helm chart for deployment
-- Integration tests with testcontainers (RabbitMQ and GCP Pub/Sub)
-- OpenAPI client generation from hyperfleet-api specification
-- Configuration validation at startup
-- Standard configuration pattern following HyperFleet architecture
 
 ### Changed
 
@@ -34,6 +18,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 ### Security
+
+## [0.1.1](https://github.com/openshift-hyperfleet/hyperfleet-sentinel/compare/v0.1.0...v0.1.1) - 2026-03-10
+
+### Added
+- Standard metrics labels to Sentinel Prometheus metrics for consistent monitoring across HyperFleet components
+- ServiceMonitor resource for Prometheus Operator environments
+- PodDisruptionBudget to protect Sentinel availability during voluntary disruptions
+- Helm chart linting and template validation to CI via Makefile targets
+- Support for nested field paths in `message_data` configuration for richer event content
+- Functional health and readiness probes beyond basic liveness checks
+
+### Changed
+- Updated `hyperfleet-broker` to v1.1.0 and integrated `MetricsRecorder` for broker-level observability
+- Standardized Helm value structure for consistency across HyperFleet charts
+- Moved Sentinel Helm chart to `charts/` directory following repository conventions
+- GCP-specific monitoring resources are now disabled by default
+- Standardized Dockerfile and Makefile for unified image build process
+- Standardized version injection to avoid collisions with `go-toolset` environment variables
+
+### Fixed
+- RabbitMQ connection URL now included in broker ConfigMap for proper broker discovery
+- CA certificates copied from builder stage to `ubi9-micro` runtime, resolving TLS verification failures
+- Clarified Helm deployment instructions for GKE environments using Quay images
+
+## [0.1.0](https://github.com/openshift-hyperfleet/hyperfleet-sentinel/compare/v0.0.0...v0.1.0) - 2026-02-19
+
+### Added
+- Initial release of HyperFleet Sentinel Service
+- Kubernetes resource polling for clusters and nodepools
+- CloudEvents publishing with broker abstraction (GCP Pub/Sub, RabbitMQ, Stub)
+- Horizontal sharding via resource selector labels
+- Configurable polling intervals and max age intervals (not ready vs ready resources)
+- CEL-based message data templating for custom CloudEvents payloads
+- Prometheus metrics for observability
+- Grafana dashboard for monitoring
+- PodMonitoring support for GKE with Google Cloud Managed Prometheus
+- Helm chart for deployment
+- Integration tests with testcontainers (RabbitMQ and GCP Pub/Sub)
+- OpenAPI client generation from hyperfleet-api specification
+- Configuration validation at startup
+- HyperFleet API client with retry logic
+- Comprehensive test coverage and linting
 
 ---
 
