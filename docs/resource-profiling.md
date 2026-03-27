@@ -40,19 +40,9 @@ Validate that current resource defaults are appropriately sized under realistic 
 
 ## Recommendations
 
-Right-sized per tier based on observed usage with headroom above peak for unobserved spikes. **Select the tier that covers your maximum cluster count.** For example, if managing 500 clusters, use the Medium tier.
+Current defaults (CPU 100m/500m, memory 128Mi/512Mi) support up to ~1000 clusters per Sentinel instance. Beyond 1000 clusters, operators should increase resource requests and limits or shard across multiple instances using `resourceSelector`. The results table above can be used to guide sizing.
 
-| Scale  | Clusters    | CPU (req / limit) | Memory (req / limit) | Rationale                                    |
-| ------ | ----------- | ----------------- | -------------------- | -------------------------------------------- |
-| Small  | 1–100       | 50m / 150m        | 16Mi / 64Mi          | avg 48m CPU, peak 13Mi mem                   |
-| Medium | 101–1000    | 125m / 250m       | 32Mi / 128Mi         | avg 96m CPU, peak 40Mi mem                   |
-| Large  | 1001–5000   | 125m / 300m       | 175Mi / 256Mi        | avg 101m CPU, peak 147Mi mem                 |
-
-At 5000 clusters with a 5s poll interval, Sentinel is saturated with no idle time between cycles. This is the effective maximum for a single instance at the current poll interval. Beyond this point, options include increasing the poll interval to allow idle time between cycles, or splitting the workload across multiple instances using `resourceSelector`. Further profiling would be needed to validate either approach.
-
-## Additional Notes
-
-- **VPA consideration:** A Vertical Pod Autoscaler could automatically lower over-provisioned requests to match actual usage, avoiding the need to manually select a tier. Most useful if cluster count drifts over time and you don't want to revisit sizing.
+A Vertical Pod Autoscaler (VPA) could automatically adjust requests to match actual usage, removing the need to manually tune. Most useful if cluster count drifts over time.
 
 ## See Also
 
