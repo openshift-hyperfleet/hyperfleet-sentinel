@@ -40,12 +40,13 @@ Validate that current resource defaults are appropriately sized under realistic 
 
 ## Recommendations
 
-Current defaults (CPU 100m/500m, memory 128Mi/512Mi) support up to ~1000 clusters per Sentinel instance. Beyond 1000 clusters, operators should increase resource requests and limits or shard across multiple instances using `resourceSelector`. The results table above can be used to guide sizing.
+Current defaults (CPU 100m/500m, memory 128Mi/512Mi) support up to ~1000 clusters per Sentinel instance. At this scale the CPU request (100m) is tight with peaks exceeding it, but the 500m limit provides sufficient burst headroom. Beyond 1000 clusters, operators should increase resource requests and limits or shard across multiple instances using `resourceSelector`. The results table above can be used to guide sizing.
 
 A Vertical Pod Autoscaler (VPA) could automatically adjust requests to match actual usage, removing the need to manually tune. Most useful if cluster count drifts over time.
 
 ## See Also
 
 - [Metrics Documentation](metrics.md) - Resource consumption metrics
+- [Multi-Instance Deployment](multi-instance-deployment.md) - How to shard across multiple Sentinel instances
 - [Runbook](runbook.md) - Operational guidance and troubleshooting
 - [Profiling Tooling](../test/profiling/README.md) - How to run your own profiles
