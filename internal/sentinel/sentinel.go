@@ -3,6 +3,7 @@ package sentinel
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -165,7 +166,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Create CloudEvent
 			event := cloudevents.NewEvent()
 			event.SetSpecVersion(cloudevents.VersionV1)
-			event.SetType(fmt.Sprintf("com.redhat.hyperfleet.%s.reconcile", resource.Kind))
+			event.SetType(fmt.Sprintf("com.redhat.hyperfleet.%s.reconcile", strings.ToLower(resource.Kind)))
 			event.SetSource("hyperfleet-sentinel")
 			event.SetID(uuid.New().String())
 			if err := event.SetData(cloudevents.ApplicationJSON, eventData); err != nil {
