@@ -9,7 +9,6 @@ require (
 	github.com/oapi-codegen/runtime v1.1.2
 	github.com/openshift-hyperfleet/hyperfleet-broker v1.1.0
 	github.com/prometheus/client_golang v1.23.2
-	github.com/segmentio/ksuid v1.0.4
 	github.com/spf13/cobra v1.8.0
 	github.com/spf13/viper v1.21.0
 	github.com/testcontainers/testcontainers-go v0.40.0
