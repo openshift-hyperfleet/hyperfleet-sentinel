@@ -167,7 +167,18 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			event.SetSpecVersion(cloudevents.VersionV1)
 			event.SetType(fmt.Sprintf("com.redhat.hyperfleet.%s.reconcile", resource.Kind))
 			event.SetSource("hyperfleet-sentinel")
-			event.SetID(uuid.New().String())
+
+			// Generate UUID v7 for event ID
+			eventID, err := uuid.NewV7()
+			if err != nil {
+				s.logger.Errorf(eventCtx, "Failed to generate UUID v7 for event ID resource_id=%s error=%v", resource.ID, err)
+				evalSpan.RecordError(err)
+				evalSpan.SetStatus(codes.Error, "generate event ID failed")
+				evalSpan.End()
+				continue
+			}
+			event.SetID(eventID.String())
+
 			if err := event.SetData(cloudevents.ApplicationJSON, eventData); err != nil {
 				s.logger.Errorf(eventCtx, "Failed to set event data resource_id=%s error=%v", resource.ID, err)
 				evalSpan.RecordError(err)
