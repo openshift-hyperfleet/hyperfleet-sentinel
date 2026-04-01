@@ -39,10 +39,10 @@ func main() {
 		Short: "HyperFleet Sentinel - Resource polling and event publishing service",
 		Long: `HyperFleet Sentinel watches HyperFleet API resources and publishes
 reconciliation events to a message broker based on configurable max age intervals.`,
-		Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
 	}
 
 	rootCmd.AddCommand(newServeCommand())
+	rootCmd.AddCommand(newVersionCommand())
 
 	if err := rootCmd.Execute(); err != nil {
 		// Print error to stderr since SilenceErrors is true and logging may not be initialized
@@ -52,6 +52,18 @@ reconciliation events to a message broker based on configurable max age interval
 		}
 		fmt.Fprintf(os.Stderr, "Error executing command 'sentinel %s': %v\n", cmd, err)
 		os.Exit(1)
+	}
+}
+
+func newVersionCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print version information",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Printf("Version:    %s\n", version)
+			fmt.Printf("Commit:     %s\n", commit)
+			fmt.Printf("Build Date: %s\n", date)
+		},
 	}
 }
 
