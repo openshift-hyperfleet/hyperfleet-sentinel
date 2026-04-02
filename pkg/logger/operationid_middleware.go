@@ -2,8 +2,6 @@ package logger
 
 import (
 	"context"
-
-	"github.com/segmentio/ksuid"
 )
 
 // Context key types for type-safe context values
@@ -25,22 +23,6 @@ const (
 	TopicCtxKey          TopicKey          = "topic"
 	SubsetCtxKey         SubsetKey         = "subset"
 )
-
-func WithOpID(ctx context.Context) context.Context {
-	if ctx.Value(OpIDKey) != nil {
-		return ctx
-	}
-	opID := ksuid.New().String()
-	return context.WithValue(ctx, OpIDKey, opID)
-}
-
-// GetOperationID get operationID of the context
-func GetOperationID(ctx context.Context) string {
-	if opID, ok := ctx.Value(OpIDKey).(string); ok {
-		return opID
-	}
-	return ""
-}
 
 // WithTraceID adds a trace ID to the context
 func WithTraceID(ctx context.Context, traceID string) context.Context {
