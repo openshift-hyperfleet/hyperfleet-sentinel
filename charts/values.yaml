@@ -78,6 +78,30 @@ podDisruptionBudget:
 
 # Sentinel configuration
 config:
+  # Sentinel information
+  sentinel:
+    # Sentinel component name - will be templated with shard value if resource selector is used
+    # Example: hyperfleet-sentinel-clusters-shard-1
+    name: hyperfleet-sentinel-{{ .Values.config.resourceType }}
+
+  # Debug configuration - log merged config on startup
+  debugConfig: false
+
+  # Logging configuration
+  log:
+    level: info
+    format: json
+    output: stdout
+
+  # Client configurations
+  clients:
+    # HyperFleet API client configuration
+    hyperfleetApi:
+      # Use in-cluster service name for API endpoint
+      baseUrl: http://hyperfleet-api:8000
+      version: v1
+      timeout: 10s
+
   # Resource type to watch (clusters, nodepools)
   resourceType: clusters
 
@@ -104,12 +128,6 @@ config:
     - label: shard
       value: "1"
 
-  # HyperFleet API configuration
-  hyperfleetApi:
-    # Use in-cluster service name for API endpoint
-    baseUrl: http://hyperfleet-api:8000
-    timeout: 5s
-
   # CloudEvents data payload configuration
   messageData:
     id: resource.id
@@ -122,12 +140,12 @@ config:
 #    href: "resource.owner_references.href"
 #    kind: "resource.owner_references.kind"
 
-# Broker configuration using hyperfleet-broker library
+
+# Broker configuration
 # WARNING: Never commit real credentials to git!
 # Use external secrets management (External Secrets Operator, Sealed Secrets, Vault)
-#
-# For more details, see: https://github.com/openshift-hyperfleet/hyperfleet-broker
 broker:
+  # For more details, see: https://github.com/openshift-hyperfleet/hyperfleet-broker
   # Broker type: rabbitmq or googlepubsub
   type: rabbitmq
 
@@ -155,11 +173,6 @@ broker:
     # Auto-creation flags (default: false - manual creation required)
     # Set to true to automatically create topics/subscriptions if they don't exist
     createTopicIfMissing: false
-
-# Subscriber configuration (optional)
-subscriber:
-  # Number of parallel workers for message processing
-  parallelism: 1
 
 # Monitoring configuration for Google Cloud Managed Prometheus (GMP)
 monitoring:

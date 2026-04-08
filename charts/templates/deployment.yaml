@@ -39,7 +39,7 @@ spec:
         imagePullPolicy: {{ .Values.image.pullPolicy }}
         args:
           - serve
-          - --config=/etc/sentinel/config.yaml
+          - --config=/etc/hyperfleet/config.yaml
         ports:
           - name: http
             containerPort: 8080
@@ -66,10 +66,7 @@ spec:
         env:
           # Broker configuration file location
           - name: BROKER_CONFIG_FILE
-            value: /etc/sentinel/broker.yaml
-          # Topic name for broker publishing
-          - name: BROKER_TOPIC
-            value: {{ tpl .Values.broker.topic . | quote }}
+            value: /etc/hyperfleet/broker.yaml
           # Broker credentials can be overridden via environment variables from Secret
           {{- if eq .Values.broker.type "rabbitmq" }}
           - name: BROKER_RABBITMQ_URL
@@ -80,11 +77,11 @@ spec:
           {{- end }}
         volumeMounts:
           - name: config
-            mountPath: /etc/sentinel/config.yaml
+            mountPath: /etc/hyperfleet/config.yaml
             subPath: config.yaml
             readOnly: true
           - name: broker-config
-            mountPath: /etc/sentinel/broker.yaml
+            mountPath: /etc/hyperfleet/broker.yaml
             subPath: broker.yaml
             readOnly: true
         resources:

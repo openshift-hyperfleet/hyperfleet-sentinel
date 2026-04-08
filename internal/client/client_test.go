@@ -641,6 +641,36 @@ func TestFetchResources_NodePools(t *testing.T) {
 	}
 }
 
+// TestNewHyperFleetClient_UserAgent verifies that every request carries the expected
+// User-Agent header built from the sentinel name and version.
+func TestNewHyperFleetClient_UserAgent(t *testing.T) {
+	var receivedUA string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedUA = r.Header.Get("User-Agent")
+		response := createMockClusterList([]map[string]interface{}{})
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "my-sentinel", "v1.2.3")
+	if err != nil {
+		t.Fatalf("NewHyperFleetClient: %v", err)
+	}
+
+	if _, err := c.FetchResources(context.Background(), ResourceTypeClusters, nil); err != nil {
+		t.Fatalf("FetchResources: %v", err)
+	}
+
+	expected := "hyperfleet-sentinel/v1.2.3 (my-sentinel)"
+	if receivedUA != expected {
+		t.Errorf("User-Agent = %q, want %q", receivedUA, expected)
+	}
+}
+
 // TestFetchResources_WithLabelSelector tests search parameter functionality
 func TestFetchResources_WithLabelSelector(t *testing.T) {
 	var receivedSearchParam string
@@ -825,7 +855,7 @@ func TestBuildSearchString(t *testing.T) {
 
 func newTestClient(t *testing.T, url string, timeout time.Duration) *HyperFleetClient {
 	t.Helper()
-	client, err := NewHyperFleetClient(url, timeout)
+	client, err := NewHyperFleetClient(url, timeout, "test-sentinel", "test")
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -870,7 +900,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -984,7 +1014,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation_ErrorCase(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1030,7 +1060,7 @@ func TestFetchResources_WithAdditionalFilters(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	labelSelector := map[string]string{"shard": "1"}
 
 	_, err := client.FetchResources(
@@ -1068,7 +1098,7 @@ func TestFetchResources_WithConditionFilterOnly(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 
 	_, err := client.FetchResources(
 		context.Background(), ResourceTypeClusters, nil,
