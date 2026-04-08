@@ -1,11 +1,12 @@
 sentinel:
-  name: hyperfleet-sentinel-minimal
+  name: hyperfleet-sentinel-test
 
 clients:
   hyperfleet_api:
     base_url: http://api.example.com
 
 resource_type: clusters
+resouce_type: clusters  # typo — unknown field
 
 message_data:
   id: "resource.id"

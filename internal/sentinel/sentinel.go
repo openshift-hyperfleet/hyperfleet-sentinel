@@ -3,6 +3,7 @@ package sentinel
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -103,7 +104,10 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	// Get metric labels
 	resourceType := s.config.ResourceType
 	resourceSelector := metrics.GetResourceSelectorLabel(s.config.ResourceSelector)
-	topic := s.config.Topic
+	topic := ""
+	if s.config.Clients.Broker != nil {
+		topic = s.config.Clients.Broker.Topic
+	}
 
 	// Add subset to context for structured logging
 	ctx = logger.WithSubset(ctx, resourceType)
@@ -165,7 +169,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Create CloudEvent
 			event := cloudevents.NewEvent()
 			event.SetSpecVersion(cloudevents.VersionV1)
-			event.SetType(fmt.Sprintf("com.redhat.hyperfleet.%s.reconcile", resource.Kind))
+			event.SetType(fmt.Sprintf("com.redhat.hyperfleet.%s.reconcile", strings.ToLower(resource.Kind)))
 			event.SetSource("hyperfleet-sentinel")
 
 			// Generate UUID v7 for event ID

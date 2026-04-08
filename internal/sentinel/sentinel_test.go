@@ -135,12 +135,15 @@ func newTestDecisionEngine(t *testing.T) *engine.DecisionEngine {
 	return de
 }
 
-// newTestSentinelConfig creates a config for testing (no max_age fields).
+// newTestSentinelConfig creates a config for testing.
 func newTestSentinelConfig() *config.SentinelConfig {
 	return &config.SentinelConfig{
 		ResourceType:    "clusters",
-		Topic:           testTopic,
 		MessageDecision: config.DefaultMessageDecision(),
+		Clients: config.ClientsConfig{
+			HyperFleetAPI: &config.HyperFleetAPIConfig{},
+			Broker:        &config.BrokerConfig{Topic: testTopic},
+		},
 		MessageData: map[string]interface{}{
 			"id":   "resource.id",
 			"kind": "resource.kind",
@@ -159,7 +162,7 @@ func TestTrigger_Success(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -188,8 +191,8 @@ func TestTrigger_Success(t *testing.T) {
 	}
 
 	event := mockPublisher.publishedEvents[0]
-	if event.Type() != "com.redhat.hyperfleet.Cluster.reconcile" {
-		t.Errorf("Expected event type 'com.redhat.hyperfleet.Cluster.reconcile', got '%s'", event.Type())
+	if event.Type() != "com.redhat.hyperfleet.cluster.reconcile" {
+		t.Errorf("Expected event type 'com.redhat.hyperfleet.cluster.reconcile', got '%s'", event.Type())
 	}
 	if event.Source() != "hyperfleet-sentinel" {
 		t.Errorf("Expected source 'hyperfleet-sentinel', got '%s'", event.Source())
@@ -210,7 +213,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -247,7 +250,7 @@ func TestTrigger_FetchError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 1*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 1*time.Second, "test-sentinel", "test")
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -283,7 +286,7 @@ func TestTrigger_PublishError(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{
 		publishError: errors.New("broker connection failed"),
@@ -323,7 +326,7 @@ func TestTrigger_MixedResources(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -368,7 +371,7 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -424,7 +427,7 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -573,7 +576,7 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, err := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, err := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -586,7 +589,7 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := newTestSentinelConfig()
-	cfg.Topic = "hyperfleet-clusters"
+	cfg.Clients.Broker.Topic = "hyperfleet-clusters"
 	cfg.MessagingSystem = "rabbitmq"
 
 	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
@@ -629,7 +632,7 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 
 	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.system", cfg.MessagingSystem)
 	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.operation.type", "publish")
-	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.destination.name", cfg.Topic)
+	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.destination.name", cfg.Clients.Broker.Topic)
 
 	if len(mockPublisher.publishedEvents) != 1 {
 		t.Errorf("Expected 1 published event, got %d", len(mockPublisher.publishedEvents))

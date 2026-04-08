@@ -131,6 +131,10 @@ func newTestSentinelConfig() *config.SentinelConfig {
 		ResourceType:    "clusters",
 		PollInterval:    100 * time.Millisecond,
 		MessageDecision: config.DefaultMessageDecision(),
+		Clients: config.ClientsConfig{
+			HyperFleetAPI: &config.HyperFleetAPIConfig{},
+			Broker:        &config.BrokerConfig{},
+		},
 		MessageData: map[string]interface{}{
 			"id":   "resource.id",
 			"kind": "resource.kind",
@@ -165,7 +169,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	}))
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := newTestDecisionEngine(t)
 	log := logger.NewHyperFleetLogger()
 
@@ -240,7 +244,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	}))
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := newTestDecisionEngine(t)
 	log := logger.NewHyperFleetLogger()
 
@@ -326,7 +330,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	}))
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := newTestDecisionEngine(t)
 	log := logger.NewHyperFleetLogger()
 
@@ -444,11 +448,11 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	}))
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	decisionEngine := newTestDecisionEngine(t)
 
 	sentinelConfig := newTestSentinelConfig()
-	sentinelConfig.Topic = testTopic
+	sentinelConfig.Clients.Broker.Topic = testTopic
 	sentinelConfig.ResourceSelector = []config.LabelSelector{
 		{Label: "region", Value: "us-east"},
 		{Label: "env", Value: "production"},
@@ -607,7 +611,7 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 
 	helper := NewHelper()
 
-	hyperfleetClient, clientErr := client.NewHyperFleetClient(server.URL, 10*time.Second)
+	hyperfleetClient, clientErr := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
 	if clientErr != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", clientErr)
 	}
@@ -618,7 +622,7 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := newTestSentinelConfig()
-	cfg.Topic = "test-spans-topic"
+	cfg.Clients.Broker.Topic = "test-spans-topic"
 	cfg.MessagingSystem = "rabbitmq"
 
 	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
@@ -759,7 +763,7 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 
 	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.system", cfg.MessagingSystem)
 	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.operation.type", "publish")
-	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.destination.name", cfg.Topic)
+	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.destination.name", cfg.Clients.Broker.Topic)
 
 	for _, publishSpan := range publishSpans {
 		if !publishSpan.Parent.IsValid() {

@@ -6,6 +6,31 @@ metadata:
     {{- include "sentinel.labels" . | nindent 4 }}
 data:
   config.yaml: |
+    # Sentinel information
+    sentinel:
+      name: {{ tpl .Values.config.sentinel.name . | quote }}
+
+    # Debug configuration
+    debug_config: {{ .Values.config.debugConfig }}
+
+    # Logging configuration
+    log:
+      level: {{ .Values.config.log.level | quote }}
+      format: {{ .Values.config.log.format | quote }}
+      output: {{ .Values.config.log.output | quote }}
+
+    # Client configurations
+    clients:
+      # HyperFleet API client
+      hyperfleet_api:
+        base_url: {{ .Values.config.clients.hyperfleetApi.baseUrl | quote }}
+        version: {{ .Values.config.clients.hyperfleetApi.version | quote }}
+        timeout: {{ .Values.config.clients.hyperfleetApi.timeout | quote }}
+
+      # Broker client
+      broker:
+        topic: {{ tpl .Values.broker.topic . | quote }}
+
     # Sentinel configuration
     resource_type: {{ .Values.config.resourceType }}
     poll_interval: {{ .Values.config.pollInterval }}
@@ -18,11 +43,6 @@ data:
         value: {{ .value | quote }}
       {{- end }}
     {{- end }}
-
-    # HyperFleet API configuration
-    hyperfleet_api:
-      endpoint: {{ .Values.config.hyperfleetApi.baseUrl }}
-      timeout: {{ .Values.config.hyperfleetApi.timeout }}
 
     {{- if .Values.config.messageDecision }}
     # Configurable CEL-based decision logic
