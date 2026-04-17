@@ -163,6 +163,30 @@ clients:
 	}
 }
 
+func TestLoadConfig_TracingEnabledEnvVar(t *testing.T) {
+	// Override the tracing_enabled value that is set in the config file
+	t.Setenv("HYPERFLEET_TRACING_ENABLED", "true")
+	yaml := `
+sentinel:
+  name: hyperfleet-sentinel-tracing-enabled
+clients:
+  hyperfleet_api:
+    base_url: http://api.example.com
+resource_type: clusters
+message_data:
+  id: "resource.id"
+tracing_enabled: false
+`
+	configPath := createTempConfigFile(t, yaml)
+	cfg, err := LoadConfig(configPath, nil)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
+	}
+	if cfg.TracingEnabled != true {
+		t.Errorf("Expected tracing_enabled to be true, got %v", cfg.TracingEnabled)
+	}
+}
+
 func TestLoadConfig_InvalidYAML(t *testing.T) {
 	yaml := `
 resource_type: clusters
