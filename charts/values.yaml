@@ -68,6 +68,16 @@ tolerations: []
 # Affinity
 affinity: {}
 
+# Extra volumes to add to the pod
+extraVolumes: []
+# - name: example-volume
+#   emptyDir: {}
+
+# Extra volume mounts to add to the container
+extraVolumeMounts: []
+# - name: example-volume
+#   mountPath: /example
+
 # PodDisruptionBudget configuration
 # See: https://kubernetes.io/docs/tasks/run-application/configure-pdb/#specifying-a-poddisruptionbudget
 podDisruptionBudget:
