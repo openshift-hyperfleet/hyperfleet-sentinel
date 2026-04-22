@@ -9,6 +9,7 @@ HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, make
 - Go 1.25 or later
 - Docker or Podman
 - Make
+- pre-commit
 
 ### Getting Started
 
@@ -47,6 +48,12 @@ HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, make
 
    ```bash
    make test
+   ```
+
+6. **Install git hooks**:
+
+   ```bash
+   make install-hooks
    ```
 
 ### Common Make Targets

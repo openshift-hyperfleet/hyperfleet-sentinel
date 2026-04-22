@@ -72,6 +72,10 @@ build: generate ## Build the sentinel binary
 install: ## Build and install binary to GOPATH/bin
 	$(GO) install $(GOFLAGS) -ldflags "$(LDFLAGS)" ./cmd/sentinel
 
+.PHONY: install-hooks
+install-hooks: ## Install pre-commit hooks
+	pre-commit install
+
 .PHONY: run
 run: build ## Run the sentinel service
 	./$(BINARY_NAME) serve
@@ -116,6 +120,9 @@ test-coverage: test ## Run tests and show coverage
 fmt: ## Format Go code
 	$(GOFMT) -s -w .
 
+.PHONY: gofmt
+gofmt: fmt ## Alias for fmt
+
 .PHONY: fmt-check
 fmt-check: ## Check if code is formatted
 	@diff=$$($(GOFMT) -s -d .); \
@@ -128,6 +135,9 @@ fmt-check: ## Check if code is formatted
 .PHONY: vet
 vet: ## Run go vet
 	$(GO) vet ./...
+
+.PHONY: go-vet
+go-vet: vet ## Alias for vet
 
 .PHONY: lint
 lint: $(GOLANGCI_LINT) ## Run golangci-lint
