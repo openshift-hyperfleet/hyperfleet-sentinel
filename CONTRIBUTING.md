@@ -13,6 +13,7 @@ cd hyperfleet-sentinel
 # - Go 1.25 or later
 # - Docker or Podman
 # - Make
+# - pre-commit
 
 # 3. Generate OpenAPI client (required before any other commands)
 make generate
@@ -25,12 +26,16 @@ make build
 
 # 6. Run tests to verify setup
 make test
+
+# 7. Install git hooks
+make install-hooks
 ```
 
 **First-time setup notes:**
 - The OpenAPI client code is **not committed** to git and must be generated locally via `make generate`
 - Generated code appears in `pkg/api/openapi/` and must be regenerated after any spec updates
 - Integration tests require Docker/Podman for testcontainers (RabbitMQ, GCP Pub/Sub emulators)
+- `make install-hooks` installs pre-commit hooks configured in `.pre-commit-config.yaml` for commit message and code quality validation on every commit
 - See [docs/testcontainers.md](docs/testcontainers.md) for Docker/Podman configuration
 - See [docs/running-sentinel.md](docs/running-sentinel.md) for detailed runtime instructions
 
