@@ -227,6 +227,19 @@ monitoring:
         staleAfterSeconds: 60
         for: 1m
 
+tracing:
+  enabled: true
+  serviceName: "hyperfleet-sentinel"
+  # OTLP exporter endpoint (traces go to stdout if not set)
+  otlpEndpoint: ""
+  # OTLP protocol: grpc (default) or http/protobuf
+  otlpProtocol: "grpc"
+  # Sampler type (default per tracing standard)
+  sampler: "parentbased_traceidratio"
+  # Sampling rate: 1.0 for dev, 0.01 for production
+  samplerArg: "1.0"
+  propagators: "tracecontext,baggage"
+
 # Existing secret name (optional)
 # If provided, the chart will not create a Secret and will use this existing one
 # existingSecret: sentinel-broker-credentials

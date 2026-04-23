@@ -9,12 +9,12 @@ import (
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
+	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
-	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
@@ -119,10 +119,11 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 
 	// Set global trace provider
 	otel.SetTracerProvider(tp)
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-		propagation.TraceContext{},
-		propagation.Baggage{},
-	))
+	// Select the propagator based on envivronment variable OTEL_PROPAGATORS
+	// If OTEL_PROPAGATORS is not provided, uses default "tracecontext,baggage"
+	textMapProp := autoprop.NewTextMapPropagator()
+	otel.SetTextMapPropagator(textMapProp)
+
 	return tp, nil
 }
 
