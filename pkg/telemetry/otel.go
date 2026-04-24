@@ -119,7 +119,7 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 
 	// Set global trace provider
 	otel.SetTracerProvider(tp)
-	// Select the propagator based on envivronment variable OTEL_PROPAGATORS
+	// Select the propagator based on environment variable OTEL_PROPAGATORS
 	// If OTEL_PROPAGATORS is not provided, uses default "tracecontext,baggage"
 	textMapProp := autoprop.NewTextMapPropagator()
 	otel.SetTextMapPropagator(textMapProp)
