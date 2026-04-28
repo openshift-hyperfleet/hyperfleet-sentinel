@@ -37,9 +37,9 @@ const (
 type LogFormat int
 
 const (
-	// FormatText is human-readable text format (default for development)
+	// FormatText outputs logs in human-readable text format
 	FormatText LogFormat = iota
-	// FormatJSON is structured JSON format (recommended for production)
+	// FormatJSON outputs logs in JSON format for structured logging
 	FormatJSON
 )
 
@@ -102,7 +102,7 @@ func DefaultConfig() *LogConfig {
 	}
 	return &LogConfig{
 		Level:     LevelInfo,
-		Format:    FormatText,
+		Format:    FormatJSON,
 		Output:    os.Stdout,
 		Component: "sentinel",
 		Version:   "dev",
@@ -154,7 +154,7 @@ func ParseLogFormat(format string) (LogFormat, error) {
 	case "json":
 		return FormatJSON, nil
 	default:
-		return FormatText, fmt.Errorf("unknown log format: %s (valid: text, json)", format)
+		return FormatJSON, fmt.Errorf("unknown log format: %s (valid: text, json)", format)
 	}
 }
 
@@ -555,6 +555,7 @@ func (n *noopLogger) Fatal(ctx context.Context, message string) {
 	fmt.Fprintf(os.Stderr, "FATAL: %s\n", message)
 	os.Exit(1)
 }
+
 func (n *noopLogger) Fatalf(ctx context.Context, format string, args ...interface{}) {
 	fmt.Fprintf(os.Stderr, "FATAL: %s\n", fmt.Sprintf(format, args...))
 	os.Exit(1)

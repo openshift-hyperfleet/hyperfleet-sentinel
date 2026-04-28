@@ -74,8 +74,8 @@ func TestParseLogFormat(t *testing.T) {
 		{"json uppercase", "JSON", FormatJSON, false},
 		{"json mixed case", "Json", FormatJSON, false},
 		{"with whitespace", "  json  ", FormatJSON, false},
-		{"invalid format", "xml", FormatText, true},
-		{"empty string", "", FormatText, true},
+		{"invalid format", "xml", FormatJSON, true},
+		{"empty string", "", FormatJSON, true},
 	}
 
 	for _, tt := range tests {
@@ -89,9 +89,9 @@ func TestParseLogFormat(t *testing.T) {
 				if err != nil {
 					t.Errorf("unexpected error for input %q: %v", tt.input, err)
 				}
-				if format != tt.expected {
-					t.Errorf("expected %v, got %v", tt.expected, format)
-				}
+			}
+			if format != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, format)
 			}
 		})
 	}
@@ -595,8 +595,8 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Level != LevelInfo {
 		t.Errorf("expected default level to be Info, got %v", cfg.Level)
 	}
-	if cfg.Format != FormatText {
-		t.Errorf("expected default format to be Text, got %v", cfg.Format)
+	if cfg.Format != FormatJSON {
+		t.Errorf("expected default format to be JSON, got %v", cfg.Format)
 	}
 	if cfg.Output != os.Stdout {
 		t.Error("expected default output to be stdout")
@@ -808,4 +808,17 @@ func TestLoggerErrorWithStackTrace(t *testing.T) {
 			t.Errorf("expected no stack trace for info logs, got %v", entry.StackTrace)
 		}
 	})
+}
+
+func TestDefaultFormatIsJSON(t *testing.T) {
+	var buf bytes.Buffer
+	cfg := DefaultConfig()
+	cfg.Output = &buf
+	log := NewHyperFleetLoggerWithConfig(cfg)
+
+	log.Info(context.Background(), "test")
+
+	if !json.Valid(buf.Bytes()) {
+		t.Errorf("expected default format output to be valid JSON, got: %s", buf.String())
+	}
 }
