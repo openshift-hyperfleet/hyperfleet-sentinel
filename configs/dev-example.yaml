@@ -53,14 +53,21 @@ poll_interval: 2s
 # Shorter debounce intervals for development.
 message_decision:
   params:
-    ref_time: 'condition("Reconciled").last_updated_time'
-    is_reconciled: 'condition("Reconciled").status == "True"'
-    has_ref_time: 'ref_time != ""'
-    is_new_resource: '!is_reconciled && resource.generation == 1'
-    generation_mismatch: 'resource.generation > condition("Reconciled").observed_generation'
-    reconciled_and_stale: 'is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("2m")'
-    not_reconciled_and_debounced: '!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("5s")'
-  result: 'is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced'
+    - name: ref_time
+      expr: 'condition("Reconciled").last_updated_time'
+    - name: is_reconciled
+      expr: 'condition("Reconciled").status == "True"'
+    - name: has_ref_time
+      expr: 'ref_time != ""'
+    - name: is_new_resource
+      expr: '!is_reconciled && resource.generation == 1'
+    - name: generation_mismatch
+      expr: 'resource.generation > condition("Reconciled").observed_generation'
+    - name: reconciled_and_stale
+      expr: 'is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("2m")'
+    - name: not_reconciled_and_debounced
+      expr: '!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("5s")'
+  result: "is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced"
 
 # Messaging system type for OpenTelemetry tracing attributes.
 # Should match the actual message broker being used for accurate observability.

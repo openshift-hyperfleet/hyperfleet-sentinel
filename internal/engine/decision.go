@@ -18,13 +18,17 @@ type Decision struct {
 	ShouldPublish bool   // Indicates whether an event should be published for the resource
 }
 
+type paramEntry struct {
+	prog cel.Program
+	name string
+}
+
 // DecisionEngine evaluates whether a resource needs an event published
 // using configurable CEL expressions.
 type DecisionEngine struct {
 	resultProg       cel.Program
-	paramProgs       map[string]cel.Program
 	conditionsLookup map[string]map[string]interface{}
-	paramOrder       []string
+	params           []paramEntry
 	mu               sync.Mutex
 }
 
@@ -35,15 +39,11 @@ func NewDecisionEngine(cfg *config.MessageDecisionConfig) (*DecisionEngine, erro
 		return nil, fmt.Errorf("message_decision config is required")
 	}
 
-	// Resolve param evaluation order
-	paramOrder, err := cfg.TopologicalSort()
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve param dependencies: %w", err)
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid message_decision config: %w", err)
 	}
 
-	de := &DecisionEngine{
-		paramOrder: paramOrder,
-	}
+	de := &DecisionEngine{}
 
 	// Build CEL environment with all variables and the condition() function.
 	// The function declaration includes the implementation via FunctionBinding,
@@ -73,8 +73,8 @@ func NewDecisionEngine(cfg *config.MessageDecisionConfig) (*DecisionEngine, erro
 	}
 
 	// Declare all param names as DynType variables for inter-param references
-	for name := range cfg.Params {
-		envOpts = append(envOpts, cel.Variable(name, cel.DynType))
+	for _, p := range cfg.Params {
+		envOpts = append(envOpts, cel.Variable(p.Name, cel.DynType))
 	}
 
 	env, err := cel.NewEnv(envOpts...)
@@ -82,18 +82,18 @@ func NewDecisionEngine(cfg *config.MessageDecisionConfig) (*DecisionEngine, erro
 		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
 	}
 
-	// Compile all param expressions
-	paramProgs := make(map[string]cel.Program, len(cfg.Params))
-	for name, expr := range cfg.Params {
-		ast, issues := env.Compile(expr)
+	// Compile params in authored order
+	params := make([]paramEntry, 0, len(cfg.Params))
+	for _, p := range cfg.Params {
+		ast, issues := env.Compile(p.Expr)
 		if issues != nil && issues.Err() != nil {
-			return nil, fmt.Errorf("failed to compile param %q expression %q: %w", name, expr, issues.Err())
+			return nil, fmt.Errorf("failed to compile param %q expression %q: %w", p.Name, p.Expr, issues.Err())
 		}
 		prg, prgErr := env.Program(ast)
 		if prgErr != nil {
-			return nil, fmt.Errorf("failed to create program for param %q: %w", name, prgErr)
+			return nil, fmt.Errorf("failed to create program for param %q: %w", p.Name, prgErr)
 		}
-		paramProgs[name] = prg
+		params = append(params, paramEntry{name: p.Name, prog: prg})
 	}
 
 	// Compile result expression
@@ -106,7 +106,7 @@ func NewDecisionEngine(cfg *config.MessageDecisionConfig) (*DecisionEngine, erro
 		return nil, fmt.Errorf("failed to create result program: %w", err)
 	}
 
-	de.paramProgs = paramProgs
+	de.params = params
 	de.resultProg = resultPrg
 
 	return de, nil
@@ -136,11 +136,9 @@ func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Deci
 		"now":      now,
 	}
 
-	// Evaluate params in topological order
-	paramValues := make(map[string]interface{}, len(e.paramOrder))
-	for _, name := range e.paramOrder {
-		prg := e.paramProgs[name]
-
+	// Evaluate params in authored order
+	paramValues := make(map[string]interface{}, len(e.params))
+	for _, p := range e.params {
 		// Merge param values into activation for inter-param references
 		evalActivation := make(map[string]interface{}, len(activation)+len(paramValues))
 		for k, v := range activation {
@@ -150,14 +148,14 @@ func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Deci
 			evalActivation[k] = v
 		}
 
-		out, _, err := prg.Eval(evalActivation)
+		out, _, err := p.prog.Eval(evalActivation)
 		if err != nil {
 			return Decision{
 				ShouldPublish: false,
-				Reason:        fmt.Sprintf("param %q evaluation failed: %v", name, err),
+				Reason:        fmt.Sprintf("param %q evaluation failed: %v", p.name, err),
 			}
 		}
-		paramValues[name] = out.Value()
+		paramValues[p.name] = out.Value()
 	}
 
 	// Evaluate result expression
