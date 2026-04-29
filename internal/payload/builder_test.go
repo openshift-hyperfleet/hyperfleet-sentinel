@@ -120,7 +120,7 @@ func makeTestResource() *client.Resource {
 		Status: client.ResourceStatus{
 			Conditions: []client.Condition{
 				{
-					Type:            "Ready",
+					Type:            "Reconciled",
 					Status:          "True",
 					LastUpdatedTime: time.Now(),
 				},
@@ -141,7 +141,7 @@ func makeTestNodePoolResource() *client.Resource {
 		Status: client.ResourceStatus{
 			Conditions: []client.Condition{
 				{
-					Type:            "Ready",
+					Type:            "Reconciled",
 					Status:          "True",
 					LastUpdatedTime: time.Now(),
 				},

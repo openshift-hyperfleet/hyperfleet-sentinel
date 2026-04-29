@@ -29,9 +29,9 @@ func createTempConfigFile(t *testing.T, content string) string {
 func newTestMessageDecision() *MessageDecisionConfig {
 	return &MessageDecisionConfig{
 		Params: map[string]string{
-			"is_ready": `condition("Ready").status == "True"`,
+			"is_reconciled": `condition("Reconciled").status == "True"`,
 		},
-		Result: "!is_ready",
+		Result: "!is_reconciled",
 	}
 }
 
@@ -549,9 +549,9 @@ func TestValidate_EmptyParamExpression(t *testing.T) {
 	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 	cfg.MessageDecision = &MessageDecisionConfig{
 		Params: map[string]string{
-			"is_ready": "",
+			"is_reconciled": "",
 		},
-		Result: "is_ready",
+		Result: "is_reconciled",
 	}
 
 	err := cfg.Validate()
@@ -589,7 +589,7 @@ func TestValidate_CircularDependency(t *testing.T) {
 func TestTopologicalSort_NoDependencies(t *testing.T) {
 	md := &MessageDecisionConfig{
 		Params: map[string]string{
-			"a": `condition("Ready").status`,
+			"a": `condition("Reconciled").status`,
 			"b": `condition("Available").status`,
 		},
 		Result: "a == b",
@@ -607,8 +607,8 @@ func TestTopologicalSort_NoDependencies(t *testing.T) {
 func TestTopologicalSort_LinearDependency(t *testing.T) {
 	md := &MessageDecisionConfig{
 		Params: map[string]string{
-			"is_ready":       `condition("Ready").status == "True"`,
-			"should_publish": `!is_ready`,
+			"is_reconciled":  `condition("Reconciled").status == "True"`,
+			"should_publish": `!is_reconciled`,
 		},
 		Result: "should_publish",
 	}
@@ -621,19 +621,19 @@ func TestTopologicalSort_LinearDependency(t *testing.T) {
 		t.Fatalf("Expected 2 params, got %d", len(order))
 	}
 
-	// is_ready must come before should_publish
-	isReadyIdx := -1
+	// is_reconciled must come before should_publish
+	isReconciledIdx := -1
 	shouldPublishIdx := -1
 	for i, name := range order {
-		if name == "is_ready" {
-			isReadyIdx = i
+		if name == "is_reconciled" {
+			isReconciledIdx = i
 		}
 		if name == "should_publish" {
 			shouldPublishIdx = i
 		}
 	}
-	if isReadyIdx >= shouldPublishIdx {
-		t.Errorf("Expected is_ready (%d) before should_publish (%d)", isReadyIdx, shouldPublishIdx)
+	if isReconciledIdx >= shouldPublishIdx {
+		t.Errorf("Expected is_reconciled (%d) before should_publish (%d)", isReconciledIdx, shouldPublishIdx)
 	}
 }
 
@@ -679,16 +679,16 @@ func TestContainsIdentifier(t *testing.T) {
 		identifier string
 		want       bool
 	}{
-		{"exact match", "is_ready", "is_ready", true},
-		{"in expression", "!is_ready && x", "is_ready", true},
-		{"prefix match should fail", "is_ready_2", "is_ready", false},
-		{"suffix match should fail", "not_is_ready", "is_ready", false},
-		{"substring in middle", "foo_is_ready_bar", "is_ready", false},
-		{"not present", "something_else", "is_ready", false},
-		{"at start with operator", "is_ready || other", "is_ready", true},
-		{"at end with operator", "other && is_ready", "is_ready", true},
-		{"in parentheses", "(is_ready)", "is_ready", true},
-		{"with negation", "!is_ready", "is_ready", true},
+		{"exact match", "is_reconciled", "is_reconciled", true},
+		{"in expression", "!is_reconciled && x", "is_reconciled", true},
+		{"prefix match should fail", "is_reconciled_2", "is_reconciled", false},
+		{"suffix match should fail", "not_is_reconciled", "is_reconciled", false},
+		{"substring in middle", "foo_is_reconciled_bar", "is_reconciled", false},
+		{"not present", "something_else", "is_reconciled", false},
+		{"at start with operator", "is_reconciled || other", "is_reconciled", true},
+		{"at end with operator", "other && is_reconciled", "is_reconciled", true},
+		{"in parentheses", "(is_reconciled)", "is_reconciled", true},
+		{"with negation", "!is_reconciled", "is_reconciled", true},
 	}
 
 	for _, tt := range tests {

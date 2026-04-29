@@ -51,20 +51,20 @@ func TestMain(m *testing.M) {
 }
 
 // createMockCluster creates a mock cluster response
-func createMockCluster(id string, generation int, observedGeneration int, ready bool, lastUpdated time.Time) map[string]interface{} {
-	return createMockClusterWithLabels(id, generation, observedGeneration, ready, lastUpdated, nil)
+func createMockCluster(id string, generation int, observedGeneration int, reconciled bool, lastUpdated time.Time) map[string]interface{} {
+	return createMockClusterWithLabels(id, generation, observedGeneration, reconciled, lastUpdated, nil)
 }
 
 // createMockClusterWithLabels creates a mock cluster response with labels
-func createMockClusterWithLabels(id string, generation int, observedGeneration int, ready bool, lastUpdated time.Time, labels map[string]string) map[string]interface{} {
-	readyStatus := "False"
-	if ready {
-		readyStatus = "True"
+func createMockClusterWithLabels(id string, generation int, observedGeneration int, reconciled bool, lastUpdated time.Time, labels map[string]string) map[string]interface{} {
+	reconciledStatus := "False"
+	if reconciled {
+		reconciledStatus = "True"
 	}
 
-	readyCondition := map[string]interface{}{
-		"type":                 "Ready",
-		"status":               readyStatus,
+	reconciledCondition := map[string]interface{}{
+		"type":                 "Reconciled",
+		"status":               reconciledStatus,
 		"created_time":         "2025-01-01T09:00:00Z",
 		"last_transition_time": "2025-01-01T10:00:00Z",
 		"last_updated_time":    lastUpdated.Format(time.RFC3339),
@@ -84,10 +84,10 @@ func createMockClusterWithLabels(id string, generation int, observedGeneration i
 		"spec":       map[string]interface{}{},
 		"status": map[string]interface{}{
 			"conditions": []map[string]interface{}{
-				readyCondition,
+				reconciledCondition,
 				{
 					"type":                 "Available",
-					"status":               readyStatus,
+					"status":               reconciledStatus,
 					"created_time":         "2025-01-01T09:00:00Z",
 					"last_transition_time": "2025-01-01T10:00:00Z",
 					"last_updated_time":    lastUpdated.Format(time.RFC3339),
@@ -439,7 +439,7 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		}
 
 		clusters := []map[string]interface{}{
-			createMockCluster("cluster-not-ready", 2, 2, false, now.Add(-15*time.Second)),
+			createMockCluster("cluster-not-reconciled", 2, 2, false, now.Add(-15*time.Second)),
 			createMockCluster("cluster-old", 2, 2, true, now.Add(-35*time.Minute)),
 		}
 		response := createMockClusterList(clusters)
@@ -598,10 +598,10 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		}
 
 		clusters := []map[string]interface{}{
-			// Triggers not_ready_and_debounced
-			createMockCluster("cluster-not-ready-old", 2, 2, false, now.Add(-15*time.Second)),
-			// Triggers ready_and_stale
-			createMockCluster("cluster-ready-old", 2, 2, true, now.Add(-35*time.Minute)),
+			// Triggers not_reconciled_and_debounced
+			createMockCluster("cluster-not-reconciled-old", 2, 2, false, now.Add(-15*time.Second)),
+			// Triggers reconciled_and_stale
+			createMockCluster("cluster-reconciled-old", 2, 2, true, now.Add(-35*time.Minute)),
 		}
 		response := createMockClusterList(clusters)
 		w.Header().Set("Content-Type", "application/json")

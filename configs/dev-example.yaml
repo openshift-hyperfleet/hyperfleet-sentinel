@@ -53,14 +53,14 @@ poll_interval: 2s
 # Shorter debounce intervals for development.
 message_decision:
   params:
-    ref_time: 'condition("Ready").last_updated_time'
-    is_ready: 'condition("Ready").status == "True"'
+    ref_time: 'condition("Reconciled").last_updated_time'
+    is_reconciled: 'condition("Reconciled").status == "True"'
     has_ref_time: 'ref_time != ""'
-    is_new_resource: '!is_ready && resource.generation == 1'
-    generation_mismatch: 'resource.generation > condition("Ready").observed_generation'
-    ready_and_stale: 'is_ready && has_ref_time && now - timestamp(ref_time) > duration("2m")'
-    not_ready_and_debounced: '!is_ready && has_ref_time && now - timestamp(ref_time) > duration("5s")'
-  result: "is_new_resource || generation_mismatch || ready_and_stale || not_ready_and_debounced"
+    is_new_resource: '!is_reconciled && resource.generation == 1'
+    generation_mismatch: 'resource.generation > condition("Reconciled").observed_generation'
+    reconciled_and_stale: 'is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("2m")'
+    not_reconciled_and_debounced: '!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("5s")'
+  result: 'is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced'
 
 # Messaging system type for OpenTelemetry tracing attributes.
 # Should match the actual message broker being used for accurate observability.
@@ -82,7 +82,7 @@ messaging_system: "rabbitmq"
 #
 # Examples:
 #   field: "resource.id"                                    — field access
-#   field: 'condition("Ready").status == "True" ? "Ready" : "NotReady"'  — conditional
+#   field: 'condition("Reconciled").status == "True" ? "Reconciled" : "NotReconciled"'  — conditional
 #   field: '"constant"'                                     — CEL string literal
 #   field: "reason"                                         — decision reason
 #
@@ -102,7 +102,7 @@ message_data:
 #    kind: "resource.owner_references.kind"
 
   # examples of other possible fields
-  #ready_status: 'resource.status.conditions.filter(c, c.type=="Ready")[0].value == "True" ? "Ready" : "NotReady"'
+  #reconciled_status: 'resource.status.conditions.filter(c, c.type=="Reconciled")[0].status == "True" ? "Reconciled" : "NotReconciled"'
   #origin: "hyperfleet-sentinel"
 
 # For local development, use environment variable:

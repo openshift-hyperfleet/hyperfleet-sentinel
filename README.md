@@ -240,14 +240,14 @@ poll_interval: 5s
 
 message_decision:
   params:
-    ref_time: 'condition("Ready").last_updated_time'
-    is_ready: 'condition("Ready").status == "True"'
+    ref_time: 'condition("Reconciled").last_updated_time'
+    is_reconciled: 'condition("Reconciled").status == "True"'
     has_ref_time: 'ref_time != ""'
-    is_new_resource: '!is_ready && resource.generation == 1'
-    generation_mismatch: 'resource.generation > condition("Ready").observed_generation'
-    ready_and_stale: 'is_ready && has_ref_time && now - timestamp(ref_time) > duration("30m")'
-    not_ready_and_debounced: '!is_ready && has_ref_time && now - timestamp(ref_time) > duration("10s")'
-  result: "is_new_resource || generation_mismatch || ready_and_stale || not_ready_and_debounced"
+    is_new_resource: '!is_reconciled && resource.generation == 1'
+    generation_mismatch: 'resource.generation > condition("Reconciled").observed_generation'
+    reconciled_and_stale: 'is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("30m")'
+    not_reconciled_and_debounced: '!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("10s")'
+  result: "is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced"
 
 resource_selector:
   - label: shard

@@ -104,15 +104,15 @@ func (ls LabelSelectorList) ToMap() map[string]string {
 func DefaultMessageDecision() *MessageDecisionConfig {
 	return &MessageDecisionConfig{
 		Params: map[string]string{
-			"ref_time":                `condition("Ready").last_updated_time`,
-			"is_ready":                `condition("Ready").status == "True"`,
-			"has_ref_time":            `ref_time != ""`,
-			"is_new_resource":         `!is_ready && resource.generation == 1`,
-			"generation_mismatch":     `resource.generation > condition("Ready").observed_generation`,
-			"ready_and_stale":         `is_ready && has_ref_time && now - timestamp(ref_time) > duration("30m")`,
-			"not_ready_and_debounced": `!is_ready && has_ref_time && now - timestamp(ref_time) > duration("10s")`,
+			"ref_time":                     `condition("Reconciled").last_updated_time`,
+			"is_reconciled":                `condition("Reconciled").status == "True"`,
+			"has_ref_time":                 `ref_time != ""`,
+			"is_new_resource":              `!is_reconciled && resource.generation == 1`,
+			"generation_mismatch":          `resource.generation > condition("Reconciled").observed_generation`,
+			"reconciled_and_stale":         `is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("30m")`,
+			"not_reconciled_and_debounced": `!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("10s")`,
 		},
-		Result: "is_new_resource || generation_mismatch || ready_and_stale || not_ready_and_debounced",
+		Result: "is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced",
 	}
 }
 
@@ -474,7 +474,7 @@ func (md *MessageDecisionConfig) TopologicalSort() ([]string, error) {
 }
 
 // containsIdentifier checks if an expression contains a reference to a param name.
-// Uses word boundary detection to avoid false positives (e.g., "is_ready" matching "is_ready_2").
+// Uses word boundary detection to avoid false positives (e.g., "is_reconciled" matching "is_reconciled_2").
 func containsIdentifier(expr, identifier string) bool {
 	idx := 0
 	for {

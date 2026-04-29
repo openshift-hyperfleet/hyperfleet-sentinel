@@ -93,7 +93,7 @@ message_data:
 
 CEL context includes:
 - `resource` — the cluster/nodepool object from API
-- `reason` — decision string ("not_ready", "ready_stale", "ready_fresh")
+- `reason` — decision string ("not_reconciled", "reconciled_stale", "reconciled_fresh")
 
 ## Project Boundaries
 
@@ -122,8 +122,8 @@ Sentinel is one component in the HyperFleet control plane:
 - **Broker** (RabbitMQ or Pub/Sub) decouples Sentinel from adapters
 
 Sentinel's job: **decide when**, not **execute how**. Max age intervals define "when":
-- `max_age_not_ready`: poll frequently for unstable resources
-- `max_age_ready`: poll infrequently for stable resources
+- `max_age_not_reconciled`: poll frequently for unstable resources
+- `max_age_reconciled`: poll infrequently for stable resources
 
 ## Local Development
 
