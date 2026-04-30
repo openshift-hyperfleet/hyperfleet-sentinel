@@ -30,12 +30,21 @@ type LabelSelector struct {
 // LabelSelectorList is a list of label selectors
 type LabelSelectorList []LabelSelector
 
+// Param is a named CEL expression. Params must be listed in dependency order:
+// if param B references param A, A must appear before B so the CEL runtime
+// can resolve it during evaluation. Out-of-order references cause a runtime
+// evaluation error (not a startup error).
+type Param struct {
+	Name string `mapstructure:"name"`
+	Expr string `mapstructure:"expr"`
+}
+
 // MessageDecisionConfig represents configurable CEL-based decision logic.
-// Params are named CEL expressions evaluated in dependency order.
+// Params are evaluated in the order they are defined.
 // Result is a CEL expression that evaluates to a boolean.
 type MessageDecisionConfig struct {
-	Params map[string]string `mapstructure:"params"`
-	Result string            `mapstructure:"result"`
+	Result string  `mapstructure:"result"`
+	Params []Param `mapstructure:"params"`
 }
 
 // SentinelConfig represents the Sentinel configuration
@@ -103,14 +112,17 @@ func (ls LabelSelectorList) ToMap() map[string]string {
 // used when message_decision is not set in the config file.
 func DefaultMessageDecision() *MessageDecisionConfig {
 	return &MessageDecisionConfig{
-		Params: map[string]string{
-			"ref_time":                     `condition("Reconciled").last_updated_time`,
-			"is_reconciled":                `condition("Reconciled").status == "True"`,
-			"has_ref_time":                 `ref_time != ""`,
-			"is_new_resource":              `!is_reconciled && resource.generation == 1`,
-			"generation_mismatch":          `resource.generation > condition("Reconciled").observed_generation`,
-			"reconciled_and_stale":         `is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("30m")`,
-			"not_reconciled_and_debounced": `!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("10s")`,
+		Params: []Param{
+			{Name: "ref_time", Expr: `condition("Reconciled").last_updated_time`},
+			{Name: "is_reconciled", Expr: `condition("Reconciled").status == "True"`},
+			{Name: "has_ref_time", Expr: `ref_time != ""`},
+			{Name: "is_new_resource", Expr: `!is_reconciled && resource.generation == 1`},
+			{Name: "generation_mismatch", Expr: `resource.generation > condition("Reconciled").observed_generation`},
+			{Name: "reconciled_and_stale", Expr: `is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("30m")`},
+			{
+				Name: "not_reconciled_and_debounced",
+				Expr: `!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("10s")`,
+			},
 		},
 		Result: "is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced",
 	}
@@ -370,135 +382,27 @@ func (c *SentinelConfig) Validate() error {
 	return nil
 }
 
-// Validate validates the message decision configuration
+// Validate validates the message decision configuration.
 func (md *MessageDecisionConfig) Validate() error {
 	if md.Result == "" {
 		return fmt.Errorf("result expression is required")
 	}
 
-	for name, expr := range md.Params {
-		if expr == "" {
-			return fmt.Errorf("param %q has empty expression", name)
+	seenNames := make(map[string]bool, len(md.Params))
+	for _, p := range md.Params {
+		if p.Name == "" {
+			return fmt.Errorf("param has empty name")
 		}
-	}
-
-	// Check for circular dependencies
-	if _, err := md.TopologicalSort(); err != nil {
-		return err
+		if p.Expr == "" {
+			return fmt.Errorf("param %q has empty expression", p.Name)
+		}
+		if seenNames[p.Name] {
+			return fmt.Errorf("param %q is defined more than once", p.Name)
+		}
+		seenNames[p.Name] = true
 	}
 
 	return nil
-}
-
-// TopologicalSort resolves param evaluation order based on inter-param dependencies.
-// Returns an ordered list of param names or an error if circular dependencies exist.
-func (md *MessageDecisionConfig) TopologicalSort() ([]string, error) {
-	// Build dependency graph: for each param, find which other params it references
-	deps := make(map[string][]string, len(md.Params))
-	paramNames := make(map[string]bool, len(md.Params))
-	for name := range md.Params {
-		paramNames[name] = true
-		deps[name] = nil
-	}
-
-	for name, expr := range md.Params {
-		for otherName := range md.Params {
-			if otherName != name && containsIdentifier(expr, otherName) {
-				deps[name] = append(deps[name], otherName)
-			}
-		}
-	}
-
-	// Kahn's algorithm for topological sort
-	inDegree := make(map[string]int, len(md.Params))
-	for name := range md.Params {
-		inDegree[name] = 0
-	}
-	for _, dependencies := range deps {
-		for _, dep := range dependencies {
-			inDegree[dep]++
-		}
-	}
-
-	// Wait — inDegree should count how many params depend ON each param,
-	// but we need the reverse: how many dependencies each param HAS.
-	// Actually for topological sort, we need: for each node, its in-degree
-	// is the number of edges pointing TO it. In our graph, an edge from A to B
-	// means "A depends on B" (B must be evaluated before A).
-	// So B's in-degree is the count of params that depend on B.
-	// Nodes with in-degree 0 have no dependents waiting — wrong.
-	// Actually, in topological sort, we want to process nodes with no DEPENDENCIES first.
-	// In our graph, edge A→B means "A depends on B", so A has out-degree to B.
-	// For Kahn's, we reverse: edge B→A means "B must come before A".
-	// In-degree of A = number of dependencies A has.
-
-	// Let me redo this correctly.
-	// deps[A] = [B, C] means A depends on B and C (B and C must be evaluated first)
-	// For Kahn's: in-degree of A = len(deps[A])
-	inDegree = make(map[string]int, len(md.Params))
-	for name := range md.Params {
-		inDegree[name] = len(deps[name])
-	}
-
-	var queue []string
-	for name, degree := range inDegree {
-		if degree == 0 {
-			queue = append(queue, name)
-		}
-	}
-
-	var sorted []string
-	for len(queue) > 0 {
-		node := queue[0]
-		queue = queue[1:]
-		sorted = append(sorted, node)
-
-		// For each param that depends on this node, decrease its in-degree
-		for other, dependencies := range deps {
-			for _, dep := range dependencies {
-				if dep == node {
-					inDegree[other]--
-					if inDegree[other] == 0 {
-						queue = append(queue, other)
-					}
-				}
-			}
-		}
-	}
-
-	if len(sorted) != len(md.Params) {
-		return nil, fmt.Errorf("circular dependency detected in params")
-	}
-
-	return sorted, nil
-}
-
-// containsIdentifier checks if an expression contains a reference to a param name.
-// Uses word boundary detection to avoid false positives (e.g., "is_reconciled" matching "is_reconciled_2").
-func containsIdentifier(expr, identifier string) bool {
-	idx := 0
-	for {
-		pos := strings.Index(expr[idx:], identifier)
-		if pos == -1 {
-			return false
-		}
-		absPos := idx + pos
-		endPos := absPos + len(identifier)
-
-		// Check word boundaries
-		validStart := absPos == 0 || !isIdentChar(expr[absPos-1])
-		validEnd := endPos >= len(expr) || !isIdentChar(expr[endPos])
-
-		if validStart && validEnd {
-			return true
-		}
-		idx = absPos + 1
-	}
-}
-
-// isIdentChar returns true if the byte is a valid identifier character (letter, digit, underscore)
-func isIdentChar(b byte) bool {
-	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9') || b == '_'
 }
 
 // validateMessageDataLeaves recursively checks that every leaf value in a

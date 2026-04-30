@@ -14,10 +14,9 @@ This comprehensive guide teaches operators how to deploy, configure, and operate
    - [When to Use Sentinel](#12-when-to-use-sentinel)
 2. [Core Concepts](#2-core-concepts)
    - [Decision Engine](#21-decision-engine)
-      - [Never-Processed Reconciliation](#211-never-processed-reconciliation)
-      - [State-Based Reconciliation](#212-state-based-reconciliation)
-      - [Time-Based Reconciliation (Max Age Intervals)](#213-time-based-reconciliation-max-age-intervals)
-      - [Complete Decision Flow](#214-complete-decision-flow)
+      - [How the Engine Works](#211-how-the-engine-works)
+      - [Default Configuration](#212-default-configuration)
+      - [Complete Decision Flow](#213-complete-decision-flow)
    - [Resource Filtering](#22-resource-filtering)
 3. [Configuration Reference](#3-configuration-reference)
    - [Configuration File Structure](#31-configuration-file-structure)
@@ -67,11 +66,12 @@ graph LR
     E -->|Update Status| B
 ```
 
-Sentinel publishes events to a message broker, which fans out messages to downstream adapters. It uses a **three-part decision strategy**:
+Sentinel publishes events to a message broker, which fans out messages to downstream adapters. It uses a **fully configurable CEL-based decision engine** (`message_decision`) that determines when to publish. The default configuration covers four triggers:
 
-- **Never-processed**: Publish immediately for new resources that have never been processed
-- **State-based**: Publish immediately when resource state indicates unprocessed spec changes
-- **Time-based**: Publish periodically based on max age intervals to ensure eventual consistency
+- **New resource**: Publish immediately for resources that have never been processed (generation 1, not reconciled)
+- **Generation mismatch**: Publish immediately when the resource spec has changed but not yet been fully processed
+- **Reconciled and stale**: Publish periodically for stable resources to ensure eventual consistency
+- **Not reconciled, debounced**: Publish more frequently for transitional resources, with a debounce to prevent event storms
 
 ### 1.2 When to Use Sentinel
 
@@ -89,110 +89,88 @@ Deploy Sentinel when you need:
 
 ### 2.1 Decision Engine
 
-Sentinel's decision engine evaluates resources during each poll cycle to determine when to publish events. It uses a **three-part decision strategy** that ensures both immediate response to changes and eventual consistency over time:
+Sentinel's decision engine is **fully CEL-based**: all publish/skip logic is expressed as named CEL parameters and a boolean result expression configured in `message_decision`. There is no hardcoded Go-level decision logic — the entire strategy is defined in configuration.
 
-1. **Never-Processed Reconciliation** — Immediate event publishing for new resources that have never been processed by any adapter
-2. **State-Based Reconciliation** — Immediate event publishing when resource state indicates unprocessed spec changes
-3. **Time-Based Reconciliation** — Periodic event publishing to handle drift and failures when state is in sync
+Each poll cycle, the engine:
+1. Evaluates named `params` in authored order, accumulating intermediate values
+2. Evaluates the `result` expression using all param values
+3. Publishes an event if `result` is `true`; otherwise skips
 
 **How Sentinel Reads Resource State:**
 
-When Sentinel polls the HyperFleet API, it retrieves cluster or nodepool resources with their current state.
+When Sentinel polls the HyperFleet API, it retrieves cluster or nodepool resources with their current state. Two CEL variables are always available during evaluation:
 
-1. **`resource.Generation`** — Retrieved from the API resource. The HyperFleet API increments this value every time the resource spec is updated.
-2. **`resource.status`** — Extracted from the API resource's `type=Reconciled` condition.
+- **`resource`** — the API resource as a map (`id`, `kind`, `href`, `generation`, `created_time`, `updated_time`, `labels`, `owner_references`, `metadata`)
+- **`now`** — the current evaluation timestamp (`timestamp` type)
 
-#### 2.1.1 Never-Processed Reconciliation
+The **`condition(name)`** CEL function looks up a status condition by type name (e.g., `condition("Ready")`). Each condition exposes: `status`, `observed_generation`, `last_updated_time`, `last_transition_time`, `reason`, `message`. If the condition is absent, all fields are zero values (empty strings, `0` for `observed_generation`), so CEL expressions can guard safely with `ref_time != ""`.
 
-Never-processed reconciliation is the **first and highest-priority check** that ensures new resources are published immediately on the first poll cycle after creation.
+#### 2.1.1 How the Engine Works
 
-**How It Works:**
+`message_decision` has two parts:
 
-Sentinel checks if `status.last_updated` is zero (meaning no adapter has ever updated the resource status):
+- **`params`** — a list of named CEL expressions evaluated in order. Each param can reference `resource`, `now`, `condition()`, and any previously defined param. Params are declared in dependency order: if `B` uses `A`, `A` must appear first.
+- **`result`** — a boolean CEL expression evaluated after all params, combining them into the final publish decision.
 
-- If zero → **Publish immediately** with reason `"never processed"`
-- If non-zero → Proceed to state-based check
+**Outcomes:**
 
-**Why This Matters:**
+| Result | `ShouldPublish` | Reason logged |
+|--------|-----------------|---------------|
+| `result` is `true` | `true` | `"message decision matched"` |
+| `result` is `false` | `false` | `"message decision result is false"` |
 
-- New clusters are published within one poll interval (~5s)
-- Ensures consistent handling of all new resources regardless of generation initialization
+If any param or the result expression fails to evaluate (type error, missing variable, etc.) the resource is skipped and the error is logged with the failing param name.
 
-#### 2.1.2 State-Based Reconciliation
+#### 2.1.2 Default Configuration
 
-State-based reconciliation is a **spec-change detection mechanism** where Sentinel immediately publishes events when resource state indicates the spec has changed but hasn't been fully processed yet.
+When `message_decision` is omitted from the config file, Sentinel uses the following default. It implements four triggers:
 
-**How It Works:**
+| Param | CEL Expression | Trigger |
+|-------|----------------|---------|
+| `ref_time` | `condition("Reconciled").last_updated_time` | Reference timestamp from Reconciled condition |
+| `is_reconciled` | `condition("Reconciled").status == "True"` | Resource reconciled status |
+| `has_ref_time` | `ref_time != ""` | Guard: Reconciled condition exists |
+| `is_new_resource` | `!is_reconciled && resource.generation == 1` | New resource: never been processed |
+| `generation_mismatch` | `resource.generation > condition("Reconciled").observed_generation` | Spec changed but not yet processed |
+| `reconciled_and_stale` | `is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("30m")` | Stable resource drifting past 30 min |
+| `not_reconciled_and_debounced` | `!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("10s")` | Transitional resource debounced past 10 s |
 
-Sentinel detects unprocessed spec changes by comparing the resource's `generation` field with the `ObservedGeneration` from the Reconciled condition:
+**Result:** `is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced`
 
-1. **Generation Counter**: Every resource has a `generation` field that increments when the spec changes
-2. **Reconciled Condition Aggregation**: The Reconciled condition (type=Reconciled) contains an `ObservedGeneration` field which is aggregated from individual adapter conditions
-3. **State Comparison**: Sentinel publishes an event when `generation` is greater than the `ObservedGeneration` field from the Reconciled condition
+**What each trigger covers:**
 
-**Note**: Sentinel uses the Reconciled condition's `ObservedGeneration` field as a proxy signal for spec changes. While the Reconciled condition can also be False for other reasons (e.g., adapter-reported infrastructure failures), the `ObservedGeneration` field specifically tracks spec processing, making this an effective spec-change detection mechanism.
+- **`is_new_resource`** — Catches resources with `generation == 1` that are not yet reconciled, acting as a proxy for "never been processed". Publishes within one poll interval of creation.
+- **`generation_mismatch`** — Catches spec changes immediately: the HyperFleet API increments `generation` on every spec update; adapters increment `observed_generation` on the Reconciled condition as they process it. A gap means unprocessed changes.
+- **`reconciled_and_stale`** — Ensures eventual consistency on stable resources by re-publishing periodically even when the spec is in sync, handling external drift and transient failures.
+- **`not_reconciled_and_debounced`** — Drives faster re-publishing for transitional resources, while the debounce prevents event storms.
 
-**Key Properties:**
+> **Customization:** Override any threshold by providing your own `message_decision` in the config file. See the dev example (`configs/dev-example.yaml`) which uses `2m`/`5s` instead of `30m`/`10s` for faster local iteration.
 
-- **Immediate Response**: No need to wait for max age interval when state indicates unprocessed changes
-- **Idempotent**: Adapters can safely process the same generation multiple times
-- **Race Prevention**: Ensures spec changes are never missed due to timing
-- **Condition-Based**: Uses Reconciled condition data as a reliable proxy for tracking spec processing status
-
-#### 2.1.3 Time-Based Reconciliation (Max Age Intervals)
-
-Time-based reconciliation ensures **eventual consistency** by publishing events periodically, even when specs haven't changed. This handles external state drift and transient failures.
-
-**How It Works:**
-
-Sentinel uses a configurable CEL-based decision engine (`message_decision`) that evaluates named parameters and a boolean result expression:
-
-| Default Check | CEL Expression                                                             | Rationale |
-|---------------|----------------------------------------------------------------------------|-----------|
-| **New resource** | `!is_reconciled && resource.generation == 1`                               | Always publish for never-processed resources |
-| **Generation mismatch** | `resource.generation > condition("Reconciled").observed_generation`        | Immediate reconciliation when spec changes |
-| **Reconciled and stale** | `is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("30m")`  | Lower frequency drift detection on stable resources |
-| **Not reconciled and debounced** | `!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("10s")` | Faster reconciliation for transitional states |
-
-**Decision Logic:**
-
-The `condition("Reconciled")` CEL function accesses the resource's status conditions. Named params are evaluated in dependency order (topological sort):
-
-1. Extract reference time: `ref_time = condition("Reconciled").last_updated_time`
-2. Determine reconciled status: `is_reconciled = condition("Reconciled").status == "True"`
-3. Guard against missing conditions: `has_ref_time = ref_time != ""`
-4. Evaluate checks: `is_new_resource`, `generation_mismatch`, `reconciled_and_stale`, `not_reconciled_and_debounced`
-5. Result: `is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced`
-
-If the result is `true` → **Publish event** (reason: "message decision matched")
-Otherwise → **Skip** (reason: "message decision result is false")
-
-#### 2.1.4 Complete Decision Flow
-
-The four reconciliation checks work together in priority order to determine when to publish events:
+#### 2.1.3 Complete Decision Flow
 
 ```mermaid
 graph TD
-    START[Poll Resource] --> CHECK1{is_new_resource?<br>gen==1 && !reconciled}
-    CHECK1 -->|Yes| PUB1[Publish: new resource]
-    CHECK1 -->|No| CHECK1B{generation_mismatch?<br>gen > observed_gen}
-    CHECK1B -->|Yes| PUB1B[Publish: spec changed]
-    CHECK1B -->|No| CHECK2{has_ref_time?}
-    CHECK2 -->|No| SKIP[Skip: no condition data]
-    CHECK2 -->|Yes| CHECK3{is_reconciled?}
-    CHECK3 -->|Yes| CHECK4{"now - ref_time > 30m?"}
-    CHECK3 -->|No| CHECK5{"now - ref_time > 10s?"}
-    CHECK4 -->|Yes| PUB2[Publish: reconciled and stale]
-    CHECK4 -->|No| SKIP2[Skip: within threshold]
-    CHECK5 -->|Yes| PUB3[Publish: not reconciled, debounced]
-    CHECK5 -->|No| SKIP2
+    START[Poll Resource] --> EVAL[Evaluate CEL params in order]
+    EVAL --> RESULT{result expression}
+    RESULT -->|true| PUB[Publish event<br/>reason: message decision matched]
+    RESULT -->|false| SKIP[Skip<br/>reason: message decision result is false]
+    RESULT -->|eval error| ERR[Skip<br/>reason: param/result evaluation failed]
 ```
+
+With the **default config**, the result expression is:
+`is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced`
+
+The params feed into it in this logical order:
+
+1. `ref_time`, `is_reconciled`, `has_ref_time` — extract condition state
+2. `is_new_resource`, `generation_mismatch` — immediate triggers (no time check needed)
+3. `reconciled_and_stale`, `not_reconciled_and_debounced` — time-based triggers (guarded by `has_ref_time`)
 
 **Key Takeaways:**
 
-- **Never-processed takes absolute priority** - New resources always publish immediately
-- **State changes override max age** - Spec changes don't wait for intervals
-- **Max age is the fallback** - Ensures eventual consistency when nothing else triggers
+- **All logic is configurable** — the engine itself has no hardcoded triggers
+- **Params are short-circuit safe** — `has_ref_time` guards time expressions against missing conditions
+- **Single outcome** — regardless of which param fired, the reason is always `"message decision matched"`
 
 > **Scalability note:** The CEL decision engine evaluates all resources matching the label selector in-memory each poll cycle. At large scale (thousands of resources), use `resource_selector` to shard resources across multiple Sentinel instances. A future `server_filters` config field is planned to allow server-side pre-filtering before CEL evaluation.
 
@@ -368,15 +346,15 @@ The `message_data` field defines the CloudEvents payload structure using **Commo
 1. Each key-value pair in `message_data` becomes a field in the CloudEvent `data` payload
 2. Values are CEL expressions evaluated with access to two variables:
    - `resource` - The HyperFleet resource object (cluster or nodepool)
-   - `reason` - The decision reason string (e.g., "max age exceeded", "generation changed")
+   - `reason` - The decision reason string (`"message decision matched"` when publishing)
 3. Nested maps create nested objects in the payload
 
 **Available CEL Variables:**
 
 | Variable | Type | Description | Example Fields |
 |----------|------|-------------|----------------|
-| `resource` | Resource | The HyperFleet resource | `id`, `kind`, `href`, `generation`, `status`, `labels`, `created_time` |
-| `reason` | string | Decision engine reason | `"generation changed"`, `"never processed"`, `"max age exceeded"` |
+| `resource` | Resource | The HyperFleet resource | `id`, `kind`, `href`, `generation`, `labels`, `created_time`, `updated_time`, `owner_references`, `metadata` |
+| `reason` | string | Decision engine reason | `"message decision matched"`, `"message decision result is false"` |
 
 **CEL Expression Syntax:**
 
@@ -675,7 +653,7 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
   ```
 
   - `count` - Number of resources fetched from the API matching the resource selector
-  - `published` - Number of events published (generation changed, never processed, or max age exceeded)
+  - `published` - Number of events published (`message_decision` result was `true`)
   - `skipped` - Number of resources skipped (no reconciliation needed)
 
 For detailed deployment guidance, see [docs/running-sentinel.md](running-sentinel.md)
@@ -704,7 +682,7 @@ For detailed deployment guidance, see [docs/running-sentinel.md](running-sentine
 | Symptom                                                                                                                      | Likely Cause | Solution                                                                                                                                                                                                                                                                                                                 |
 |------------------------------------------------------------------------------------------------------------------------------|--------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Events not published, resources not found** | Resource selector mismatch | Verify `resource_selector` matches resource labels. Empty selector watches ALL resources. Check logs: `kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel`                                                                                                                                             |
-| **Events not published, resources found but skipped**                                                                           | Decision result is false | Normal behavior. Events publish when the CEL decision expression evaluates to true (new resource, reconciled and stale >30m, or not reconciled and debounced >10s by default).                                                                                                                                                                    |
+| **Events not published, resources found but skipped**                                                                           | Decision result is false | Normal behavior (reason: `"message decision result is false"`). Events publish when the `message_decision` result expression evaluates to `true`. With the default config: new resource (`generation==1 && !reconciled`), generation mismatch, reconciled and stale >30m, or not reconciled and debounced >10s.                                          |
 | **API connection errors, DNS lookup fails**                                                                                  | Wrong service name or namespace | Verify endpoint format: `http://<service>.<namespace>.svc.cluster.local:8000`. Check API is running: `kubectl get pods -n hyperfleet-system -l app=hyperfleet-api`                                                                                                                                                       |
 | **API returns 401 Unauthorized**                                                                                             | Missing authentication | Add auth headers to `hyperfleet_api` config if API requires authentication.                                                                                                                                                                                                                                              |
 | **API returns 404 Not Found**                                                                                                | Wrong API version in path | Verify endpoint uses correct API version: `/api/v1/clusters` or `/api/hyperfleet/v1/clusters`                                                                                                                                                                                                                            |

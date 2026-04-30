@@ -28,8 +28,8 @@ func createTempConfigFile(t *testing.T, content string) string {
 // newTestMessageDecision returns a valid message decision config for testing
 func newTestMessageDecision() *MessageDecisionConfig {
 	return &MessageDecisionConfig{
-		Params: map[string]string{
-			"is_reconciled": `condition("Reconciled").status == "True"`,
+		Params: []Param{
+			{Name: "is_reconciled", Expr: `condition("Reconciled").status == "True"`},
 		},
 		Result: "!is_reconciled",
 	}
@@ -532,7 +532,7 @@ func TestValidate_EmptyResultExpression(t *testing.T) {
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 	cfg.MessageDecision = &MessageDecisionConfig{
-		Params: map[string]string{},
+		Params: []Param{},
 		Result: "",
 	}
 
@@ -548,8 +548,8 @@ func TestValidate_EmptyParamExpression(t *testing.T) {
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 	cfg.MessageDecision = &MessageDecisionConfig{
-		Params: map[string]string{
-			"is_reconciled": "",
+		Params: []Param{
+			{Name: "is_reconciled", Expr: ""},
 		},
 		Result: "is_reconciled",
 	}
@@ -560,144 +560,86 @@ func TestValidate_EmptyParamExpression(t *testing.T) {
 	}
 }
 
-func TestValidate_CircularDependency(t *testing.T) {
+func TestValidate_EmptyParamName(t *testing.T) {
 	cfg := NewSentinelConfig()
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 	cfg.MessageDecision = &MessageDecisionConfig{
-		Params: map[string]string{
-			"a": "b",
-			"b": "a",
+		Params: []Param{
+			{Name: "", Expr: `condition("Reconciled").status == "True"`},
 		},
-		Result: "a",
+		Result: "true",
 	}
 
 	err := cfg.Validate()
 	if err == nil {
-		t.Error("Expected error for circular dependency, got nil")
+		t.Error("Expected error for empty param name, got nil")
 	}
-	if !strings.Contains(err.Error(), "circular dependency") {
-		t.Errorf("Expected circular dependency error, got: %v", err)
+}
+
+func TestValidate_DuplicateParamName(t *testing.T) {
+	cfg := NewSentinelConfig()
+	cfg.ResourceType = testResourceType
+	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
+	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+	cfg.MessageDecision = &MessageDecisionConfig{
+		Params: []Param{
+			{Name: "is_reconciled", Expr: `condition("Reconciled").status == "True"`},
+			{Name: "is_reconciled", Expr: `condition("Reconciled").status == "False"`},
+		},
+		Result: "is_reconciled",
+	}
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Error("Expected error for duplicate param name, got nil")
+	}
+	if !strings.Contains(err.Error(), "defined more than once") {
+		t.Errorf("Expected duplicate param error, got: %v", err)
 	}
 }
 
 // ============================================================================
-// Topological Sort Tests
+// Param Order Validation Tests
 // ============================================================================
 
-func TestTopologicalSort_NoDependencies(t *testing.T) {
+func TestValidate_ParamsNoDependencies(t *testing.T) {
 	md := &MessageDecisionConfig{
-		Params: map[string]string{
-			"a": `condition("Reconciled").status`,
-			"b": `condition("Available").status`,
+		Params: []Param{
+			{Name: "a", Expr: `condition("Reconciled").status`},
+			{Name: "b", Expr: `condition("Available").status`},
 		},
 		Result: "a == b",
 	}
 
-	order, err := md.TopologicalSort()
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-	if len(order) != 2 {
-		t.Fatalf("Expected 2 params, got %d", len(order))
+	if err := md.Validate(); err != nil {
+		t.Fatalf("Expected no error for independent params, got: %v", err)
 	}
 }
 
-func TestTopologicalSort_LinearDependency(t *testing.T) {
+func TestValidate_ParamsValidOrder(t *testing.T) {
 	md := &MessageDecisionConfig{
-		Params: map[string]string{
-			"is_reconciled":  `condition("Reconciled").status == "True"`,
-			"should_publish": `!is_reconciled`,
+		Params: []Param{
+			{Name: "is_reconciled", Expr: `condition("Reconciled").status == "True"`},
+			{Name: "should_publish", Expr: `!is_reconciled`},
 		},
 		Result: "should_publish",
 	}
 
-	order, err := md.TopologicalSort()
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-	if len(order) != 2 {
-		t.Fatalf("Expected 2 params, got %d", len(order))
-	}
-
-	// is_reconciled must come before should_publish
-	isReconciledIdx := -1
-	shouldPublishIdx := -1
-	for i, name := range order {
-		if name == "is_reconciled" {
-			isReconciledIdx = i
-		}
-		if name == "should_publish" {
-			shouldPublishIdx = i
-		}
-	}
-	if isReconciledIdx >= shouldPublishIdx {
-		t.Errorf("Expected is_reconciled (%d) before should_publish (%d)", isReconciledIdx, shouldPublishIdx)
+	if err := md.Validate(); err != nil {
+		t.Fatalf("Expected no error for params in dependency order, got: %v", err)
 	}
 }
 
-func TestTopologicalSort_CircularDependency(t *testing.T) {
+func TestValidate_ParamsEmpty(t *testing.T) {
 	md := &MessageDecisionConfig{
-		Params: map[string]string{
-			"a": "b && true",
-			"b": "c || false",
-			"c": "a",
-		},
-		Result: "a",
-	}
-
-	_, err := md.TopologicalSort()
-	if err == nil {
-		t.Error("Expected error for circular dependency, got nil")
-	}
-}
-
-func TestTopologicalSort_EmptyParams(t *testing.T) {
-	md := &MessageDecisionConfig{
-		Params: map[string]string{},
+		Params: []Param{},
 		Result: "true",
 	}
 
-	order, err := md.TopologicalSort()
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-	if len(order) != 0 {
-		t.Errorf("Expected 0 params, got %d", len(order))
-	}
-}
-
-// ============================================================================
-// containsIdentifier Tests
-// ============================================================================
-
-func TestContainsIdentifier(t *testing.T) {
-	tests := []struct {
-		name       string
-		expr       string
-		identifier string
-		want       bool
-	}{
-		{"exact match", "is_reconciled", "is_reconciled", true},
-		{"in expression", "!is_reconciled && x", "is_reconciled", true},
-		{"prefix match should fail", "is_reconciled_2", "is_reconciled", false},
-		{"suffix match should fail", "not_is_reconciled", "is_reconciled", false},
-		{"substring in middle", "foo_is_reconciled_bar", "is_reconciled", false},
-		{"not present", "something_else", "is_reconciled", false},
-		{"at start with operator", "is_reconciled || other", "is_reconciled", true},
-		{"at end with operator", "other && is_reconciled", "is_reconciled", true},
-		{"in parentheses", "(is_reconciled)", "is_reconciled", true},
-		{"with negation", "!is_reconciled", "is_reconciled", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := containsIdentifier(tt.expr, tt.identifier)
-			if got != tt.want {
-				t.Errorf("containsIdentifier(%q, %q) = %v, want %v", tt.expr, tt.identifier, got, tt.want)
-			}
-		})
+	if err := md.Validate(); err != nil {
+		t.Fatalf("Expected no error for empty params, got: %v", err)
 	}
 }
 

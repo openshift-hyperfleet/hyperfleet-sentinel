@@ -49,8 +49,9 @@ data:
     message_decision:
       {{- if .Values.config.messageDecision.params }}
       params:
-        {{- range $name, $expr := .Values.config.messageDecision.params }}
-        {{ $name }}: {{ $expr | quote }}
+        {{- range .Values.config.messageDecision.params }}
+        - name: {{ .name }}
+          expr: {{ .expr | quote }}
         {{- end }}
       {{- end }}
       result: {{ .Values.config.messageDecision.result | quote }}

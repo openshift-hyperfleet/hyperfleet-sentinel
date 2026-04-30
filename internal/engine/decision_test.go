@@ -106,8 +106,8 @@ func TestNewDecisionEngine(t *testing.T) {
 
 	t.Run("invalid CEL expression", func(t *testing.T) {
 		cfg := &config.MessageDecisionConfig{
-			Params: map[string]string{
-				"bad": "this is not valid CEL !!!",
+			Params: []config.Param{
+				{Name: "bad", Expr: "this is not valid CEL !!!"},
 			},
 			Result: "bad",
 		}
@@ -119,7 +119,7 @@ func TestNewDecisionEngine(t *testing.T) {
 
 	t.Run("invalid result expression", func(t *testing.T) {
 		cfg := &config.MessageDecisionConfig{
-			Params: map[string]string{},
+			Params: []config.Param{},
 			Result: "not valid !!!",
 		}
 		_, err := NewDecisionEngine(cfg)
@@ -130,7 +130,7 @@ func TestNewDecisionEngine(t *testing.T) {
 
 	t.Run("simple boolean result", func(t *testing.T) {
 		cfg := &config.MessageDecisionConfig{
-			Params: map[string]string{},
+			Params: []config.Param{},
 			Result: "true",
 		}
 		engine, err := NewDecisionEngine(cfg)
@@ -272,7 +272,7 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 
 	t.Run("always true", func(t *testing.T) {
 		cfg := &config.MessageDecisionConfig{
-			Params: map[string]string{},
+			Params: []config.Param{},
 			Result: "true",
 		}
 		engine, err := NewDecisionEngine(cfg)
@@ -290,7 +290,7 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 
 	t.Run("always false", func(t *testing.T) {
 		cfg := &config.MessageDecisionConfig{
-			Params: map[string]string{},
+			Params: []config.Param{},
 			Result: "false",
 		}
 		engine, err := NewDecisionEngine(cfg)
@@ -308,10 +308,10 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 
 	t.Run("param chain with dependencies", func(t *testing.T) {
 		cfg := &config.MessageDecisionConfig{
-			Params: map[string]string{
-				"gen":        "resource.generation",
-				"is_first":   "gen == 1",
-				"should_pub": "is_first",
+			Params: []config.Param{
+				{Name: "gen", Expr: "resource.generation"},
+				{Name: "is_first", Expr: "gen == 1"},
+				{Name: "should_pub", Expr: "is_first"},
 			},
 			Result: "should_pub",
 		}
@@ -337,8 +337,8 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 
 	t.Run("condition function with custom condition name", func(t *testing.T) {
 		cfg := &config.MessageDecisionConfig{
-			Params: map[string]string{
-				"is_available": `condition("Available").status == "True"`,
+			Params: []config.Param{
+				{Name: "is_available", Expr: `condition("Available").status == "True"`},
 			},
 			Result: "is_available",
 		}
