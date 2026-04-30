@@ -32,12 +32,12 @@ func createMockCluster(
 	id string,
 	generation int,
 	observedGeneration int,
-	ready bool,
+	reconciled bool,
 	lastUpdated time.Time,
 ) map[string]interface{} {
-	readyStatus := "False"
-	if ready {
-		readyStatus = "True"
+	reconciledStatus := "False"
+	if reconciled {
+		reconciledStatus = "True"
 	}
 
 	return map[string]interface{}{
@@ -54,8 +54,8 @@ func createMockCluster(
 		"status": map[string]interface{}{
 			"conditions": []map[string]interface{}{
 				{
-					"type":                 "Ready",
-					"status":               readyStatus,
+					"type":                 "Reconciled",
+					"status":               reconciledStatus,
 					"created_time":         "2025-01-01T09:00:00Z",
 					"last_transition_time": "2025-01-01T10:00:00Z",
 					"last_updated_time":    lastUpdated.Format(time.RFC3339),
@@ -156,7 +156,7 @@ func TestTrigger_Success(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 
-	// Ready cluster with stale last_updated (> 30m) should trigger publish
+	// Reconciled cluster with stale last_updated (> 30m) should trigger publish
 	server := mockServerForResources(t, []map[string]interface{}{
 		createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)),
 	})
@@ -206,7 +206,7 @@ func TestTrigger_Success(t *testing.T) {
 func TestTrigger_NoEventsPublished(t *testing.T) {
 	ctx := context.Background()
 
-	// Not-ready for only 1 second — within debounce (10s), should be skipped.
+	// Not-reconciled for only 1 second — within debounce (10s), should be skipped.
 	// Generation > 1 so is_new_resource won't fire.
 	server := mockServerForResources(t, []map[string]interface{}{
 		createMockCluster("cluster-1", 2, 2, false, time.Now().Add(-1*time.Second)),
@@ -315,13 +315,13 @@ func TestTrigger_MixedResources(t *testing.T) {
 	now := time.Now()
 
 	server := mockServerForResources(t, []map[string]interface{}{
-		// Should publish (not ready, debounce exceeded: 1min > 10s, generation > 1)
+		// Should publish (not reconciled, debounce exceeded: 1min > 10s, generation > 1)
 		createMockCluster("cluster-3", 3, 3, false, now.Add(-1*time.Minute)),
 		// Should be skipped (empty ID)
 		createMockCluster("", 1, 1, false, now.Add(-15*time.Second)),
-		// Should publish (ready, stale: 31min > 30min)
+		// Should publish (reconciled, stale: 31min > 30min)
 		createMockCluster("cluster-1", 2, 2, true, now.Add(-31*time.Minute)),
-		// Should not publish (ready, recent: 5min < 30min, no generation mismatch)
+		// Should not publish (reconciled, recent: 5min < 30min, no generation mismatch)
 		createMockCluster("cluster-4", 5, 5, true, now.Add(-5*time.Minute)),
 	})
 	defer server.Close()
@@ -346,9 +346,9 @@ func TestTrigger_MixedResources(t *testing.T) {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	// cluster-3: not ready + debounced → publish
-	// cluster-1: ready + stale → publish
-	// cluster-4: ready + recent, not new → skip
+	// cluster-3: not reconciled + debounced → publish
+	// cluster-1: reconciled + stale → publish
+	// cluster-4: reconciled + recent, not new → skip
 	if len(mockPublisher.publishedEvents) != 2 {
 		t.Errorf("Expected 2 published events, got %d", len(mockPublisher.publishedEvents))
 	}

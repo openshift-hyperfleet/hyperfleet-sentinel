@@ -16,8 +16,8 @@ const (
 )
 
 // newDefaultDecisionConfig returns the default message decision config
-// matching the sentinel architecture: ref_time, is_ready, is_new_resource,
-// ready_and_stale, not_ready_and_debounced.
+// matching the sentinel architecture: ref_time, is_reconciled, is_new_resource,
+// reconciled_and_stale, not_reconciled_and_debounced.
 func newDefaultDecisionConfig() *config.MessageDecisionConfig {
 	return config.DefaultMessageDecision()
 }
@@ -33,7 +33,7 @@ func newTestDecisionEngine(t *testing.T) *DecisionEngine {
 	return engine
 }
 
-// newResourceWithCondition creates a test resource with a single "Ready" condition.
+// newResourceWithCondition creates a test resource with a single "Reconciled" condition.
 func newResourceWithCondition(status string, lastUpdated time.Time, generation int32) *client.Resource {
 	return &client.Resource{
 		ID:          testResourceID,
@@ -43,7 +43,7 @@ func newResourceWithCondition(status string, lastUpdated time.Time, generation i
 		Status: client.ResourceStatus{
 			Conditions: []client.Condition{
 				{
-					Type:               "Ready",
+					Type:               "Reconciled",
 					Status:             status,
 					LastUpdatedTime:    lastUpdated,
 					ObservedGeneration: generation,
@@ -65,7 +65,7 @@ func newResourceWithGenerationMismatch(
 		Status: client.ResourceStatus{
 			Conditions: []client.Condition{
 				{
-					Type:               "Ready",
+					Type:               "Reconciled",
 					Status:             status,
 					LastUpdatedTime:    lastUpdated,
 					ObservedGeneration: observedGeneration,
@@ -155,56 +155,56 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 		wantShouldPublish bool
 	}{
 		{
-			name:              "ready and stale - should publish",
+			name:              "reconciled and stale - should publish",
 			resource:          newResourceWithCondition("True", now.Add(-31*time.Minute), 2),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
-			name:              "ready and recent - should not publish",
+			name:              "reconciled and recent - should not publish",
 			resource:          newResourceWithCondition("True", now.Add(-5*time.Minute), 2),
 			now:               now,
 			wantShouldPublish: false,
 			wantReason:        "message decision result is false",
 		},
 		{
-			name:              "not ready and debounced - should publish",
+			name:              "not reconciled and debounced - should publish",
 			resource:          newResourceWithCondition("False", now.Add(-11*time.Second), 2),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
-			name:              "not ready and too recent - should not publish",
+			name:              "not reconciled and too recent - should not publish",
 			resource:          newResourceWithCondition("False", now.Add(-3*time.Second), 2),
 			now:               now,
 			wantShouldPublish: false,
 			wantReason:        "message decision result is false",
 		},
 		{
-			name:              "new resource (generation 1, not ready) - should publish",
+			name:              "new resource (generation 1, not reconciled) - should publish",
 			resource:          newResourceWithCondition("False", now, 1),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
-			name:              "generation mismatch (ready, recent) - should publish immediately",
+			name:              "generation mismatch (reconciled, recent) - should publish immediately",
 			resource:          newResourceWithGenerationMismatch("True", now.Add(-1*time.Minute), 3, 2),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
-			name:              "generation mismatch (not ready, recent) - should publish immediately",
+			name:              "generation mismatch (not reconciled, recent) - should publish immediately",
 			resource:          newResourceWithGenerationMismatch("False", now.Add(-1*time.Second), 5, 4),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
-			name:              "no generation mismatch (ready, recent) - should not publish",
+			name:              "no generation mismatch (reconciled, recent) - should not publish",
 			resource:          newResourceWithGenerationMismatch("True", now.Add(-1*time.Minute), 2, 2),
 			now:               now,
 			wantShouldPublish: false,
@@ -244,9 +244,9 @@ func TestDecisionEngine_Evaluate_MissingCondition(t *testing.T) {
 	now := time.Now()
 	engine := newTestDecisionEngine(t)
 
-	// Resource with no conditions at all - condition("Ready") returns zero-value.
+	// Resource with no conditions at all - condition("Reconciled") returns zero-value.
 	// Zero-value: status="" (not "True"), last_updated_time is zero time (very old).
-	// is_ready = false, is_new_resource depends on generation.
+	// is_reconciled = false, is_new_resource depends on generation.
 	t.Run("no conditions generation 1 - new resource publishes", func(t *testing.T) {
 		resource := newResourceNoConditions(1)
 		decision := engine.Evaluate(resource, now)
@@ -370,7 +370,7 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 			Generation: 1,
 			Status: client.ResourceStatus{
 				Conditions: []client.Condition{
-					{Type: "Ready", Status: "True", LastUpdatedTime: now},
+					{Type: "Reconciled", Status: "True", LastUpdatedTime: now},
 				},
 			},
 		}
@@ -399,11 +399,11 @@ func TestDecisionEngine_Evaluate_ConsistentBehavior(t *testing.T) {
 	}
 }
 
-func TestDecisionEngine_Evaluate_ReadyBoundary(t *testing.T) {
+func TestDecisionEngine_Evaluate_ReconciledBoundary(t *testing.T) {
 	now := time.Now()
 	engine := newTestDecisionEngine(t)
 
-	// Default ready_and_stale threshold is 30m (strictly greater than)
+	// Default reconciled_and_stale threshold is 30m (strictly greater than)
 	tests := []struct {
 		name              string
 		lastUpdated       time.Duration
@@ -427,11 +427,11 @@ func TestDecisionEngine_Evaluate_ReadyBoundary(t *testing.T) {
 	}
 }
 
-func TestDecisionEngine_Evaluate_NotReadyBoundary(t *testing.T) {
+func TestDecisionEngine_Evaluate_NotReconciledBoundary(t *testing.T) {
 	now := time.Now()
 	engine := newTestDecisionEngine(t)
 
-	// Default not_ready_and_debounced threshold is 10s (strictly greater than)
+	// Default not_reconciled_and_debounced threshold is 10s (strictly greater than)
 	tests := []struct {
 		name              string
 		lastUpdated       time.Duration
@@ -459,7 +459,7 @@ func TestBuildConditionsLookup(t *testing.T) {
 	now := time.Now()
 	conditions := []client.Condition{
 		{
-			Type:               "Ready",
+			Type:               "Reconciled",
 			Status:             "True",
 			LastUpdatedTime:    now,
 			LastTransitionTime: now.Add(-1 * time.Hour),
@@ -480,15 +480,15 @@ func TestBuildConditionsLookup(t *testing.T) {
 		t.Fatalf("expected 2 entries, got %d", len(lookup))
 	}
 
-	ready, ok := lookup["Ready"]
+	reconciled, ok := lookup["Reconciled"]
 	if !ok {
-		t.Fatal("missing Ready condition")
+		t.Fatal("missing Reconciled condition")
 	}
-	if ready["status"] != "True" {
-		t.Errorf("Ready status = %v, want True", ready["status"])
+	if reconciled["status"] != "True" {
+		t.Errorf("Reconciled status = %v, want True", reconciled["status"])
 	}
-	if ready["observed_generation"] != int64(3) {
-		t.Errorf("Ready observed_generation = %v, want 3", ready["observed_generation"])
+	if reconciled["observed_generation"] != int64(3) {
+		t.Errorf("Reconciled observed_generation = %v, want 3", reconciled["observed_generation"])
 	}
 
 	avail, ok := lookup["Available"]

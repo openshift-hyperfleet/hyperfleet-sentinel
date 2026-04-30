@@ -33,7 +33,7 @@ func createMockCluster(id string) map[string]interface{} {
 		"status": map[string]interface{}{
 			"conditions": []map[string]interface{}{
 				{
-					"type":                 "Ready",
+					"type":                 "Reconciled",
 					"status":               "True",
 					"created_time":         "2025-01-01T09:00:00Z",
 					"last_transition_time": "2025-01-01T10:00:00Z",
@@ -110,7 +110,7 @@ func TestFetchResources_Success(t *testing.T) {
 		t.Fatal("Expected at least one condition")
 	}
 	if resources[0].Status.Conditions[0].Status != "True" {
-		t.Errorf("Expected Ready condition status 'True', got %s", resources[0].Status.Conditions[0].Status)
+		t.Errorf("Expected Reconciled condition status 'True', got %s", resources[0].Status.Conditions[0].Status)
 	}
 }
 
@@ -437,7 +437,7 @@ func TestFetchResources_NilStatus(t *testing.T) {
 		t.Fatal("Expected at least one condition")
 	}
 	if resources[0].Status.Conditions[0].Status != "True" {
-		t.Errorf("Expected Ready condition status 'True', got %s", resources[0].Status.Conditions[0].Status)
+		t.Errorf("Expected Reconciled condition status 'True', got %s", resources[0].Status.Conditions[0].Status)
 	}
 }
 
@@ -579,7 +579,7 @@ func TestFetchResources_NodePools(t *testing.T) {
 					"status": map[string]interface{}{
 						"conditions": []map[string]interface{}{
 							{
-								"type":                 "Ready",
+								"type":                 "Reconciled",
 								"status":               "True",
 								"created_time":         "2025-01-01T09:00:00Z",
 								"last_transition_time": "2025-01-01T10:00:00Z",
@@ -791,7 +791,7 @@ func TestVerifyConnectivity_NonOKStatus(t *testing.T) {
 
 // TestBuildSearchString tests combining label selectors and additional filters
 func TestBuildSearchString(t *testing.T) {
-	staleTimeFilter := "status.conditions.Ready.last_updated_time<='2025-01-01T00:00:00Z'"
+	staleTimeFilter := "status.conditions.Reconciled.last_updated_time<='2025-01-01T00:00:00Z'"
 	tests := []struct {
 		labelSelector     map[string]string
 		name              string
@@ -807,26 +807,26 @@ func TestBuildSearchString(t *testing.T) {
 		{
 			name:              "filter only",
 			labelSelector:     nil,
-			additionalFilters: []string{"status.conditions.Ready='False'"},
-			want:              "status.conditions.Ready='False'",
+			additionalFilters: []string{"status.conditions.Reconciled='False'"},
+			want:              "status.conditions.Reconciled='False'",
 		},
 		{
 			name:          "both labels and filter",
 			labelSelector: map[string]string{"shard": "1"},
 			additionalFilters: []string{
-				"status.conditions.Ready='False'",
+				"status.conditions.Reconciled='False'",
 			},
-			want: "labels.shard='1' and status.conditions.Ready='False'",
+			want: "labels.shard='1' and status.conditions.Reconciled='False'",
 		},
 		{
 			name:          "multiple filters",
 			labelSelector: map[string]string{"shard": "1"},
 			additionalFilters: []string{
-				"status.conditions.Ready='True'",
+				"status.conditions.Reconciled='True'",
 				staleTimeFilter,
 			},
 			want: "labels.shard='1' and " +
-				"status.conditions.Ready='True' and " +
+				"status.conditions.Reconciled='True' and " +
 				staleTimeFilter,
 		},
 		{
@@ -838,8 +838,8 @@ func TestBuildSearchString(t *testing.T) {
 		{
 			name:              "empty string filter ignored",
 			labelSelector:     nil,
-			additionalFilters: []string{"", "status.conditions.Ready='False'", ""},
-			want:              "status.conditions.Ready='False'",
+			additionalFilters: []string{"", "status.conditions.Reconciled='False'", ""},
+			want:              "status.conditions.Reconciled='False'",
 		},
 	}
 
@@ -1065,13 +1065,13 @@ func TestFetchResources_WithAdditionalFilters(t *testing.T) {
 
 	_, err := client.FetchResources(
 		context.Background(), ResourceTypeClusters, labelSelector,
-		"status.conditions.Ready='False'",
+		"status.conditions.Reconciled='False'",
 	)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	expectedSearch := "labels.shard='1' and status.conditions.Ready='False'"
+	expectedSearch := "labels.shard='1' and status.conditions.Reconciled='False'"
 	if receivedSearchParam != expectedSearch {
 		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
 	}
@@ -1102,13 +1102,13 @@ func TestFetchResources_WithConditionFilterOnly(t *testing.T) {
 
 	_, err := client.FetchResources(
 		context.Background(), ResourceTypeClusters, nil,
-		"status.conditions.Ready='True'",
+		"status.conditions.Reconciled='True'",
 	)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	expectedSearch := "status.conditions.Ready='True'"
+	expectedSearch := "status.conditions.Reconciled='True'"
 	if receivedSearchParam != expectedSearch {
 		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
 	}

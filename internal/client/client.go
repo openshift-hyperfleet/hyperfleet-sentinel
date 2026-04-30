@@ -127,7 +127,7 @@ type Condition struct {
 //   - Only resources with valid status are returned
 //
 // The additionalFilters parameter accepts optional TSL condition expressions
-// (e.g., "status.conditions.Ready='False'") that are combined with label
+// (e.g., "status.conditions.Reconciled='False'") that are combined with label
 // selectors using "and" to form the final search query.
 //
 // Returns a slice of resources and an error if the fetch operation fails.
