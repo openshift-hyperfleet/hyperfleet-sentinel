@@ -608,7 +608,7 @@ func TestValidate_ParamsNoDependencies(t *testing.T) {
 	md := &MessageDecisionConfig{
 		Params: []Param{
 			{Name: "a", Expr: `condition("Reconciled").status`},
-			{Name: "b", Expr: `condition("Available").status`},
+			{Name: "b", Expr: `condition("LastKnownReconciled").status`},
 		},
 		Result: "a == b",
 	}

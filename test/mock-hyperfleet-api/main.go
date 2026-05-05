@@ -269,8 +269,8 @@ func buildConditions(generation int32) []map[string]any {
 	conditions := []map[string]any{
 		makeCondition("Reconciled", "True", "AllAdaptersReconciled",
 			"All adapters reported Reconciled True for the current generation"),
-		makeCondition("Available", "True", "AllAdaptersAvailable",
-			"All adapters reported Available True for the same generation"),
+		makeCondition("LastKnownReconciled", "True", "AllAdaptersLastKnownReconciled",
+			"All required adapters were reconciled at a common observed generation"),
 	}
 
 	for _, adapter := range adapterNames {
