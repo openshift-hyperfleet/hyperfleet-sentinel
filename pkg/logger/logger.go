@@ -142,7 +142,7 @@ func ParseLogLevel(level string) (LogLevel, error) {
 	case "error":
 		return LevelError, nil
 	default:
-		return LevelInfo, fmt.Errorf("unknown log level: %s (valid: debug, info, warn, error)", level)
+		return 0, fmt.Errorf("unknown log level: %s (valid: debug, info, warn, error)", level)
 	}
 }
 
@@ -154,7 +154,7 @@ func ParseLogFormat(format string) (LogFormat, error) {
 	case "json":
 		return FormatJSON, nil
 	default:
-		return FormatJSON, fmt.Errorf("unknown log format: %s (valid: text, json)", format)
+		return 0, fmt.Errorf("unknown log format: %s (valid: text, json)", format)
 	}
 }
 
