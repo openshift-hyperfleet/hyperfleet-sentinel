@@ -36,9 +36,9 @@ func TestParseLogLevel(t *testing.T) {
 		{"error lowercase", "error", LevelError, false},
 		{"error uppercase", "ERROR", LevelError, false},
 		{"with whitespace", "  info  ", LevelInfo, false},
-		{"invalid level", "invalid", LevelInfo, true},
-		{"empty string", "", LevelInfo, true},
-		{"numeric", "1", LevelInfo, true},
+		{"invalid level", "invalid", 0, true},
+		{"empty string", "", 0, true},
+		{"numeric", "1", 0, true},
 	}
 
 	for _, tt := range tests {
@@ -52,9 +52,9 @@ func TestParseLogLevel(t *testing.T) {
 				if err != nil {
 					t.Errorf("unexpected error for input %q: %v", tt.input, err)
 				}
-				if level != tt.expected {
-					t.Errorf("expected %v, got %v", tt.expected, level)
-				}
+			}
+			if level != tt.expected {
+				t.Errorf("expected %v, got %v", tt.expected, level)
 			}
 		})
 	}
@@ -74,8 +74,8 @@ func TestParseLogFormat(t *testing.T) {
 		{"json uppercase", "JSON", FormatJSON, false},
 		{"json mixed case", "Json", FormatJSON, false},
 		{"with whitespace", "  json  ", FormatJSON, false},
-		{"invalid format", "xml", FormatJSON, true},
-		{"empty string", "", FormatJSON, true},
+		{"invalid format", "xml", 0, true},
+		{"empty string", "", 0, true},
 	}
 
 	for _, tt := range tests {
