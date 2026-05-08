@@ -338,9 +338,9 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 	t.Run("condition function with custom condition name", func(t *testing.T) {
 		cfg := &config.MessageDecisionConfig{
 			Params: []config.Param{
-				{Name: "is_available", Expr: `condition("Available").status == "True"`},
+				{Name: "is_last_known_reconciled", Expr: `condition("LastKnownReconciled").status == "True"`},
 			},
-			Result: "is_available",
+			Result: "is_last_known_reconciled",
 		}
 		engine, err := NewDecisionEngine(cfg)
 		if err != nil {
@@ -353,17 +353,17 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 			Generation: 1,
 			Status: client.ResourceStatus{
 				Conditions: []client.Condition{
-					{Type: "Available", Status: "True", LastUpdatedTime: now},
+					{Type: "LastKnownReconciled", Status: "True", LastUpdatedTime: now},
 				},
 			},
 		}
 
 		decision := engine.Evaluate(resource, now)
 		if !decision.ShouldPublish {
-			t.Error("expected ShouldPublish=true for Available=True condition")
+			t.Error("expected ShouldPublish=true for LastKnownReconciled=True condition")
 		}
 
-		// Missing Available condition → zero-value → status="" → false
+		// Missing LastKnownReconciled condition → zero-value → status="" → false
 		resource2 := &client.Resource{
 			ID:         testResourceID,
 			Kind:       testResourceKind,
@@ -377,7 +377,7 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 
 		decision2 := engine.Evaluate(resource2, now)
 		if decision2.ShouldPublish {
-			t.Error("expected ShouldPublish=false when Available condition is missing")
+			t.Error("expected ShouldPublish=false when LastKnownReconciled condition is missing")
 		}
 	})
 }
@@ -466,7 +466,7 @@ func TestBuildConditionsLookup(t *testing.T) {
 			ObservedGeneration: 3,
 		},
 		{
-			Type:               "Available",
+			Type:               "LastKnownReconciled",
 			Status:             "False",
 			LastUpdatedTime:    now.Add(-5 * time.Minute),
 			LastTransitionTime: now.Add(-10 * time.Minute),
@@ -491,12 +491,12 @@ func TestBuildConditionsLookup(t *testing.T) {
 		t.Errorf("Reconciled observed_generation = %v, want 3", reconciled["observed_generation"])
 	}
 
-	avail, ok := lookup["Available"]
+	lkr, ok := lookup["LastKnownReconciled"]
 	if !ok {
-		t.Fatal("missing Available condition")
+		t.Fatal("missing LastKnownReconciled condition")
 	}
-	if avail["status"] != "False" {
-		t.Errorf("Available status = %v, want False", avail["status"])
+	if lkr["status"] != "False" {
+		t.Errorf("LastKnownReconciled status = %v, want False", lkr["status"])
 	}
 }
 

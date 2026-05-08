@@ -41,7 +41,7 @@ func createMockCluster(id string) map[string]interface{} {
 					"observed_generation":  5,
 				},
 				{
-					"type":                 "Available",
+					"type":                 "LastKnownReconciled",
 					"status":               "True",
 					"created_time":         "2025-01-01T09:00:00Z",
 					"last_transition_time": "2025-01-01T10:00:00Z",
@@ -587,7 +587,7 @@ func TestFetchResources_NodePools(t *testing.T) {
 								"observed_generation":  3,
 							},
 							{
-								"type":                 "Available",
+								"type":                 "LastKnownReconciled",
 								"status":               "True",
 								"created_time":         "2025-01-01T09:00:00Z",
 								"last_transition_time": "2025-01-01T10:00:00Z",

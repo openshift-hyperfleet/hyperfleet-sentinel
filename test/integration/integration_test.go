@@ -86,7 +86,7 @@ func createMockClusterWithLabels(id string, generation int, observedGeneration i
 			"conditions": []map[string]interface{}{
 				reconciledCondition,
 				{
-					"type":                 "Available",
+					"type":                 "LastKnownReconciled",
 					"status":               reconciledStatus,
 					"created_time":         "2025-01-01T09:00:00Z",
 					"last_transition_time": "2025-01-01T10:00:00Z",
