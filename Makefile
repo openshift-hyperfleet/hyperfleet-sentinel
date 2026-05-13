@@ -5,6 +5,9 @@ include .bingo/Variables.mk
 GO ?= go
 GOFMT ?= gofmt
 
+# Schema variant for OpenAPI generation (core, gcp)
+VARIANT ?= core
+
 # Binary output directory and name
 BIN_DIR := bin
 BINARY_NAME := $(BIN_DIR)/sentinel
@@ -47,10 +50,11 @@ help: ## Display this help
 ##@ Code Generation
 
 .PHONY: generate
-generate: $(OAPI_CODEGEN) ## Generate OpenAPI types using oapi-codegen
+generate: $(OAPI_CODEGEN) download ## Generate OpenAPI types using oapi-codegen
 	@rm -rf pkg/api/openapi
-	@mkdir -p pkg/api/openapi
-	$(GO) run ./hack/extract-schema.go -output openapi/openapi.yaml
+	@mkdir -p pkg/api/openapi openapi
+	@rm -f openapi/openapi.yaml
+	@cp "$$($(GO) list -m -f '{{.Dir}}' github.com/openshift-hyperfleet/hyperfleet-api-spec)/schemas/$(VARIANT)/openapi.yaml" openapi/openapi.yaml
 	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
 
 ##@ Development
