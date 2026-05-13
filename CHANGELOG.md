@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Deprecated
 
 ### Removed
+- BREAKING CHANGE: `messaging_system` config field and `MESSAGING_SYSTEM` env var removed, `messaging.system` OTel span attribute is now derived from `publisher.BrokerType()`. Remove `messaging_system` from configs before upgrading.
 
 ### Fixed
 

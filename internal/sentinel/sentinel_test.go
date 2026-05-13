@@ -25,6 +25,7 @@ import (
 const (
 	testTopic        = "test-topic"
 	testResourceKind = "Cluster"
+	testBrokerType   = "rabbitmq"
 )
 
 // createMockCluster creates a mock cluster response matching the API spec.
@@ -92,6 +93,7 @@ func mockServerForResources(t *testing.T, clusters []map[string]interface{}) *ht
 // MockPublisher implements broker.Publisher for testing
 type MockPublisher struct {
 	publishError    error
+	brokerType      string
 	publishedEvents []*cloudevents.Event
 	publishedTopics []string
 }
@@ -105,14 +107,13 @@ func (m *MockPublisher) Publish(ctx context.Context, topic string, event *cloude
 	return nil
 }
 
-func (m *MockPublisher) Close() error {
-	return nil
-}
-
+func (m *MockPublisher) Close() error                     { return nil }
 func (m *MockPublisher) Health(ctx context.Context) error { return nil }
+func (m *MockPublisher) BrokerType() string               { return m.brokerType }
 
 type MockPublisherWithLogger struct {
 	mockLogger *logger.MockLoggerWithContext
+	brokerType string
 }
 
 func (m *MockPublisherWithLogger) Publish(ctx context.Context, topic string, event *cloudevents.Event) error {
@@ -120,9 +121,9 @@ func (m *MockPublisherWithLogger) Publish(ctx context.Context, topic string, eve
 	return nil
 }
 
-func (m *MockPublisherWithLogger) Close() error { return nil }
-
+func (m *MockPublisherWithLogger) Close() error                     { return nil }
 func (m *MockPublisherWithLogger) Health(ctx context.Context) error { return nil }
+func (m *MockPublisherWithLogger) BrokerType() string               { return m.brokerType }
 
 // newTestDecisionEngine creates a CEL-based decision engine with default config.
 func newTestDecisionEngine(t *testing.T) *engine.DecisionEngine {
@@ -511,6 +512,7 @@ func TestTrigger_ContextPropagationToBroker(t *testing.T) {
 
 	mockPublisherWithLogger := &MockPublisherWithLogger{
 		mockLogger: mockLogger,
+		brokerType: testBrokerType,
 	}
 
 	ctx := context.Background()
@@ -582,7 +584,7 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 	}
 	decisionEngine := newTestDecisionEngine(t)
 
-	mockPublisher := &MockPublisher{}
+	mockPublisher := &MockPublisher{brokerType: testBrokerType}
 	log := logger.NewHyperFleetLogger()
 
 	registry := prometheus.NewRegistry()
@@ -590,7 +592,6 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 
 	cfg := newTestSentinelConfig()
 	cfg.Clients.Broker.Topic = "hyperfleet-clusters"
-	cfg.MessagingSystem = "rabbitmq"
 
 	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
 	if err != nil {
@@ -630,7 +631,7 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 		t.Errorf("Expected at least 3 spans, got %d. Spans: %v", len(spans), getSpanNames(spans))
 	}
 
-	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.system", cfg.MessagingSystem)
+	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.system", mockPublisher.brokerType)
 	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.operation.type", "publish")
 	validateSpanAttribute(t, spans, "hyperfleet-clusters publish", "messaging.destination.name", cfg.Clients.Broker.Topic)
 
@@ -665,6 +666,23 @@ func validateSpanAttribute(t *testing.T, spans []tracetest.SpanStub, spanName, a
 		}
 	}
 	t.Errorf("Span '%s' not found", spanName)
+}
+
+func TestBrokerTypeToOTel(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"googlepubsub", "gcp_pubsub"},
+		{"rabbitmq", "rabbitmq"},
+		{"", ""},
+		{"unknown", "unknown"},
+	}
+	for _, tt := range tests {
+		if got := brokerTypeToOTel(tt.input); got != tt.expected {
+			t.Errorf("brokerTypeToOTel(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
+	}
 }
 
 func getSpanNames(spans []tracetest.SpanStub) []string {
