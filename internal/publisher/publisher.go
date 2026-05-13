@@ -10,11 +10,13 @@ import (
 
 // MockPublisher is a mock publisher for testing/development
 // Implements broker.Publisher interface
-type MockPublisher struct{}
+type MockPublisher struct {
+	brokerType string
+}
 
 // NewMockPublisher creates a new mock publisher
 func NewMockPublisher() *MockPublisher {
-	return &MockPublisher{}
+	return &MockPublisher{brokerType: "mock"}
 }
 
 // Publish logs the event instead of publishing
@@ -33,3 +35,5 @@ func (p *MockPublisher) Close() error {
 }
 
 func (p *MockPublisher) Health(ctx context.Context) error { return nil }
+
+func (p *MockPublisher) BrokerType() string { return p.brokerType }

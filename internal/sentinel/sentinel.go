@@ -21,6 +21,18 @@ import (
 	"go.opentelemetry.io/otel/codes"
 )
 
+// otelMessagingSystem maps broker type identifiers to OTel semantic convention values
+var otelMessagingSystem = map[string]string{
+	"googlepubsub": "gcp_pubsub",
+}
+
+func brokerTypeToOTel(brokerType string) string {
+	if v, ok := otelMessagingSystem[brokerType]; ok {
+		return v
+	}
+	return brokerType
+}
+
 // Sentinel polls the HyperFleet API and triggers reconciliation events
 type Sentinel struct {
 	lastSuccessfulPoll time.Time
@@ -193,7 +205,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 
 			// span: publish (child of sentinel.evaluate)
 			publishCtx, publishSpan := telemetry.StartSpan(eventCtx, fmt.Sprintf("%s publish", topic),
-				attribute.String("messaging.system", s.config.MessagingSystem),
+				attribute.String("messaging.system", brokerTypeToOTel(s.publisher.BrokerType())),
 				attribute.String("messaging.operation.type", "publish"),
 				attribute.String("messaging.destination.name", topic),
 				attribute.String("messaging.message.id", event.ID()),

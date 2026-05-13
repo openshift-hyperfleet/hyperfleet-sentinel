@@ -14,8 +14,7 @@ import (
 )
 
 const (
-	defaultMessagingSystem = "gcp_pubsub"
-	defaultConfigFile      = "/etc/hyperfleet/config.yaml"
+	defaultConfigFile = "/etc/hyperfleet/config.yaml"
 )
 
 // EnvPrefix is the prefix for all environment variables that override sentinel config
@@ -52,7 +51,6 @@ type SentinelConfig struct {
 	Log              LogConfig              `yaml:"log,omitempty" mapstructure:"log"`
 	Sentinel         SentinelInfo           `yaml:"sentinel" mapstructure:"sentinel"`
 	ResourceType     string                 `yaml:"resource_type" mapstructure:"resource_type"`
-	MessagingSystem  string                 `yaml:"messaging_system,omitempty" mapstructure:"messaging_system"`
 	Clients          ClientsConfig          `yaml:"clients" mapstructure:"clients"`
 	MessageData      map[string]interface{} `yaml:"message_data,omitempty" mapstructure:"message_data"`
 	MessageDecision  *MessageDecisionConfig `yaml:"message_decision,omitempty" mapstructure:"message_decision"`
@@ -151,7 +149,6 @@ func NewSentinelConfig() *SentinelConfig {
 		// ResourceType is required and must be set in config file
 		PollInterval:     5 * time.Second,
 		ResourceSelector: []LabelSelector{}, // Empty means watch all resources
-		MessagingSystem:  defaultMessagingSystem,
 	}
 }
 
@@ -171,7 +168,6 @@ var viperKeyMappings = map[string]string{
 	"clients::broker::topic":            "BROKER_TOPIC",
 	"resource_type":                     "RESOURCE_TYPE",
 	"poll_interval":                     "POLL_INTERVAL",
-	"messaging_system":                  "MESSAGING_SYSTEM",
 	"tracing_enabled":                   "TRACING_ENABLED",
 }
 

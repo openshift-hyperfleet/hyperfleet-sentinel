@@ -623,9 +623,9 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 
 	cfg := newTestSentinelConfig()
 	cfg.Clients.Broker.Topic = "test-spans-topic"
-	cfg.MessagingSystem = "rabbitmq"
 
-	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	pub := helper.RabbitMQ.Publisher()
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, pub, log)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -761,7 +761,7 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		t.Errorf("Expected at least 2 publish spans (one per test event), got %d", len(publishSpans))
 	}
 
-	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.system", cfg.MessagingSystem)
+	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.system", pub.BrokerType())
 	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.operation.type", "publish")
 	validateSpanAttribute(t, publishSpans, "test-spans-topic publish", "messaging.destination.name", cfg.Clients.Broker.Topic)
 
