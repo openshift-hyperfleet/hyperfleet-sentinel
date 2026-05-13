@@ -152,12 +152,13 @@ BROKER_CONFIG_FILE=broker.yaml ./bin/sentinel serve --config configs/dev-example
 
 ### Code Generation
 ```bash
-# Generate OpenAPI client from hyperfleet-api spec (main branch)
+# Generate OpenAPI client from the pinned hyperfleet-api-spec module
 make generate
 
-# Generate from a specific branch or tag
-make generate OPENAPI_SPEC_REF=v1.0.0
-make generate OPENAPI_SPEC_REF=develop
+# To upgrade the spec version, bump the module in go.mod first:
+go get github.com/openshift-hyperfleet/hyperfleet-api-spec@vX.Y.Z
+go mod tidy
+make generate
 
 # Clean generated code
 make clean

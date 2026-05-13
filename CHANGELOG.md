@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 ### Changed
+- OpenAPI schema is now consumed from the `hyperfleet-api-spec` Go module (`v1.0.12`) and extracted at build time via `hack/extract-schema.go`; `openapi/openapi.yaml` is no longer downloaded via `curl` from `hyperfleet-api` main branch
 
 ### Deprecated
 

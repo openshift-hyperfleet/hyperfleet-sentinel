@@ -27,10 +27,10 @@ HyperFleet Sentinel Service - Kubernetes service that polls HyperFleet API, make
    ```
 
    This will:
-   - Download the official OpenAPI spec from [hyperfleet-api](https://github.com/openshift-hyperfleet/hyperfleet-api) (main branch)
+   - Extract the OpenAPI spec from the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) Go module (pinned in `go.mod`)
    - Generate Go client code in `pkg/api/openapi/`
 
-   Both the downloaded spec and generated client code are **not committed** to git and must be regenerated locally.
+   Both the extracted spec and generated client code are **not committed** to git and must be regenerated locally.
 
 3. **Download dependencies**:
 
@@ -93,15 +93,14 @@ For instructions on running Sentinel locally or on GKE, see [docs/running-sentin
 
 ### OpenAPI Client Generation
 
-This project follows the [rh-trex](https://github.com/openshift-online/rh-trex) pattern for OpenAPI client generation. The OpenAPI specification is automatically downloaded from the official [hyperfleet-api](https://github.com/openshift-hyperfleet/hyperfleet-api) repository (main branch by default) during `make generate`.
+The OpenAPI specification is sourced from the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) Go module, pinned to a specific version in `go.mod`. During `make generate`, `hack/extract-schema.go` reads the schema from the module's embedded FS and passes it to oapi-codegen.
 
-The client is generated using Docker/Podman to ensure consistency across development environments.
-
-To use a different branch or tag:
+To upgrade the spec version:
 
 ```bash
-make generate OPENAPI_SPEC_REF=v1.0.0    # Use a specific tag
-make generate OPENAPI_SPEC_REF=develop   # Use a branch
+go get github.com/openshift-hyperfleet/hyperfleet-api-spec@vX.Y.Z
+go mod tidy
+make generate
 ```
 
 For detailed information about OpenAPI client generation, see [openapi/README.md](openapi/README.md).

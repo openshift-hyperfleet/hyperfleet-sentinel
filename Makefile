@@ -46,20 +46,12 @@ help: ## Display this help
 
 ##@ Code Generation
 
-# OpenAPI spec configuration from hyperfleet-api repository
-OPENAPI_SPEC_REF ?= main
-OPENAPI_SPEC_URL ?= https://raw.githubusercontent.com/openshift-hyperfleet/hyperfleet-api/$(OPENAPI_SPEC_REF)/openapi/openapi.yaml
-
 .PHONY: generate
 generate: $(OAPI_CODEGEN) ## Generate OpenAPI types using oapi-codegen
-	@echo "Fetching OpenAPI spec from hyperfleet-api (ref: $(OPENAPI_SPEC_REF))..."
-	@mkdir -p openapi
-	@curl -sSL -o openapi/openapi.yaml "$(OPENAPI_SPEC_URL)" || \
-		(echo "Failed to download OpenAPI spec from $(OPENAPI_SPEC_URL)" && exit 1)
-	@echo "OpenAPI spec downloaded successfully"
 	@rm -rf pkg/api/openapi
 	@mkdir -p pkg/api/openapi
-	@$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
+	$(GO) run ./hack/extract-schema.go -output openapi/openapi.yaml
+	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
 
 ##@ Development
 
