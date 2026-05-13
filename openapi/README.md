@@ -6,15 +6,15 @@ for the HyperFleet API, sourced from the
 
 ## OpenAPI Spec Source
 
-The `openapi.yaml` file is **extracted during `make generate`** from the `hyperfleet-api-spec`
-Go module, which embeds the schema via `//go:embed`. The module version is pinned in `go.mod`:
+The `openapi.yaml` file is **copied during `make generate`** from the `hyperfleet-api-spec`
+Go module cache (located via `go list -m`). The module version is pinned in `go.mod`:
 
 ```
 github.com/openshift-hyperfleet/hyperfleet-api-spec v1.0.12
 ```
 
-**Important**: The `openapi.yaml` file is **NOT committed** to git. It is extracted fresh on
-every `make generate` from the embedded module content.
+**Important**: The `openapi.yaml` file is **NOT committed** to git. It is copied fresh on
+every `make generate` from the module cache.
 
 ## Generating the Client
 
@@ -25,7 +25,7 @@ make generate
 ```
 
 This will:
-1. Extract `core/openapi.yaml` from the `hyperfleet-api-spec` module via `hack/extract-schema.go`
+1. Copy `$(VARIANT)/openapi.yaml` from the `hyperfleet-api-spec` module cache (located via `go list -m`)
 2. Generate Go client code in `pkg/api/openapi/`
 
 **Important**: Generated files in `pkg/api/openapi/` are also **NOT committed** to git. They
@@ -52,6 +52,5 @@ Then update `internal/client/client.go` if needed to support new endpoints or mo
 - **Tool**: [OAPI Codegen](https://github.com/oapi-codegen/oapi-codegen)
 - **Language**: Go
 - **Output**: `pkg/api/openapi/` (not committed to git)
-- **Schema extraction**: `hack/extract-schema.go` reads `core/openapi.yaml` from the embedded
-  module FS and writes it to `openapi/openapi.yaml` for oapi-codegen input
+- **Schema extraction**: `go list -m -f '{{.Dir}}'` locates the module cache directory; `$(VARIANT)/openapi.yaml` is copied to `openapi/openapi.yaml` for oapi-codegen input
 - **Wrapper**: `internal/client/client.go` provides a simplified interface to the generated client

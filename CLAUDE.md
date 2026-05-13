@@ -6,7 +6,7 @@ HyperFleet Sentinel is a **Kubernetes resource watcher** that polls the HyperFle
 
 - **Language**: Go 1.25+
 - **Messaging**: Broker abstraction supporting RabbitMQ, GCP Pub/Sub, and Stub implementations
-- **API Client**: Generated from the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) Go module via `hack/extract-schema.go`
+- **API Client**: Generated from the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) Go module — see [openapi/README.md](openapi/README.md)
 - **Deployment**: Helm chart with PodMonitoring (GKE) and ServiceMonitor (Prometheus Operator)
 
 ## Critical First Steps

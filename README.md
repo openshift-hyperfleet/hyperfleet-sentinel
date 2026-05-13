@@ -93,17 +93,7 @@ For instructions on running Sentinel locally or on GKE, see [docs/running-sentin
 
 ### OpenAPI Client Generation
 
-The OpenAPI specification is sourced from the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) Go module, pinned to a specific version in `go.mod`. During `make generate`, `hack/extract-schema.go` reads the schema from the module's embedded FS and passes it to oapi-codegen.
-
-To upgrade the spec version:
-
-```bash
-go get github.com/openshift-hyperfleet/hyperfleet-api-spec@vX.Y.Z
-go mod tidy
-make generate
-```
-
-For detailed information about OpenAPI client generation, see [openapi/README.md](openapi/README.md).
+Run `make generate` to copy the spec from the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) module and generate the Go client. See [openapi/README.md](openapi/README.md) for schema variants, spec version upgrades, and generator details.
 
 ## Configuration
 
