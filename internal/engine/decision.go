@@ -8,6 +8,7 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
 	"github.com/google/cel-go/common/types/ref"
+	"github.com/google/cel-go/ext"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 )
@@ -49,6 +50,7 @@ func NewDecisionEngine(cfg *config.MessageDecisionConfig) (*DecisionEngine, erro
 	// The function declaration includes the implementation via FunctionBinding,
 	// which reads from the engine's conditionsLookup (updated per-evaluation).
 	envOpts := []cel.EnvOption{
+		ext.Strings(),
 		cel.Variable("resource", cel.DynType),
 		cel.Variable("now", cel.TimestampType),
 		cel.Function("condition",
