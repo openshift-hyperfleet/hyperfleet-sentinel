@@ -95,7 +95,7 @@ Before running Sentinel, you must generate the OpenAPI client:
 make generate
 ```
 
-This downloads the OpenAPI spec from [hyperfleet-api](https://github.com/openshift-hyperfleet/hyperfleet-api) and generates the Go client code.
+This extracts the OpenAPI spec from the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) Go module (version pinned in `go.mod`) and generates the Go client code.
 
 #### Step 2: Configure Broker
 

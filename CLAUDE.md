@@ -6,7 +6,7 @@ HyperFleet Sentinel is a **Kubernetes resource watcher** that polls the HyperFle
 
 - **Language**: Go 1.25+
 - **Messaging**: Broker abstraction supporting RabbitMQ, GCP Pub/Sub, and Stub implementations
-- **API Client**: Generated from [hyperfleet-api](https://github.com/openshift-hyperfleet/hyperfleet-api) OpenAPI spec
+- **API Client**: Generated from the [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) Go module — see [openapi/README.md](openapi/README.md)
 - **Deployment**: Helm chart with PodMonitoring (GKE) and ServiceMonitor (Prometheus Operator)
 
 ## Critical First Steps
@@ -14,7 +14,7 @@ HyperFleet Sentinel is a **Kubernetes resource watcher** that polls the HyperFle
 **Generated OpenAPI client is NOT committed to git.** Before any build, test, or development task:
 
 ```bash
-make generate    # Downloads spec from hyperfleet-api and generates Go client
+make generate    # Extracts OpenAPI spec from hyperfleet-api-spec module and generates Go client
 ```
 
 Setup sequence for a fresh clone:
@@ -106,7 +106,7 @@ CEL context includes:
 - Poll faster than API can handle — respect backpressure and rate limits
 
 **DO**:
-- Use `make generate` after any hyperfleet-api spec changes
+- Update `hyperfleet-api-spec` version in `go.mod` and run `make generate` when the API spec changes
 - Add tests for new features (unit + integration if broker/API interaction)
 - Update Prometheus metrics when adding observable behaviors
 - Update CHANGELOG.md for user-visible changes
