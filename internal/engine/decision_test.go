@@ -455,7 +455,7 @@ func TestDecisionEngine_Evaluate_NotReconciledBoundary(t *testing.T) {
 	}
 }
 
-func TestNewDecisionEngine_ExtStrings(t *testing.T) {
+func TestNewDecisionEngine_AcceptsStringHelperExpressions(t *testing.T) {
 	// Regression guard: ext.Strings() must be registered so DecisionEngine accepts
 	// string helper expressions. Without it, compilation fails with "undefined field 'split'".
 	cfg := &config.MessageDecisionConfig{
@@ -464,8 +464,13 @@ func TestNewDecisionEngine_ExtStrings(t *testing.T) {
 		},
 		Result: `channel_group == "candidate"`,
 	}
-	if _, err := NewDecisionEngine(cfg); err != nil {
+	engine, err := NewDecisionEngine(cfg)
+	if err != nil {
 		t.Fatalf("ext.Strings() not registered — DecisionEngine rejects string helper expressions: %v", err)
+	}
+	decision := engine.Evaluate(newResourceWithCondition("True", time.Now(), 1), time.Now())
+	if !decision.ShouldPublish {
+		t.Fatalf("expected evaluation to succeed with string helper expression, got: %+v", decision)
 	}
 }
 
