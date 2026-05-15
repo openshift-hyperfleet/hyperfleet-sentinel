@@ -51,7 +51,7 @@ CMD ["serve"]
 
 ARG APP_VERSION="0.0.0-dev"
 LABEL name="hyperfleet-sentinel" \
-      vendor="Red Hat" \
+      vendor="Red Hat, Inc." \
       version="${APP_VERSION}" \
       summary="HyperFleet Sentinel - Resource polling and event publishing service" \
       description="Watches HyperFleet API resources and publishes reconciliation events to message brokers"
