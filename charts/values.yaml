@@ -235,7 +235,7 @@ monitoring:
         for: 1m
 
 tracing:
-  enabled: true
+  enabled: false
   serviceName: "hyperfleet-sentinel"
   # OTLP exporter endpoint (traces go to stdout if not set)
   otlpEndpoint: ""

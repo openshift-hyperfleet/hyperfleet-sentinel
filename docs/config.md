@@ -23,7 +23,7 @@ sentinel:
   name: hyperfleet-sentinel-clusters
 
 debug_config: false
-tracing_enabled: true
+tracing_enabled: false
 
 log:
   level: "info"
@@ -56,7 +56,7 @@ message_data:
 
 - `sentinel.name` (string, required): Sentinel component name/identifier.
 - `debug_config` (bool, optional): Log the merged config after load. Default: `false`.
-- `tracing_enabled` (bool, optional): Enable OpenTelemetry distributed tracing. Default: `true`.
+- `tracing_enabled` (bool, optional): Enable OpenTelemetry distributed tracing. Default: `false`.
 
 ### Logging (`log`)
 
