@@ -80,7 +80,7 @@ The following table lists the configurable parameters of the Sentinel chart and 
 |-----------|-------------|---------|
 | `config.sentinel.name` | Sentinel component name (supports Helm templates) | `hyperfleet-sentinel-{{ .Values.config.resourceType }}` |
 | `config.debugConfig` | Log the full merged configuration after load | `false` |
-| `config.tracingEnabled` | Enable OpenTelemetry tracing | `true` |
+| `config.tracingEnabled` | Enable OpenTelemetry tracing | `false` |
 | `config.log.level` | Log level: `debug`, `info`, `warn`, `error` | `info` |
 | `config.log.format` | Log format: `text`, `json` | `json` |
 | `config.log.output` | Log output: `stdout`, `stderr` | `stdout` |
