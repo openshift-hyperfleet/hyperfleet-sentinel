@@ -56,7 +56,6 @@ func createMockCluster(id string) map[string]interface{} {
 // createMockClusterList creates a mock ClusterList response
 func createMockClusterList(clusters []map[string]interface{}) map[string]interface{} {
 	return map[string]interface{}{
-		"kind":  "ClusterList",
 		"page":  1,
 		"size":  len(clusters),
 		"total": len(clusters),
@@ -555,7 +554,6 @@ func TestFetchResources_NodePools(t *testing.T) {
 		}
 
 		response := map[string]interface{}{
-			"kind":  "NodePoolList",
 			"page":  1,
 			"size":  1,
 			"total": 1,
@@ -1047,7 +1045,6 @@ func TestFetchResources_WithAdditionalFilters(t *testing.T) {
 		receivedSearchParam = r.URL.Query().Get("search")
 
 		response := map[string]interface{}{
-			"kind":  "ClusterList",
 			"page":  1,
 			"size":  0,
 			"total": 0,
@@ -1085,7 +1082,6 @@ func TestFetchResources_WithConditionFilterOnly(t *testing.T) {
 		receivedSearchParam = r.URL.Query().Get("search")
 
 		response := map[string]interface{}{
-			"kind":  "ClusterList",
 			"page":  1,
 			"size":  0,
 			"total": 0,
