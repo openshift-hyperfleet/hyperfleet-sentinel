@@ -83,7 +83,6 @@ func createClusterList(count int) map[string]any {
 		clusters = append(clusters, createCluster(i))
 	}
 	return map[string]any{
-		"kind":  "ClusterList",
 		"page":  1,
 		"size":  count,
 		"total": count,

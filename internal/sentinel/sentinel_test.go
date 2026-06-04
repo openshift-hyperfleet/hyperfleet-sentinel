@@ -70,7 +70,6 @@ func createMockCluster(
 // createMockClusterList creates a mock ClusterList response
 func createMockClusterList(clusters []map[string]interface{}) map[string]interface{} {
 	return map[string]interface{}{
-		"kind":  "ClusterList",
 		"page":  1,
 		"size":  len(clusters),
 		"total": len(clusters),
