@@ -1,0 +1,620 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "replicaCount": {
+      "type": "integer",
+      "description": "Number of replicas for horizontal scaling",
+      "minimum": 1
+    },
+    "image": {
+      "type": "object",
+      "description": "Container image configuration",
+      "required": [
+        "registry",
+        "repository"
+      ],
+      "properties": {
+        "registry": {
+          "type": "string",
+          "description": "Container image registry (e.g. quay.io)"
+        },
+        "repository": {
+          "type": "string",
+          "description": "Container image repository (e.g. openshift-hyperfleet/hyperfleet-sentinel)"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "description": "Image pull policy",
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
+        },
+        "tag": {
+          "type": "string",
+          "description": "Image tag (e.g. git SHA, semver tag). Must be set at install time."
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "description": "Image pull secrets for private registries",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "nameOverride": {
+      "type": "string",
+      "description": "Override the chart name"
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Override the full release name"
+    },
+    "serviceAccount": {
+      "type": "object",
+      "description": "ServiceAccount configuration",
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Whether to create a service account"
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Annotations to add to the service account"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the service account to use"
+        }
+      }
+    },
+    "podAnnotations": {
+      "type": "object",
+      "description": "Annotations to add to pods"
+    },
+    "podLabels": {
+      "type": "object",
+      "description": "Labels to add to pods"
+    },
+    "podSecurityContext": {
+      "type": "object",
+      "description": "Pod-level security context",
+      "properties": {
+        "fsGroup": {
+          "type": "integer",
+          "description": "Group ID for filesystem access"
+        },
+        "runAsNonRoot": {
+          "type": "boolean",
+          "description": "Require non-root user"
+        },
+        "runAsUser": {
+          "type": "integer",
+          "description": "User ID to run as"
+        }
+      }
+    },
+    "securityContext": {
+      "type": "object",
+      "description": "Container-level security context",
+      "properties": {
+        "readOnlyRootFilesystem": {
+          "type": "boolean",
+          "description": "Mount root filesystem as read-only"
+        },
+        "allowPrivilegeEscalation": {
+          "type": "boolean",
+          "description": "Allow privilege escalation"
+        },
+        "capabilities": {
+          "type": "object",
+          "description": "Linux capabilities",
+          "properties": {
+            "drop": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "seccompProfile": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "resources": {
+      "type": "object",
+      "description": "CPU and memory resource limits and requests",
+      "properties": {
+        "limits": {
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "description": "CPU limit (e.g. 500m)"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory limit (e.g. 512Mi)"
+            }
+          }
+        },
+        "requests": {
+          "type": "object",
+          "properties": {
+            "cpu": {
+              "type": "string",
+              "description": "CPU request (e.g. 100m)"
+            },
+            "memory": {
+              "type": "string",
+              "description": "Memory request (e.g. 128Mi)"
+            }
+          }
+        }
+      }
+    },
+    "nodeSelector": {
+      "type": "object",
+      "description": "Node selector for pod scheduling"
+    },
+    "tolerations": {
+      "type": "array",
+      "description": "Tolerations for pod scheduling",
+      "items": {
+        "type": "object"
+      }
+    },
+    "affinity": {
+      "type": "object",
+      "description": "Affinity rules for pod scheduling"
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "description": "PodDisruptionBudget configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable PDB creation"
+        },
+        "maxUnavailable": {
+          "description": "Maximum number of pods that can be unavailable during voluntary disruptions",
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
+        "minAvailable": {
+          "description": "Minimum number of pods that must be available",
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    "config": {
+      "type": "object",
+      "description": "Sentinel application configuration",
+      "properties": {
+        "sentinel": {
+          "type": "object",
+          "description": "Sentinel identity configuration",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Sentinel component name (supports Helm templates)"
+            }
+          }
+        },
+        "debugConfig": {
+          "type": "boolean",
+          "description": "Log merged config on startup for debugging"
+        },
+        "log": {
+          "type": "object",
+          "description": "Logging configuration",
+          "properties": {
+            "level": {
+              "type": "string",
+              "description": "Log level",
+              "enum": [
+                "debug",
+                "info",
+                "warn",
+                "error"
+              ]
+            },
+            "format": {
+              "type": "string",
+              "description": "Log output format",
+              "enum": [
+                "json",
+                "text"
+              ]
+            },
+            "output": {
+              "type": "string",
+              "description": "Log output destination",
+              "enum": [
+                "stdout",
+                "stderr"
+              ]
+            }
+          }
+        },
+        "clients": {
+          "type": "object",
+          "description": "Client configurations",
+          "properties": {
+            "hyperfleetApi": {
+              "type": "object",
+              "description": "HyperFleet API client configuration",
+              "properties": {
+                "baseUrl": {
+                  "type": "string",
+                  "description": "API endpoint URL"
+                },
+                "version": {
+                  "type": "string",
+                  "description": "API version (e.g. v1)"
+                },
+                "timeout": {
+                  "type": "string",
+                  "description": "Request timeout (e.g. 10s)"
+                }
+              }
+            }
+          }
+        },
+        "resourceType": {
+          "type": "string",
+          "description": "Resource type to watch",
+          "enum": [
+            "clusters",
+            "nodepools"
+          ]
+        },
+        "pollInterval": {
+          "type": "string",
+          "description": "How often to poll the API for resource updates (e.g. 5s)"
+        },
+        "messageDecision": {
+          "type": "object",
+          "description": "Configurable CEL-based decision logic for event publishing",
+          "properties": {
+            "params": {
+              "type": "array",
+              "description": "Named CEL expressions evaluated in dependency order",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "expr"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Parameter name"
+                  },
+                  "expr": {
+                    "type": "string",
+                    "description": "CEL expression"
+                  }
+                }
+              }
+            },
+            "result": {
+              "type": "string",
+              "description": "CEL boolean expression that determines whether to publish an event"
+            }
+          }
+        },
+        "resourceSelector": {
+          "type": "array",
+          "description": "Resource selector for horizontal sharding",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "description": "Label key for shard selection"
+              },
+              "value": {
+                "type": "string",
+                "description": "Label value for this shard"
+              }
+            }
+          }
+        },
+        "messageData": {
+          "type": "object",
+          "description": "CloudEvents data payload configuration"
+        }
+      }
+    },
+    "broker": {
+      "type": "object",
+      "description": "Message broker configuration",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Broker type",
+          "enum": [
+            "rabbitmq",
+            "googlepubsub"
+          ]
+        },
+        "topic": {
+          "type": "string",
+          "description": "Topic name for broker publishing (supports Helm templates)"
+        },
+        "rabbitmq": {
+          "type": "object",
+          "description": "RabbitMQ configuration",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "RabbitMQ connection URL (amqp://user:password@host:port/vhost)"
+            },
+            "exchangeType": {
+              "type": "string",
+              "description": "Exchange type",
+              "enum": [
+                "direct",
+                "fanout",
+                "topic",
+                "headers"
+              ]
+            },
+            "prefetchCount": {
+              "type": "integer",
+              "description": "RabbitMQ consumer prefetch count",
+              "minimum": 0
+            },
+            "prefetchSize": {
+              "type": "integer",
+              "description": "RabbitMQ consumer prefetch size in bytes",
+              "minimum": 0
+            }
+          }
+        },
+        "googlepubsub": {
+          "type": "object",
+          "description": "Google Pub/Sub configuration",
+          "properties": {
+            "projectId": {
+              "type": "string",
+              "description": "GCP project ID"
+            },
+            "maxOutstandingMessages": {
+              "type": "integer",
+              "description": "Maximum number of outstanding messages",
+              "minimum": 1
+            },
+            "numGoroutines": {
+              "type": "integer",
+              "description": "Number of goroutines for message processing",
+              "minimum": 1
+            },
+            "createTopicIfMissing": {
+              "type": "boolean",
+              "description": "Automatically create topic if it does not exist"
+            }
+          }
+        }
+      }
+    },
+    "monitoring": {
+      "type": "object",
+      "description": "Monitoring configuration",
+      "properties": {
+        "podMonitoring": {
+          "type": "object",
+          "description": "PodMonitoring for Google Cloud Managed Prometheus (GMP)",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable PodMonitoring creation"
+            },
+            "interval": {
+              "type": "string",
+              "description": "Scrape interval (e.g. 30s)"
+            },
+            "additionalLabels": {
+              "type": "object",
+              "description": "Additional labels for PodMonitoring"
+            },
+            "metricRelabeling": {
+              "type": "array",
+              "description": "Metric relabel configs",
+              "items": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "serviceMonitor": {
+          "type": "object",
+          "description": "ServiceMonitor for Prometheus Operator environments",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable ServiceMonitor creation"
+            },
+            "interval": {
+              "type": "string",
+              "description": "Scrape interval (e.g. 30s)"
+            },
+            "scrapeTimeout": {
+              "type": "string",
+              "description": "Scrape timeout, must be less than interval (e.g. 10s)"
+            },
+            "additionalLabels": {
+              "type": "object",
+              "description": "Additional labels for ServiceMonitor"
+            },
+            "namespaceSelector": {
+              "type": "object",
+              "description": "Namespace selector for cross-namespace monitoring"
+            },
+            "honorLabels": {
+              "type": "boolean",
+              "description": "Honor labels from the target"
+            },
+            "metricRelabeling": {
+              "type": "array",
+              "description": "Metric relabel configs",
+              "items": {
+                "type": "object"
+              }
+            },
+            "namespace": {
+              "type": "string",
+              "description": "Override namespace where ServiceMonitor is created"
+            }
+          }
+        },
+        "prometheusRule": {
+          "type": "object",
+          "description": "PrometheusRule for alerting (requires Prometheus Operator)",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable PrometheusRule creation"
+            },
+            "namespace": {
+              "type": "string",
+              "description": "Namespace where PrometheusRule will be created"
+            },
+            "additionalLabels": {
+              "type": "object",
+              "description": "Additional labels for PrometheusRule"
+            },
+            "alerts": {
+              "type": "object",
+              "description": "Alert configurations",
+              "properties": {
+                "sentinelPollStale": {
+                  "type": "object",
+                  "description": "Alert for stale polling",
+                  "properties": {
+                    "staleAfterSeconds": {
+                      "type": "integer",
+                      "description": "Seconds after which polling is considered stale",
+                      "minimum": 1
+                    },
+                    "for": {
+                      "type": "string",
+                      "description": "Alert pending duration (e.g. 1m)"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "tracing": {
+      "type": "object",
+      "description": "OpenTelemetry tracing configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable OpenTelemetry tracing"
+        },
+        "serviceName": {
+          "type": "string",
+          "description": "OTEL_SERVICE_NAME value"
+        },
+        "otlpEndpoint": {
+          "type": "string",
+          "description": "OTLP exporter endpoint (traces go to stdout if not set)"
+        },
+        "otlpProtocol": {
+          "type": "string",
+          "description": "OTLP protocol",
+          "enum": [
+            "grpc",
+            "http/protobuf"
+          ]
+        },
+        "sampler": {
+          "type": "string",
+          "description": "Sampler type"
+        },
+        "samplerArg": {
+          "type": "string",
+          "description": "Sampling rate (1.0 for dev, 0.01 for production)"
+        },
+        "propagators": {
+          "type": "string",
+          "description": "Trace context propagators (comma-separated)"
+        }
+      }
+    },
+    "existingSecret": {
+      "type": "string",
+      "description": "Name of an existing secret to use instead of creating one"
+    },
+    "global": {
+      "type": "object",
+      "description": "Global overrides shared across charts in umbrella deployments",
+      "properties": {
+        "imageRegistry": {
+          "type": "string",
+          "description": "Override image registry for all containers"
+        },
+        "imageTag": {
+          "type": "string",
+          "description": "Override image tag for all containers"
+        }
+      }
+    },
+    "subscriber": {
+      "type": "object",
+      "description": "Subscriber configuration",
+      "properties": {
+        "parallelism": {
+          "type": "integer",
+          "description": "Number of parallel message processing goroutines",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}
