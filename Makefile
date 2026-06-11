@@ -159,8 +159,17 @@ download: ## Download dependencies
 
 HELM_CHART_DIR := charts
 
+# kubeconform flags for validating rendered Helm templates against Kubernetes
+# and CRD schemas. Uses the datreeio/CRDs-catalog for ServiceMonitor,
+# PrometheusRule, and PodMonitoring schemas.
+KUBECONFORM_FLAGS := \
+	-strict \
+	-kubernetes-version 1.30.0 \
+	-schema-location default \
+	-schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
 .PHONY: test-helm
-test-helm: ## Test Helm charts (lint, template, validate)
+test-helm: $(KUBECONFORM) ## Test Helm charts (lint, template, validate, kubeconform)
 	@echo "Testing Helm charts..."
 	@if ! command -v helm > /dev/null; then \
 		echo "Error: helm not found. Please install Helm:"; \
@@ -178,14 +187,14 @@ test-helm: ## Test Helm charts (lint, template, validate)
 	helm template test-release $(HELM_CHART_DIR)/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
-		--set image.tag=latest > /dev/null
+		--set image.tag=latest | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Default values template OK"
 	@echo ""
 	@echo "Testing template with custom image..."
 	helm template test-release $(HELM_CHART_DIR)/ \
 		--set image.registry=quay.io \
 		--set image.repository=myorg/hyperfleet-sentinel \
-		--set image.tag=v1.0.0 > /dev/null
+		--set image.tag=v1.0.0 | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Custom image config template OK"
 	@echo ""
 	@echo "Testing template with PDB enabled..."
@@ -194,7 +203,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set podDisruptionBudget.enabled=true \
-		--set podDisruptionBudget.maxUnavailable=1 > /dev/null
+		--set podDisruptionBudget.maxUnavailable=1 | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "PDB config template OK"
 	@echo ""
 	@echo "Testing template with PDB disabled..."
@@ -202,7 +211,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
-		--set podDisruptionBudget.enabled=false > /dev/null
+		--set podDisruptionBudget.enabled=false | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "PDB disabled template OK"
 	@echo ""
 	@echo "Testing template with RabbitMQ broker..."
@@ -211,7 +220,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set broker.type=rabbitmq \
-		--set broker.rabbitmq.url=amqp://user:pass@rabbitmq:5672/hyperfleet > /dev/null
+		--set broker.rabbitmq.url=amqp://user:pass@rabbitmq:5672/hyperfleet | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "RabbitMQ broker template OK"
 	@echo ""
 	@echo "Testing template with Google Pub/Sub broker..."
@@ -220,7 +229,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set broker.type=googlepubsub \
-		--set broker.googlepubsub.projectId=test-project > /dev/null
+		--set broker.googlepubsub.projectId=test-project | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Google Pub/Sub broker template OK"
 	@echo ""
 	@echo "Testing template with PodMonitoring enabled..."
@@ -229,7 +238,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set monitoring.podMonitoring.enabled=true \
-		--set monitoring.podMonitoring.interval=15s > /dev/null
+		--set monitoring.podMonitoring.interval=15s | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "PodMonitoring config template OK"
 	@echo ""
 	@echo "Testing template with ServiceMonitor enabled..."
@@ -238,7 +247,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set monitoring.serviceMonitor.enabled=true \
-		--set monitoring.serviceMonitor.interval=30s > /dev/null
+		--set monitoring.serviceMonitor.interval=30s | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "ServiceMonitor config template OK"
 	@echo ""
 	@echo "Testing template with PrometheusRule enabled..."
@@ -246,7 +255,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
-		--set monitoring.prometheusRule.enabled=true > /dev/null
+		--set monitoring.prometheusRule.enabled=true | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "PrometheusRule config template OK"
 	@echo ""
 	@echo "Testing template with custom resource selector..."
@@ -255,7 +264,7 @@ test-helm: ## Test Helm charts (lint, template, validate)
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set config.resourceType=nodepools \
-		--set config.pollInterval=10s > /dev/null
+		--set config.pollInterval=10s | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
 	@echo "Custom resource selector template OK"
 	@echo ""
 	@echo "All Helm chart tests passed!"
