@@ -1,48 +1,56 @@
 # Default values for sentinel.
 # This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
 
-# Replica count for horizontal scaling
+# -- Number of sentinel replicas
 replicaCount: 1
 
-# Container image configuration
 image:
+  # -- Container image registry (no default — must be set)
   registry: CHANGE_ME
-  repository: CHANGE_ME # e.g. openshift-hyperfleet/hyperfleet-sentinel
+  # -- Container image repository (no default — must be set)
+  repository: CHANGE_ME
+  # -- Image pull policy
   pullPolicy: Always
-  # Required: image tag (e.g. git SHA, semver tag). No default — must be set at install time.
+  # -- Image tag (no default — must be set via `--set image.tag=<version>`)
   tag: ""
 
+# -- Secrets for pulling images from private registries
 imagePullSecrets: []
+# -- Override the chart name used in resource names
 nameOverride: ""
+# -- Override the full release name used in resource names
 fullnameOverride: ""
 
-# ServiceAccount configuration
+# -- ServiceAccount configuration
 serviceAccount:
-  # Specifies whether a service account should be created
+  # -- Create a ServiceAccount for the sentinel
   create: true
-  # Annotations to add to the service account
-  # Note: For GCP Pub/Sub with Workload Identity Federation, no annotations are
-  # needed. Use `gcloud projects add-iam-policy-binding` with the principal://
-  # format instead. See docs/running-sentinel.md for details.
+  # -- Annotations added to the ServiceAccount. For GCP Pub/Sub with
+  # Workload Identity Federation, use `gcloud projects add-iam-policy-binding`
+  # with the `principal://` format instead of annotations.
   annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
+  # -- Override the ServiceAccount name (defaults to the release fullname)
   name: ""
 
-# Pod annotations
+# -- Additional annotations applied to all pods
 podAnnotations: {}
+# -- Additional labels applied to all pods
 podLabels: {}
 
-# Pod security context
+# -- Pod-level security context
 podSecurityContext:
+  # -- Filesystem group for volume mounts
   fsGroup: 65532
+  # -- Run all containers as non-root
   runAsNonRoot: true
+  # -- UID for all containers
   runAsUser: 65532
 
-# Container security context
+# -- Container-level security context
 securityContext:
+  # -- Mount root filesystem as read-only
   readOnlyRootFilesystem: true
+  # -- Disallow privilege escalation
   allowPrivilegeEscalation: false
   capabilities:
     drop:
@@ -50,7 +58,7 @@ securityContext:
   seccompProfile:
     type: RuntimeDefault
 
-# Resource limits and requests
+# -- CPU and memory resource requests and limits
 resources:
   limits:
     cpu: 500m
@@ -59,58 +67,64 @@ resources:
     cpu: 100m
     memory: 128Mi
 
-# Node selector
+# -- Node selector constraints for pod scheduling
 nodeSelector: {}
 
-# Tolerations
+# -- Tolerations for pod scheduling
 tolerations: []
 
-# Affinity
+# -- Affinity rules for pod scheduling
 affinity: {}
 
-# PodDisruptionBudget configuration
-# See: https://kubernetes.io/docs/tasks/run-application/configure-pdb/#specifying-a-poddisruptionbudget
+# -- PodDisruptionBudget configuration
 podDisruptionBudget:
-  # Enable PDB creation
+  # -- Enable the PDB
   enabled: true
-  # Maximum number of pods that can be unavailable during voluntary disruptions
+  # -- Maximum number of pods that can be unavailable during disruption
   maxUnavailable: 1
 
-# Sentinel configuration
+# -- Sentinel application configuration. All settings in this section
+# generate the ConfigMap consumed by the sentinel.
 config:
-  # Sentinel information
+  # -- Sentinel identity settings
   sentinel:
-    # Sentinel component name - will be templated with shard value if resource selector is used
-    # Example: hyperfleet-sentinel-clusters-shard-1
+    # -- Sentinel component name (templated with shard value when resource
+    # selector is used)
     name: hyperfleet-sentinel-{{ .Values.config.resourceType }}
 
-  # Debug configuration - log merged config on startup
+  # -- Log merged configuration on startup for debugging
   debugConfig: false
 
-  # Logging configuration
+  # -- Logging configuration
   log:
+    # -- Log level (`debug`, `info`, `warn`, `error`)
     level: info
+    # -- Log format (`json` or `text`)
     format: json
+    # -- Log output destination
     output: stdout
 
-  # Client configurations
+  # -- Client configuration
   clients:
-    # HyperFleet API client configuration
+    # -- HyperFleet API client settings
     hyperfleetApi:
-      # Use in-cluster service name for API endpoint
+      # -- API base URL (use in-cluster service name)
       baseUrl: http://hyperfleet-api:8000
+      # -- API version
       version: v1
+      # -- HTTP client timeout
       timeout: 10s
 
-  # Resource type to watch (clusters, nodepools)
+  # -- Resource type to watch (`clusters` or `nodepools`)
   resourceType: clusters
 
-  # How often to poll the API for resource updates
+  # -- How often to poll the API for resource updates
   pollInterval: 5s
 
-  # Configurable CEL-based decision logic
-  # Params are named CEL expressions evaluated in dependency order.
-  # Result is a CEL boolean expression that determines whether to publish an event.
+  # -- CEL-based decision logic that determines whether to publish an event.
+  # `params` are named CEL expressions evaluated in dependency order.
+  # `result` is a boolean CEL expression using the params.
+  # @default -- See values.yaml for default CEL expressions
   messageDecision:
     params:
       - name: ref_time
@@ -129,13 +143,14 @@ config:
         expr: '!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("10s")'
     result: 'is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced'
 
-  # Resource selector for horizontal sharding
-  # Deploy multiple Sentinel instances with different shard values
+  # -- Resource selector for horizontal sharding. Deploy multiple sentinel
+  # instances with different shard values.
   resourceSelector:
     - label: shard
       value: "1"
 
-  # CloudEvents data payload configuration
+  # -- CloudEvents data payload configuration. Values are CEL expressions
+  # evaluated against the resource.
   messageData:
     id: resource.id
     kind: resource.kind
@@ -148,103 +163,100 @@ config:
 #    kind: "resource.owner_references.kind"
 
 
-# Broker configuration
-# WARNING: Never commit real credentials to git!
-# Use external secrets management (External Secrets Operator, Sealed Secrets, Vault)
+# -- Broker configuration for event publishing.
+# **WARNING:** Never commit real credentials to git. Use external secrets
+# management (External Secrets Operator, Sealed Secrets, Vault).
 broker:
-  # For more details, see: https://github.com/openshift-hyperfleet/hyperfleet-broker
-  # Broker type: rabbitmq or googlepubsub
+  # -- Broker type (`rabbitmq` or `googlepubsub`).
+  # See the [broker library](https://github.com/openshift-hyperfleet/hyperfleet-broker).
   type: rabbitmq
 
-  # Topic name for broker publishing
-  # This is the full topic name where events will be published
-  # Default uses Helm template: {namespace}-{resourceType} for multi-tenant isolation
-  # Example result: hyperfleet-dev-clusters, hyperfleet-dev-nodepools
-  # Override with a static value if needed: topic: "my-custom-topic"
+  # -- Topic name for event publishing. Default uses Helm template
+  # `{namespace}-{resourceType}` for multi-tenant isolation.
   topic: '{{ .Release.Namespace }}-{{ .Values.config.resourceType }}'
 
-  # RabbitMQ configuration
-  # Uses BROKER_RABBITMQ_URL environment variable (single connection string)
+  # -- RabbitMQ configuration
   rabbitmq:
-    # Connection URL format: amqp://user:password@host:port/vhost
+    # -- Connection URL (`amqp://user:password@host:port/vhost`)
     url: amqp://<USER>:<PASSWORD>@rabbitmq.hyperfleet-system.svc.cluster.local:5672/hyperfleet
+    # -- Exchange type
     exchangeType: topic
 
-  # Google Pub/Sub configuration (alternative to RabbitMQ)
-  # projectId is written to broker.yaml ConfigMap (not Secret - it's not sensitive)
+  # -- Google Pub/Sub configuration
   googlepubsub:
-    #REQUIRED: Replace with your actual GCP project ID
+    # -- GCP project ID (required when using Pub/Sub)
     projectId: your-gcp-project-id
+    # -- Maximum outstanding messages
     maxOutstandingMessages: 1000
+    # -- Number of subscriber goroutines
     numGoroutines: 10
-    # Auto-creation flags (default: false - manual creation required)
-    # Set to true to automatically create topics/subscriptions if they don't exist
+    # -- Auto-create topic if it does not exist (use `false` in production)
     createTopicIfMissing: false
 
-# Monitoring configuration for Google Cloud Managed Prometheus (GMP)
+# -- Monitoring and metrics configuration
 monitoring:
-  # PodMonitoring for Google Cloud Managed Prometheus
+  # -- PodMonitoring for Google Cloud Managed Prometheus (GMP)
   podMonitoring:
-    # Enable PodMonitoring creation
+    # -- Create a PodMonitoring resource
     enabled: false
-    # Scrape interval
+    # -- Scrape interval
     interval: 30s
-    # Additional labels for PodMonitoring
+    # -- Additional labels for PodMonitoring discovery
     additionalLabels: {}
-    # Metric relabel configs to apply to samples before ingestion
+    # -- Metric relabel configs applied before ingestion
     metricRelabeling: []
 
-  # ServiceMonitor for Prometheus Operator environments (OpenShift, vanilla Kubernetes)
-  # Can coexist with PodMonitoring (different environments)
+  # -- ServiceMonitor for Prometheus Operator environments
   serviceMonitor:
-    # Enable ServiceMonitor creation
+    # -- Create a ServiceMonitor resource
     enabled: false
-    # Scrape interval
+    # -- Scrape interval
     interval: 30s
-    # Scrape timeout (must be less than interval)
+    # -- Scrape timeout (must be less than interval)
     scrapeTimeout: 10s
-    # Additional labels for ServiceMonitor to match Prometheus selector
-    # Example: release: prometheus
+    # -- Additional labels for ServiceMonitor discovery
     additionalLabels: {}
-    # Namespace selector for cross-namespace monitoring
-    # Example:
-    #   matchNames:
-    #     - hyperfleet-system
+    # -- Namespace selector for cross-namespace monitoring
     namespaceSelector: {}
-    # Honor labels from the target to avoid overwriting
+    # -- Honor labels from the target to avoid overwriting
     honorLabels: true
-    # Metric relabel configs to apply to samples before ingestion
+    # -- Metric relabel configs applied before ingestion
     metricRelabeling: []
-    # Override the namespace where ServiceMonitor is created (defaults to release namespace)
-    # When set, a namespaceSelector.matchNames is automatically added pointing to the
-    # release namespace so Prometheus can discover the Service across namespaces.
+    # -- Override the namespace where ServiceMonitor is created (defaults to release namespace)
     namespace: ""
 
-  # PrometheusRule for alerting (requires Prometheus Operator or compatible system)
+  # -- PrometheusRule for alerting (requires Prometheus Operator)
   prometheusRule:
-    # Enable PrometheusRule creation
-    # Note: GMP supports rules via Google Cloud Alerting, this is for Prometheus Operator compatibility
+    # -- Create PrometheusRule resources
     enabled: false
-    # Namespace where PrometheusRule will be created (defaults to release namespace)
+    # -- Namespace to create the PrometheusRule in (defaults to release namespace)
     namespace: ""
-    # Additional labels for PrometheusRule
+    # -- Additional labels for PrometheusRule discovery
     additionalLabels: {}
+    # -- Alert rule configuration
     alerts:
+      # -- Poll staleness alert
       sentinelPollStale:
+        # -- Seconds after which a poll is considered stale
         staleAfterSeconds: 60
+        # -- Duration before the alert fires
         for: 1m
 
+# -- Distributed tracing configuration (OpenTelemetry)
 tracing:
+  # -- Enable trace export
   enabled: false
+  # -- Service name reported in traces
   serviceName: "hyperfleet-sentinel"
-  # OTLP exporter endpoint (traces go to stdout if not set)
+  # -- OTLP exporter endpoint (traces go to stdout when empty)
   otlpEndpoint: ""
-  # OTLP protocol: grpc (default) or http/protobuf
+  # -- OTLP protocol (`grpc` or `http/protobuf`)
   otlpProtocol: "grpc"
-  # Sampler type (default per tracing standard)
+  # -- Sampler type
   sampler: "parentbased_traceidratio"
-  # Sampling rate: 1.0 for dev, 0.01 for production
+  # -- Sampling rate (`1.0` for dev, `0.01` for production)
   samplerArg: "1.0"
+  # -- Context propagation formats
   propagators: "tracecontext,baggage"
 
 # Existing secret name (optional)
