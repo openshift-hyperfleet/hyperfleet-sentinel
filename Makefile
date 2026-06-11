@@ -159,6 +159,16 @@ download: ## Download dependencies
 
 HELM_CHART_DIR := charts
 
+.PHONY: helm-docs
+helm-docs: $(HELM_DOCS) ## Generate Helm chart README from values.yaml annotations
+	$(HELM_DOCS) --chart-search-root=$(HELM_CHART_DIR) --sort-values-order=file
+
+.PHONY: verify-helm-docs
+verify-helm-docs: $(HELM_DOCS) ## Verify chart README is up to date
+	$(HELM_DOCS) --chart-search-root=$(HELM_CHART_DIR) --sort-values-order=file
+	@git diff --exit-code $(HELM_CHART_DIR)/README.md > /dev/null 2>&1 || \
+		(echo "ERROR: $(HELM_CHART_DIR)/README.md is out of date. Run 'make helm-docs' and commit the result." && exit 1)
+
 # kubeconform flags for validating rendered Helm templates against Kubernetes
 # and CRD schemas. Uses the datreeio/CRDs-catalog for ServiceMonitor,
 # PrometheusRule, and PodMonitoring schemas.
@@ -169,7 +179,7 @@ KUBECONFORM_FLAGS := \
 	-schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
 .PHONY: test-helm
-test-helm: $(KUBECONFORM) ## Test Helm charts (lint, template, validate, kubeconform)
+test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, validate, kubeconform)
 	@echo "Testing Helm charts..."
 	@if ! command -v helm > /dev/null; then \
 		echo "Error: helm not found. Please install Helm:"; \
