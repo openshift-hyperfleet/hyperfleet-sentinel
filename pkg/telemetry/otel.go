@@ -62,9 +62,7 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 		}
 	} else {
 		// Create stdout exporter
-		exporter, err = stdouttrace.New(
-			stdouttrace.WithPrettyPrint(), // Formatted output
-		)
+		exporter, err = stdouttrace.New()
 		if err != nil {
 			log.Errorf(ctx, "Failed to create OpenTelemetry stdout exporter: %v", err)
 			return nil, fmt.Errorf("failed to create OpenTelemetry stdout exporter: %w", err)
