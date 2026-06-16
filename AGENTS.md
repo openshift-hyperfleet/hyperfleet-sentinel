@@ -26,8 +26,9 @@ make generate    # Extracts OpenAPI spec from hyperfleet-api-spec module and gen
 Setup sequence for a fresh clone:
 1. `make generate` — generate OpenAPI client in `pkg/api/openapi/`
 2. `make download` — fetch Go dependencies
-3. `make build` — build `bin/sentinel` binary
-4. `make test` — verify unit tests pass
+3. `make install-hooks` — install pre-commit hooks (secret scanning, linting, etc.)
+4. `make build` — build `bin/sentinel` binary
+5. `make test` — verify unit tests pass
 
 ## Verification
 
@@ -144,7 +145,18 @@ CEL context:
 
 - Branch from `main`, PR back to `main`
 - Branch naming: `HYPERFLEET-###-short-description`
-- Pre-commit hooks: run `make install-hooks` to install — enforces commit message format (`hyperfleet-commitlint`), Go formatting, linting, and vet
+### Pre-commit Hooks
+Install: `make install-hooks`
+
+Hooks:
+- `leaktk.git.pre-commit` — secret scanning (open-source, no VPN required)
+- `hyperfleet-commitlint` — validates commit message format (commit-msg stage)
+- `hyperfleet-gofmt` — Go code formatting
+- `hyperfleet-golangci-lint` — linting
+- `hyperfleet-go-vet` — Go vet checks
+- `trailing-whitespace` — removes trailing whitespace
+- `end-of-file-fixer` — ensures files end with newline
+- `check-added-large-files` — prevents large files from being committed
 
 ## Project Boundaries
 
