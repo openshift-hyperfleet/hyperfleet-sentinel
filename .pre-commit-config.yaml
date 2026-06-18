@@ -9,7 +9,7 @@ repos:
 
   # HyperFleet code quality hooks
   - repo: https://github.com/openshift-hyperfleet/hyperfleet-hooks
-    rev: 7d5cd98ed6a1a98c39c04b9f4ab9b0ffb0d49155 # v0.1.1
+    rev: 7f5119208e5cdee3f0c688881b6a4b803095f203 # v0.2.1
     hooks:
       - id: hyperfleet-commitlint
         stages: [commit-msg]
