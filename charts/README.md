@@ -39,6 +39,7 @@ helm install hyperfleet-sentinel oci://REGISTRY/hyperfleet-sentinel \
 | serviceAccount.name | string | `""` | Override the ServiceAccount name (defaults to the release fullname) |
 | podAnnotations | object | `{}` | Additional annotations applied to all pods |
 | podLabels | object | `{}` | Additional labels applied to all pods |
+| labels | object | `{}` | Custom labels applied to all resources managed by this Helm chart (Deployment, Service, ServiceAccount, ConfigMaps, etc.) Useful for labeling resources for cleanup, tracking, or organization. Example:   labels:     environment: production     team: platform     hyperfleet-e2e-run: e2e-20260615-102422-bb5nfo2d |
 | podSecurityContext | object | `{"fsGroup":65532,"runAsNonRoot":true,"runAsUser":65532}` | Pod-level security context |
 | podSecurityContext.fsGroup | int | `65532` | Filesystem group for volume mounts |
 | podSecurityContext.runAsNonRoot | bool | `true` | Run all containers as non-root |
