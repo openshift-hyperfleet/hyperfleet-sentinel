@@ -154,10 +154,9 @@ config:
     result: 'is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced'
 
   # -- Resource selector for horizontal sharding. Deploy multiple sentinel
-  # instances with different shard values.
-  resourceSelector:
-    - label: shard
-      value: "1"
+  # instances with different shard values. Empty by default (no filtering).
+  # Example: resourceSelector: [{label: shard, value: "1"}]
+  resourceSelector: []
 
   # -- CloudEvents data payload configuration. Values are CEL expressions
   # evaluated against the resource.
