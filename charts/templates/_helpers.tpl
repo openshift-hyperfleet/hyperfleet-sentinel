@@ -36,6 +36,9 @@ helm.sh/chart: {{ include "sentinel.chart" . }}
 {{ include "sentinel.selectorLabels" . }}
 app.kubernetes.io/version: {{ .Values.image.tag | default .Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{- with .Values.labels }}
+{{ toYaml . }}
+{{- end }}
 {{- end }}
 
 {{/*
