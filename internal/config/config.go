@@ -114,7 +114,7 @@ func DefaultMessageDecision() *MessageDecisionConfig {
 			{Name: "ref_time", Expr: `condition("Reconciled").last_updated_time`},
 			{Name: "is_reconciled", Expr: `condition("Reconciled").status == "True"`},
 			{Name: "has_ref_time", Expr: `ref_time != ""`},
-			{Name: "is_new_resource", Expr: `!is_reconciled && resource.generation == 1`},
+			{Name: "is_new_resource", Expr: `!is_reconciled && resource.generation == 1 && !has_ref_time`},
 			{Name: "generation_mismatch", Expr: `resource.generation > condition("Reconciled").observed_generation`},
 			{Name: "reconciled_and_stale", Expr: `is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("30m")`},
 			{
