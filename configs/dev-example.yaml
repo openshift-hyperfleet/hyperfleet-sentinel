@@ -60,7 +60,7 @@ message_decision:
     - name: has_ref_time
       expr: 'ref_time != ""'
     - name: is_new_resource
-      expr: '!is_reconciled && resource.generation == 1 && !has_ref_time'
+      expr: 'resource.generation == 1 && !has_ref_time'
     - name: generation_mismatch
       expr: 'resource.generation > condition("Reconciled").observed_generation'
     - name: reconciled_and_stale
@@ -96,7 +96,7 @@ message_data:
   generation: "resource.generation"
 
 #  For nodepools, the message should contain owner_references
-#  
+#
 #  owner_references:
 #    id: "resource.owner_references.id"
 #    href: "resource.owner_references.href"

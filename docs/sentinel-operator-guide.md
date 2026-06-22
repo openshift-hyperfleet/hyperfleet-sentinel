@@ -130,7 +130,7 @@ When `message_decision` is omitted from the config file, Sentinel uses the follo
 | `ref_time` | `condition("Reconciled").last_updated_time` | Reference timestamp from Reconciled condition |
 | `is_reconciled` | `condition("Reconciled").status == "True"` | Resource reconciled status |
 | `has_ref_time` | `ref_time != ""` | Guard: Reconciled condition exists |
-| `is_new_resource` | `!is_reconciled && resource.generation == 1 && !has_ref_time` | New resource: no Reconciled condition yet |
+| `is_new_resource` | `resource.generation == 1 && !has_ref_time` | New resource: no Reconciled condition yet |
 | `generation_mismatch` | `resource.generation > condition("Reconciled").observed_generation` | Spec changed but not yet processed |
 | `reconciled_and_stale` | `is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("30m")` | Stable resource drifting past 30 min |
 | `not_reconciled_and_debounced` | `!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("10s")` | Transitional resource debounced past 10 s |
