@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -15,39 +16,99 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
-const testClustersAPIPath = "/api/hyperfleet/v1/clusters"
+const (
+	testClustersAPIPath     = "/api/hyperfleet/v1/clusters"
+	testCreatedTime         = "2025-01-01T09:00:00Z"
+	testUpdatedTime         = "2025-01-01T10:00:00Z"
+	testLastUpdatedTime     = "2025-01-01T12:00:00Z"
+	testUser                = "test-user@example.com"
+	testConditionStatusTrue = "True"
+	testReconciledFilter    = "status.conditions.Reconciled='False'"
+	testKindCluster         = "Cluster"
+	testKindNodePool        = "NodePool"
+	testLabelRegion         = "region"
+	testLabelEnv            = "env"
+	testLabelShard          = "shard"
+	testLabelValue          = "value"
+	testRegionUSEast        = "us-east"
+
+	keyHref               = "href"
+	keyKind               = "kind"
+	keyName               = "name"
+	keyGeneration         = "generation"
+	keyCreatedTime        = "created_time"
+	keyUpdatedTime        = "updated_time"
+	keyCreatedBy          = "created_by"
+	keyUpdatedBy          = "updated_by"
+	keySpec               = "spec"
+	keyStatus             = "status"
+	keyConditions         = "conditions"
+	keyType               = "type"
+	keyLastTransitionTime = "last_transition_time"
+	keyLastUpdatedTime    = "last_updated_time"
+	keyObservedGeneration = "observed_generation"
+	keyPage               = "page"
+	keySize               = "size"
+	keyTotal              = "total"
+	keyItems              = "items"
+)
+
+// createMockCondition creates a mock condition for test fixtures
+func createMockCondition(condType, status string, observedGen int) map[string]interface{} {
+	return map[string]interface{}{
+		keyType:               condType,
+		keyStatus:             status,
+		keyCreatedTime:        testCreatedTime,
+		keyLastTransitionTime: testUpdatedTime,
+		keyLastUpdatedTime:    testLastUpdatedTime,
+		keyObservedGeneration: observedGen,
+	}
+}
 
 // createMockCluster creates a mock cluster response with all required fields
 func createMockCluster(id string) map[string]interface{} {
 	return map[string]interface{}{
 		"id":           id,
-		"href":         "/api/hyperfleet/v1/clusters/" + id,
-		"kind":         "Cluster",
-		"name":         id,
-		"generation":   5,
-		"created_time": "2025-01-01T09:00:00Z",
-		"updated_time": "2025-01-01T10:00:00Z",
-		"created_by":   "test-user@example.com",
-		"updated_by":   "test-user@example.com",
-		"spec":         map[string]interface{}{},
-		"status": map[string]interface{}{
-			"conditions": []map[string]interface{}{
-				{
-					"type":                 "Reconciled",
-					"status":               "True",
-					"created_time":         "2025-01-01T09:00:00Z",
-					"last_transition_time": "2025-01-01T10:00:00Z",
-					"last_updated_time":    "2025-01-01T12:00:00Z",
-					"observed_generation":  5,
-				},
-				{
-					"type":                 "LastKnownReconciled",
-					"status":               "True",
-					"created_time":         "2025-01-01T09:00:00Z",
-					"last_transition_time": "2025-01-01T10:00:00Z",
-					"last_updated_time":    "2025-01-01T12:00:00Z",
-					"observed_generation":  5,
-				},
+		keyHref:        "/api/hyperfleet/v1/clusters/" + id,
+		keyKind:        testKindCluster,
+		keyName:        id,
+		keyGeneration:  5,
+		keyCreatedTime: testCreatedTime,
+		keyUpdatedTime: testUpdatedTime,
+		keyCreatedBy:   testUser,
+		keyUpdatedBy:   testUser,
+		keySpec:        map[string]interface{}{},
+		keyStatus: map[string]interface{}{
+			keyConditions: []map[string]interface{}{
+				createMockCondition("Reconciled", testConditionStatusTrue, 5),
+				createMockCondition("LastKnownReconciled", testConditionStatusTrue, 5),
+			},
+		},
+	}
+}
+
+// createMockNodePool creates a mock nodepool response with all required fields
+func createMockNodePool(id, name string, generation int, ownerClusterID string) map[string]interface{} {
+	return map[string]interface{}{
+		"id":           id,
+		keyHref:        "/api/hyperfleet/v1/nodepools/" + id,
+		keyKind:        testKindNodePool,
+		keyName:        name,
+		keyGeneration:  generation,
+		keyCreatedTime: testCreatedTime,
+		keyUpdatedTime: testUpdatedTime,
+		keyCreatedBy:   testUser,
+		keyUpdatedBy:   testUser,
+		"owner_references": map[string]interface{}{
+			"id":    ownerClusterID,
+			keyKind: testKindCluster,
+			keyHref: "/api/hyperfleet/v1/clusters/" + ownerClusterID,
+		},
+		keySpec: map[string]interface{}{},
+		keyStatus: map[string]interface{}{
+			keyConditions: []map[string]interface{}{
+				createMockCondition("Reconciled", testConditionStatusTrue, generation),
+				createMockCondition("LastKnownReconciled", testConditionStatusTrue, generation),
 			},
 		},
 	}
@@ -56,10 +117,20 @@ func createMockCluster(id string) map[string]interface{} {
 // createMockClusterList creates a mock ClusterList response
 func createMockClusterList(clusters []map[string]interface{}) map[string]interface{} {
 	return map[string]interface{}{
-		"page":  1,
-		"size":  len(clusters),
-		"total": len(clusters),
-		"items": clusters,
+		keyPage:  1,
+		keySize:  len(clusters),
+		keyTotal: len(clusters),
+		keyItems: clusters,
+	}
+}
+
+// createMockResourceList creates a paginated resource list response
+func createMockResourceList(items []map[string]interface{}, page, total int) map[string]interface{} {
+	return map[string]interface{}{
+		keyPage:  page,
+		keySize:  len(items),
+		keyTotal: total,
+		keyItems: items,
 	}
 }
 
@@ -77,7 +148,7 @@ func TestFetchResources_Success(t *testing.T) {
 
 		// Return mock response matching v1.0.0 spec
 		cluster := createMockCluster("cluster-1")
-		cluster["labels"] = map[string]string{"region": "us-east"}
+		cluster["labels"] = map[string]string{testLabelRegion: testRegionUSEast}
 		response := createMockClusterList([]map[string]interface{}{cluster})
 
 		w.Header().Set("Content-Type", "application/json")
@@ -491,44 +562,44 @@ func TestLabelSelectorToSearchString(t *testing.T) {
 		},
 		{
 			name:     "single label",
-			selector: map[string]string{"region": "us-east"},
+			selector: map[string]string{testLabelRegion: testRegionUSEast},
 			want:     "labels.region='us-east'",
 		},
 		{
 			name: "multiple labels (sorted)",
 			selector: map[string]string{
-				"region": "us-east",
-				"env":    "production",
+				testLabelRegion: testRegionUSEast,
+				testLabelEnv:    "production",
 			},
 			want: "labels.env='production' and labels.region='us-east'",
 		},
 		{
 			name: "three labels (sorted)",
 			selector: map[string]string{
-				"tier":   "frontend",
-				"region": "us-west",
-				"env":    "staging",
+				"tier":          "frontend",
+				testLabelRegion: "us-west",
+				testLabelEnv:    "staging",
 			},
 			want: "labels.env='staging' and labels.region='us-west' and labels.tier='frontend'",
 		},
 		{
 			name:     "label with hyphen in key",
-			selector: map[string]string{"my-label": "value"},
+			selector: map[string]string{"my-label": testLabelValue},
 			want:     "labels.my-label='value'",
 		},
 		{
 			name:     "label with underscore in key",
-			selector: map[string]string{"my_label": "value"},
+			selector: map[string]string{"my_label": testLabelValue},
 			want:     "labels.my_label='value'",
 		},
 		{
 			name:     "label with hyphen in value",
-			selector: map[string]string{"region": "us-east-1"},
+			selector: map[string]string{testLabelRegion: "us-east-1"},
 			want:     "labels.region='us-east-1'",
 		},
 		{
 			name:     "label value with single quote (escaped)",
-			selector: map[string]string{"name": "test'value"},
+			selector: map[string]string{keyName: "test'value"},
 			want:     "labels.name='test''value'",
 		},
 	}
@@ -553,50 +624,8 @@ func TestFetchResources_NodePools(t *testing.T) {
 			t.Errorf("Expected path /api/hyperfleet/v1/nodepools, got %s", r.URL.Path)
 		}
 
-		response := map[string]interface{}{
-			"page":  1,
-			"size":  1,
-			"total": 1,
-			"items": []map[string]interface{}{
-				{
-					"id":           "nodepool-1",
-					"href":         "/api/hyperfleet/v1/nodepools/nodepool-1",
-					"kind":         "NodePool",
-					"name":         "workers",
-					"generation":   3,
-					"created_time": "2025-01-01T09:00:00Z",
-					"updated_time": "2025-01-01T10:00:00Z",
-					"created_by":   "test-user@example.com",
-					"updated_by":   "test-user@example.com",
-					"owner_references": map[string]interface{}{
-						"id":   "cluster-123",
-						"kind": "Cluster",
-						"href": "/api/hyperfleet/v1/clusters/cluster-123",
-					},
-					"spec": map[string]interface{}{},
-					"status": map[string]interface{}{
-						"conditions": []map[string]interface{}{
-							{
-								"type":                 "Reconciled",
-								"status":               "True",
-								"created_time":         "2025-01-01T09:00:00Z",
-								"last_transition_time": "2025-01-01T10:00:00Z",
-								"last_updated_time":    "2025-01-01T12:00:00Z",
-								"observed_generation":  3,
-							},
-							{
-								"type":                 "LastKnownReconciled",
-								"status":               "True",
-								"created_time":         "2025-01-01T09:00:00Z",
-								"last_transition_time": "2025-01-01T10:00:00Z",
-								"last_updated_time":    "2025-01-01T12:00:00Z",
-								"observed_generation":  3,
-							},
-						},
-					},
-				},
-			},
-		}
+		np := createMockNodePool("nodepool-1", "workers", 3, "cluster-123")
+		response := createMockResourceList([]map[string]interface{}{np}, 1, 1)
 
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(response); err != nil {
@@ -616,7 +645,7 @@ func TestFetchResources_NodePools(t *testing.T) {
 	if resources[0].ID != "nodepool-1" {
 		t.Errorf("Expected ID nodepool-1, got %s", resources[0].ID)
 	}
-	if resources[0].Kind != "NodePool" {
+	if resources[0].Kind != testKindNodePool {
 		t.Errorf("Expected kind NodePool, got %s", resources[0].Kind)
 	}
 	if resources[0].Generation != 3 {
@@ -634,7 +663,7 @@ func TestFetchResources_NodePools(t *testing.T) {
 	if resources[0].OwnerReferences.ID != "cluster-123" {
 		t.Errorf("Expected OwnerReferences.ID cluster-123, got %s", resources[0].OwnerReferences.ID)
 	}
-	if resources[0].OwnerReferences.Kind != "Cluster" {
+	if resources[0].OwnerReferences.Kind != testKindCluster {
 		t.Errorf("Expected OwnerReferences.Kind Cluster, got %s", resources[0].OwnerReferences.Kind)
 	}
 }
@@ -654,7 +683,7 @@ func TestNewHyperFleetClient_UserAgent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "my-sentinel", "v1.2.3")
+	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "my-sentinel", "v1.2.3", DefaultPageSize)
 	if err != nil {
 		t.Fatalf("NewHyperFleetClient: %v", err)
 	}
@@ -689,8 +718,8 @@ func TestFetchResources_WithLabelSelector(t *testing.T) {
 	client := newTestClient(t, server.URL, 10*time.Second)
 
 	labelSelector := map[string]string{
-		"region": "us-east",
-		"env":    "production",
+		testLabelRegion: testRegionUSEast,
+		testLabelEnv:    "production",
 	}
 
 	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, labelSelector)
@@ -721,7 +750,7 @@ func TestVerifyConnectivity_Success(t *testing.T) {
 		// Return successful health check response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		response := map[string]string{"status": "ok"}
+		response := map[string]string{keyStatus: "ok"}
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			t.Errorf("Failed to encode response: %v", err)
 		}
@@ -798,27 +827,27 @@ func TestBuildSearchString(t *testing.T) {
 	}{
 		{
 			name:              "labels only",
-			labelSelector:     map[string]string{"shard": "1"},
+			labelSelector:     map[string]string{testLabelShard: "1"},
 			additionalFilters: nil,
 			want:              "labels.shard='1'",
 		},
 		{
 			name:              "filter only",
 			labelSelector:     nil,
-			additionalFilters: []string{"status.conditions.Reconciled='False'"},
-			want:              "status.conditions.Reconciled='False'",
+			additionalFilters: []string{testReconciledFilter},
+			want:              testReconciledFilter,
 		},
 		{
 			name:          "both labels and filter",
-			labelSelector: map[string]string{"shard": "1"},
+			labelSelector: map[string]string{testLabelShard: "1"},
 			additionalFilters: []string{
-				"status.conditions.Reconciled='False'",
+				testReconciledFilter,
 			},
-			want: "labels.shard='1' and status.conditions.Reconciled='False'",
+			want: "labels.shard='1' and " + testReconciledFilter,
 		},
 		{
 			name:          "multiple filters",
-			labelSelector: map[string]string{"shard": "1"},
+			labelSelector: map[string]string{testLabelShard: "1"},
 			additionalFilters: []string{
 				"status.conditions.Reconciled='True'",
 				staleTimeFilter,
@@ -836,8 +865,8 @@ func TestBuildSearchString(t *testing.T) {
 		{
 			name:              "empty string filter ignored",
 			labelSelector:     nil,
-			additionalFilters: []string{"", "status.conditions.Reconciled='False'", ""},
-			want:              "status.conditions.Reconciled='False'",
+			additionalFilters: []string{"", testReconciledFilter, ""},
+			want:              testReconciledFilter,
 		},
 	}
 
@@ -853,7 +882,7 @@ func TestBuildSearchString(t *testing.T) {
 
 func newTestClient(t *testing.T, url string, timeout time.Duration) *HyperFleetClient {
 	t.Helper()
-	client, err := NewHyperFleetClient(url, timeout, "test-sentinel", "test")
+	client, err := NewHyperFleetClient(url, timeout, "test-sentinel", "test", DefaultPageSize)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -898,7 +927,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1012,7 +1041,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation_ErrorCase(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1044,12 +1073,7 @@ func TestFetchResources_WithAdditionalFilters(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedSearchParam = r.URL.Query().Get("search")
 
-		response := map[string]interface{}{
-			"page":  1,
-			"size":  0,
-			"total": 0,
-			"items": []map[string]interface{}{},
-		}
+		response := createMockResourceList([]map[string]interface{}{}, 1, 0)
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			t.Logf("Error encoding response: %v", err)
@@ -1057,18 +1081,18 @@ func TestFetchResources_WithAdditionalFilters(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
-	labelSelector := map[string]string{"shard": "1"}
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
+	labelSelector := map[string]string{testLabelShard: "1"}
 
 	_, err := client.FetchResources(
 		context.Background(), ResourceTypeClusters, labelSelector,
-		"status.conditions.Reconciled='False'",
+		testReconciledFilter,
 	)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
 
-	expectedSearch := "labels.shard='1' and status.conditions.Reconciled='False'"
+	expectedSearch := "labels.shard='1' and " + testReconciledFilter
 	if receivedSearchParam != expectedSearch {
 		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
 	}
@@ -1081,12 +1105,7 @@ func TestFetchResources_WithConditionFilterOnly(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedSearchParam = r.URL.Query().Get("search")
 
-		response := map[string]interface{}{
-			"page":  1,
-			"size":  0,
-			"total": 0,
-			"items": []map[string]interface{}{},
-		}
+		response := createMockResourceList([]map[string]interface{}{}, 1, 0)
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(response); err != nil {
 			t.Logf("Error encoding response: %v", err)
@@ -1094,7 +1113,7 @@ func TestFetchResources_WithConditionFilterOnly(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
 
 	_, err := client.FetchResources(
 		context.Background(), ResourceTypeClusters, nil,
@@ -1107,5 +1126,153 @@ func TestFetchResources_WithConditionFilterOnly(t *testing.T) {
 	expectedSearch := "status.conditions.Reconciled='True'"
 	if receivedSearchParam != expectedSearch {
 		t.Errorf("Expected search parameter %q, got %q", expectedSearch, receivedSearchParam)
+	}
+}
+
+// TestFetchResources_Pagination tests that FetchResources iterates through all
+// pages when the total exceeds a single page size.
+func TestFetchResources_Pagination(t *testing.T) {
+	var requestedPages []int
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pageStr := r.URL.Query().Get(keyPage)
+		page, _ := strconv.Atoi(pageStr)
+		requestedPages = append(requestedPages, page)
+
+		totalClusters := 54
+		pageSize := 20
+		start := (page - 1) * pageSize
+		end := start + pageSize
+		if end > totalClusters {
+			end = totalClusters
+		}
+
+		clusters := make([]map[string]interface{}, 0, end-start)
+		for i := start; i < end; i++ {
+			clusters = append(clusters, createMockCluster(fmt.Sprintf("cluster-%d", i+1)))
+		}
+
+		response := createMockResourceList(clusters, page, totalClusters)
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL, 10*time.Second)
+	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if len(resources) != 54 {
+		t.Fatalf("Expected 54 resources, got %d", len(resources))
+	}
+	if len(requestedPages) != 3 {
+		t.Fatalf("Expected 3 page requests, got %d: %v", len(requestedPages), requestedPages)
+	}
+	if resources[0].ID != "cluster-1" {
+		t.Errorf("Expected first resource ID cluster-1, got %s", resources[0].ID)
+	}
+	if resources[53].ID != "cluster-54" {
+		t.Errorf("Expected last resource ID cluster-54, got %s", resources[53].ID)
+	}
+}
+
+// TestFetchResources_PaginationSinglePage tests that a single page response
+// does not trigger additional requests.
+func TestFetchResources_PaginationSinglePage(t *testing.T) {
+	requestCount := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		clusters := []map[string]interface{}{
+			createMockCluster("cluster-1"),
+			createMockCluster("cluster-2"),
+		}
+		response := createMockResourceList(clusters, 1, 2)
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL, 10*time.Second)
+	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if len(resources) != 2 {
+		t.Fatalf("Expected 2 resources, got %d", len(resources))
+	}
+	if requestCount != 1 {
+		t.Errorf("Expected 1 request for single page, got %d", requestCount)
+	}
+}
+
+// TestFetchResources_PaginationErrorOnSecondPage tests that an error on a
+// subsequent page is propagated correctly.
+func TestFetchResources_PaginationErrorOnSecondPage(t *testing.T) {
+	requestCount := 0
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount++
+		if requestCount == 1 {
+			clusters := make([]map[string]interface{}, 20)
+			for i := range clusters {
+				clusters[i] = createMockCluster(fmt.Sprintf("cluster-%d", i+1))
+			}
+			response := createMockResourceList(clusters, 1, 40)
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(response); err != nil {
+				t.Errorf("Failed to encode response: %v", err)
+			}
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		if _, err := w.Write([]byte(`{"error": "not found"}`)); err != nil {
+			t.Errorf("Failed to write response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL, 10*time.Second)
+	resources, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
+
+	if err == nil {
+		t.Fatal("Expected error on second page, got nil")
+	}
+	if len(resources) != 0 {
+		t.Fatalf("Expected no resources on paginated failure, got %d", len(resources))
+	}
+}
+
+// TestFetchResources_PaginationSendsPageSize verifies that page and pageSize
+// query parameters are sent in every request.
+func TestFetchResources_PaginationSendsPageSize(t *testing.T) {
+	var receivedPageSize string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPageSize = r.URL.Query().Get("pageSize")
+		response := createMockClusterList([]map[string]interface{}{})
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	client := newTestClient(t, server.URL, 10*time.Second)
+	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	expected := strconv.Itoa(int(DefaultPageSize))
+	if receivedPageSize != expected {
+		t.Errorf("Expected pageSize=%s, got %q", expected, receivedPageSize)
 	}
 }

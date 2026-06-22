@@ -37,6 +37,7 @@ clients:
     base_url: http://localhost:8000
     version: "v1"
     timeout: 10s
+    # page_size: 20
 
   # Broker configuration
   # Note: broker implementation details (RabbitMQ URL, etc.) are in broker.yaml

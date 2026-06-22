@@ -30,6 +30,10 @@ const (
 	DefaultRandomizationFactor = 0.1
 )
 
+const (
+	DefaultPageSize int32 = 20
+)
+
 // ResourceType represents the type of HyperFleet resource
 type ResourceType string
 
@@ -45,12 +49,13 @@ const (
 type HyperFleetClient struct {
 	apiClient *openapi.ClientWithResponses
 	log       logger.HyperFleetLogger
+	pageSize  int32
 }
 
 // NewHyperFleetClient creates a new HyperFleet API client using OpenAPI-generated client.
 // sentinelName and version are used to build the User-Agent header sent with every request.
 func NewHyperFleetClient(
-	endpoint string, timeout time.Duration, sentinelName, version string,
+	endpoint string, timeout time.Duration, sentinelName, version string, pageSize int32,
 ) (*HyperFleetClient, error) {
 	httpClient := &http.Client{
 		Timeout:   timeout,
@@ -74,6 +79,7 @@ func NewHyperFleetClient(
 	return &HyperFleetClient{
 		apiClient: client,
 		log:       logger.NewHyperFleetLogger(),
+		pageSize:  pageSize,
 	}, nil
 }
 
@@ -271,228 +277,248 @@ func (c *HyperFleetClient) fetchResourcesOnce(
 	}
 }
 
-// fetchClusters fetches cluster resources from the API
+// fetchPaginated iterates through all pages of an API endpoint, collecting
+// resources until every item has been fetched.
+func fetchPaginated[T any](
+	ctx context.Context,
+	c *HyperFleetClient,
+	searchParam string,
+	fetchPage func(ctx context.Context, page, pageSize int32, searchParam string) ([]T, int32, error),
+	convert func(T) Resource,
+	resourceLabel string,
+) ([]Resource, error) {
+	var allResources []Resource
+	page := int32(1)
+
+	for {
+		items, total, err := fetchPage(ctx, page, c.pageSize, searchParam)
+		if err != nil {
+			return nil, err
+		}
+
+		if allResources == nil {
+			allResources = make([]Resource, 0, len(items))
+		}
+
+		for _, item := range items {
+			allResources = append(allResources, convert(item))
+		}
+
+		c.log.Debugf(ctx, "Fetched %s page=%d size=%d total=%d", resourceLabel, page, len(items), total)
+
+		if len(allResources) >= int(total) || len(items) == 0 {
+			break
+		}
+		page++
+	}
+
+	return allResources, nil
+}
+
+// wrapNetworkError wraps a transport-level error into an APIError with retry metadata.
+func wrapNetworkError(err error) *APIError {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) && urlErr.Timeout() {
+		return &APIError{StatusCode: 0, Message: "request timeout", Retriable: true}
+	}
+	return &APIError{StatusCode: 0, Message: fmt.Sprintf("network error: %v", err), Retriable: true}
+}
+
+// checkHTTPStatus validates the HTTP response status code and returns an
+// APIError for error status codes (>= 400).
+func checkHTTPStatus(resp *http.Response) error {
+	if resp != nil && resp.StatusCode >= 400 {
+		return &APIError{
+			StatusCode: resp.StatusCode,
+			Message:    fmt.Sprintf("API request failed with status %d", resp.StatusCode),
+			Retriable:  isHTTPStatusRetriable(resp.StatusCode),
+		}
+	}
+	return nil
+}
+
+// fetchClusters fetches all cluster resources from the API, iterating through
+// pages until every resource has been collected.
 func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string) ([]Resource, error) {
-	params := &openapi.GetClustersParams{}
+	return fetchPaginated(ctx, c, searchParam, c.fetchClustersPage, convertCluster, "clusters")
+}
+
+func (c *HyperFleetClient) fetchClustersPage(
+	ctx context.Context, page, pageSize int32, searchParam string,
+) ([]openapi.Cluster, int32, error) {
+	params := &openapi.GetClustersParams{
+		Page:     &page,
+		PageSize: &pageSize,
+	}
 	if searchParam != "" {
-		search := searchParam
-		params.Search = &search
+		params.Search = &searchParam
 	}
 
 	response, err := c.apiClient.GetClustersWithResponse(ctx, params)
 	if err != nil {
-		// Network/timeout error - use errors.As for proper error unwrapping
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) && urlErr.Timeout() {
-			return nil, &APIError{
-				StatusCode: 0,
-				Message:    "request timeout",
-				Retriable:  true,
-			}
-		}
-		return nil, &APIError{
-			StatusCode: 0,
-			Message:    fmt.Sprintf("network error: %v", err),
-			Retriable:  true, // Assume network errors are retriable
-		}
+		return nil, 0, wrapNetworkError(err)
 	}
-
-	// Check HTTP response status
-	if response.HTTPResponse != nil && response.HTTPResponse.StatusCode >= 400 {
-		return nil, &APIError{
-			StatusCode: response.HTTPResponse.StatusCode,
-			Message:    fmt.Sprintf("API request failed with status %d", response.HTTPResponse.StatusCode),
-			Retriable:  isHTTPStatusRetriable(response.HTTPResponse.StatusCode),
-		}
+	if err := checkHTTPStatus(response.HTTPResponse); err != nil {
+		return nil, 0, err
 	}
-
-	// Nil check for response body
 	if response.JSON200 == nil {
-		return nil, &APIError{
-			StatusCode: 0,
-			Message:    "received nil response from API",
-			Retriable:  false,
-		}
+		return nil, 0, &APIError{StatusCode: 0, Message: "received nil response from API", Retriable: false}
 	}
-
-	resourceList := response.JSON200
-
-	// Convert OpenAPI models to internal models
-	resources := make([]Resource, 0, len(resourceList.Items))
-	for _, item := range resourceList.Items {
-		// Get ID and Kind with defaults for optional pointer fields
-		id := ""
-		if item.Id != nil {
-			id = *item.Id
-		}
-		href := ""
-		if item.Href != nil {
-			href = *item.Href
-		}
-		kind := ""
-		if item.Kind != nil {
-			kind = *item.Kind
-		}
-
-		resource := Resource{
-			ID:          id,
-			Href:        href,
-			Kind:        kind,
-			Generation:  item.Generation,
-			CreatedTime: item.CreatedTime,
-			UpdatedTime: item.UpdatedTime,
-			Status:      ResourceStatus{},
-		}
-
-		// Handle optional labels
-		if item.Labels != nil {
-			resource.Labels = *item.Labels
-		}
-
-		// Convert conditions from OpenAPI model
-		if len(item.Status.Conditions) > 0 {
-			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
-			for _, cond := range item.Status.Conditions {
-				condition := Condition{
-					Type:               cond.Type,
-					Status:             string(cond.Status),
-					LastTransitionTime: cond.LastTransitionTime,
-					LastUpdatedTime:    cond.LastUpdatedTime,
-					ObservedGeneration: cond.ObservedGeneration,
-				}
-				if cond.Reason != nil {
-					condition.Reason = *cond.Reason
-				}
-				if cond.Message != nil {
-					condition.Message = *cond.Message
-				}
-				resource.Status.Conditions = append(resource.Status.Conditions, condition)
-			}
-		}
-
-		resources = append(resources, resource)
-	}
-
-	return resources, nil
+	return response.JSON200.Items, response.JSON200.Total, nil
 }
 
-// fetchNodePools fetches nodepool resources from the API
+func convertCluster(item openapi.Cluster) Resource {
+	// Get ID and Kind with defaults for optional pointer fields
+	id := ""
+	if item.Id != nil {
+		id = *item.Id
+	}
+	href := ""
+	if item.Href != nil {
+		href = *item.Href
+	}
+	kind := ""
+	if item.Kind != nil {
+		kind = *item.Kind
+	}
+
+	resource := Resource{
+		ID:          id,
+		Href:        href,
+		Kind:        kind,
+		Generation:  item.Generation,
+		CreatedTime: item.CreatedTime,
+		UpdatedTime: item.UpdatedTime,
+		Status:      ResourceStatus{},
+	}
+
+	// Handle optional labels
+	if item.Labels != nil {
+		resource.Labels = *item.Labels
+	}
+
+	// Convert conditions from OpenAPI model
+	if len(item.Status.Conditions) > 0 {
+		resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
+		for _, cond := range item.Status.Conditions {
+			condition := Condition{
+				Type:               cond.Type,
+				Status:             string(cond.Status),
+				LastTransitionTime: cond.LastTransitionTime,
+				LastUpdatedTime:    cond.LastUpdatedTime,
+				ObservedGeneration: cond.ObservedGeneration,
+			}
+			if cond.Reason != nil {
+				condition.Reason = *cond.Reason
+			}
+			if cond.Message != nil {
+				condition.Message = *cond.Message
+			}
+			resource.Status.Conditions = append(resource.Status.Conditions, condition)
+		}
+	}
+
+	return resource
+}
+
+// fetchNodePools fetches all nodepool resources from the API, iterating through
+// pages until every resource has been collected.
 func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam string) ([]Resource, error) {
-	params := &openapi.GetNodePoolsParams{}
+	return fetchPaginated(ctx, c, searchParam, c.fetchNodePoolsPage, convertNodePool, "nodepools")
+}
+
+func (c *HyperFleetClient) fetchNodePoolsPage(
+	ctx context.Context, page, pageSize int32, searchParam string,
+) ([]openapi.NodePool, int32, error) {
+	params := &openapi.GetNodePoolsParams{
+		Page:     &page,
+		PageSize: &pageSize,
+	}
 	if searchParam != "" {
-		search := searchParam
-		params.Search = &search
+		params.Search = &searchParam
 	}
 
 	response, err := c.apiClient.GetNodePoolsWithResponse(ctx, params)
 	if err != nil {
-		var urlErr *url.Error
-		if errors.As(err, &urlErr) && urlErr.Timeout() {
-			return nil, &APIError{
-				StatusCode: 0,
-				Message:    "request timeout",
-				Retriable:  true,
-			}
-		}
-		return nil, &APIError{
-			StatusCode: 0,
-			Message:    fmt.Sprintf("network error: %v", err),
-			Retriable:  true,
-		}
+		return nil, 0, wrapNetworkError(err)
 	}
-
-	// Check HTTP response status
-	if response.HTTPResponse != nil && response.HTTPResponse.StatusCode >= 400 {
-		return nil, &APIError{
-			StatusCode: response.HTTPResponse.StatusCode,
-			Message:    fmt.Sprintf("API request failed with status %d", response.HTTPResponse.StatusCode),
-			Retriable:  isHTTPStatusRetriable(response.HTTPResponse.StatusCode),
-		}
+	if err := checkHTTPStatus(response.HTTPResponse); err != nil {
+		return nil, 0, err
 	}
-
 	if response.JSON200 == nil {
-		return nil, &APIError{
-			StatusCode: 0,
-			Message:    "received nil response from API",
-			Retriable:  false,
-		}
+		return nil, 0, &APIError{StatusCode: 0, Message: "received nil response from API", Retriable: false}
+	}
+	return response.JSON200.Items, response.JSON200.Total, nil
+}
+
+func convertNodePool(item openapi.NodePool) Resource {
+	// Get ID and Href with defaults for optional pointer fields
+	id := ""
+	if item.Id != nil {
+		id = *item.Id
+	}
+	href := ""
+	if item.Href != nil {
+		href = *item.Href
+	}
+	kind := ""
+	if item.Kind != nil {
+		kind = *item.Kind
 	}
 
-	resourceList := response.JSON200
+	resource := Resource{
+		ID:          id,
+		Href:        href,
+		Kind:        kind,
+		Generation:  item.Generation,
+		CreatedTime: item.CreatedTime,
+		UpdatedTime: item.UpdatedTime,
+		Status:      ResourceStatus{},
+	}
 
-	// Convert OpenAPI models to internal models
-	resources := make([]Resource, 0, len(resourceList.Items))
-	for _, item := range resourceList.Items {
-		// Get ID and Href with defaults for optional pointer fields
-		id := ""
-		if item.Id != nil {
-			id = *item.Id
-		}
-		href := ""
-		if item.Href != nil {
-			href = *item.Href
-		}
-		kind := ""
-		if item.Kind != nil {
-			kind = *item.Kind
-		}
+	// Handle optional labels
+	if item.Labels != nil {
+		resource.Labels = *item.Labels
+	}
 
-		resource := Resource{
-			ID:          id,
-			Href:        href,
-			Kind:        kind,
-			Generation:  item.Generation,
-			CreatedTime: item.CreatedTime,
-			UpdatedTime: item.UpdatedTime,
-			Status:      ResourceStatus{},
-		}
+	// Map owner references
+	ownerRef := item.OwnerReferences
+	ref := &OwnerReference{}
+	if ownerRef.Id != nil {
+		ref.ID = *ownerRef.Id
+	}
+	if ownerRef.Href != nil {
+		ref.Href = *ownerRef.Href
+	}
+	if ownerRef.Kind != nil {
+		ref.Kind = *ownerRef.Kind
+	}
+	if ref.ID != "" || ref.Href != "" || ref.Kind != "" {
+		resource.OwnerReferences = ref
+	}
 
-		// Handle optional labels
-		if item.Labels != nil {
-			resource.Labels = *item.Labels
-		}
-
-		// Map owner references
-		ownerRef := item.OwnerReferences
-		ref := &OwnerReference{}
-		if ownerRef.Id != nil {
-			ref.ID = *ownerRef.Id
-		}
-		if ownerRef.Href != nil {
-			ref.Href = *ownerRef.Href
-		}
-		if ownerRef.Kind != nil {
-			ref.Kind = *ownerRef.Kind
-		}
-		if ref.ID != "" || ref.Href != "" || ref.Kind != "" {
-			resource.OwnerReferences = ref
-		}
-
-		// Convert conditions from OpenAPI model
-		if len(item.Status.Conditions) > 0 {
-			resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
-			for _, cond := range item.Status.Conditions {
-				condition := Condition{
-					Type:               cond.Type,
-					Status:             string(cond.Status),
-					LastTransitionTime: cond.LastTransitionTime,
-					LastUpdatedTime:    cond.LastUpdatedTime,
-					ObservedGeneration: cond.ObservedGeneration,
-				}
-				if cond.Reason != nil {
-					condition.Reason = *cond.Reason
-				}
-				if cond.Message != nil {
-					condition.Message = *cond.Message
-				}
-				resource.Status.Conditions = append(resource.Status.Conditions, condition)
+	// Convert conditions from OpenAPI model
+	if len(item.Status.Conditions) > 0 {
+		resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
+		for _, cond := range item.Status.Conditions {
+			condition := Condition{
+				Type:               cond.Type,
+				Status:             string(cond.Status),
+				LastTransitionTime: cond.LastTransitionTime,
+				LastUpdatedTime:    cond.LastUpdatedTime,
+				ObservedGeneration: cond.ObservedGeneration,
 			}
+			if cond.Reason != nil {
+				condition.Reason = *cond.Reason
+			}
+			if cond.Message != nil {
+				condition.Message = *cond.Message
+			}
+			resource.Status.Conditions = append(resource.Status.Conditions, condition)
 		}
-
-		resources = append(resources, resource)
 	}
 
-	return resources, nil
+	return resource
 }
 
 // APIError represents an API error with retry information

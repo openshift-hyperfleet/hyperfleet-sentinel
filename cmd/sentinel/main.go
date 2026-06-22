@@ -257,7 +257,8 @@ func runServe(
 
 	// Initialize components
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		cfg.Clients.HyperFleetAPI.BaseURL, cfg.Clients.HyperFleetAPI.Timeout, cfg.Sentinel.Name, version,
+		cfg.Clients.HyperFleetAPI.BaseURL, cfg.Clients.HyperFleetAPI.Timeout,
+		cfg.Sentinel.Name, version, cfg.Clients.HyperFleetAPI.PageSize,
 	)
 	if err != nil {
 		log.Errorf(ctx, "Failed to initialize OpenAPI client: %v", err)

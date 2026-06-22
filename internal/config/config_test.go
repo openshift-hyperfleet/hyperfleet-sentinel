@@ -366,6 +366,37 @@ func TestValidate_NegativeDurations(t *testing.T) {
 	}
 }
 
+func TestValidate_PageSize(t *testing.T) {
+	tests := []struct {
+		name    string
+		size    int32
+		wantErr bool
+	}{
+		{"valid default", 20, false},
+		{"valid large", 500, false},
+		{"valid minimum", 1, false},
+		{"zero", 0, true},
+		{"negative", -1, true},
+		{"exceeds max", 501, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := NewSentinelConfig()
+			cfg.ResourceType = testResourceType
+			cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
+			cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+			cfg.MessageDecision = newTestMessageDecision()
+			cfg.Clients.HyperFleetAPI.PageSize = tt.size
+
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("PageSize=%d: wantErr=%v, got %v", tt.size, tt.wantErr, err)
+			}
+		})
+	}
+}
+
 // ============================================================================
 // Label Selector Tests
 // ============================================================================
