@@ -130,7 +130,7 @@ When `message_decision` is omitted from the config file, Sentinel uses the follo
 | `ref_time` | `condition("Reconciled").last_updated_time` | Reference timestamp from Reconciled condition |
 | `is_reconciled` | `condition("Reconciled").status == "True"` | Resource reconciled status |
 | `has_ref_time` | `ref_time != ""` | Guard: Reconciled condition exists |
-| `is_new_resource` | `!is_reconciled && resource.generation == 1` | New resource: never been processed |
+| `is_new_resource` | `resource.generation == 1 && !has_ref_time` | New resource: no Reconciled condition yet |
 | `generation_mismatch` | `resource.generation > condition("Reconciled").observed_generation` | Spec changed but not yet processed |
 | `reconciled_and_stale` | `is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("30m")` | Stable resource drifting past 30 min |
 | `not_reconciled_and_debounced` | `!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("10s")` | Transitional resource debounced past 10 s |
@@ -139,7 +139,7 @@ When `message_decision` is omitted from the config file, Sentinel uses the follo
 
 **What each trigger covers:**
 
-- **`is_new_resource`** — Catches resources with `generation == 1` that are not yet reconciled, acting as a proxy for "never been processed". Publishes within one poll interval of creation.
+- **`is_new_resource`** — Catches brand-new resources with `generation == 1` that have no Reconciled condition yet (adapter has never seen them). Publishes within one poll interval of creation. Once the adapter creates the Reconciled condition, `not_reconciled_and_debounced` takes over with its 10 s debounce.
 - **`generation_mismatch`** — Catches spec changes immediately: the HyperFleet API increments `generation` on every spec update; adapters increment `observed_generation` on the Reconciled condition as they process it. A gap means unprocessed changes.
 - **`reconciled_and_stale`** — Ensures eventual consistency on stable resources by re-publishing periodically even when the spec is in sync, handling external drift and transient failures.
 - **`not_reconciled_and_debounced`** — Drives faster re-publishing for transitional resources, while the debounce prevents event storms.
