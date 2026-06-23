@@ -5,13 +5,14 @@
 HyperFleet Sentinel - Kubernetes service that polls HyperFleet API and publishes CloudEvents
 
 **Homepage:** <https://github.com/openshift-hyperfleet/hyperfleet-sentinel>
+> For the full deployment guide (configuration, broker setup, examples), see the [Deployment Guide](https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/deployment.md).
 
 ## Installation
 
 ```bash
-helm install hyperfleet-sentinel oci://REGISTRY/hyperfleet-sentinel \
-  --set image.registry=REGISTRY \
-  --set image.repository=ORG/hyperfleet-sentinel \
+helm install hyperfleet-sentinel oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel-chart \
+  --set image.registry=quay.io \
+  --set image.repository=redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel \
   --set image.tag=<version>
 ```
 

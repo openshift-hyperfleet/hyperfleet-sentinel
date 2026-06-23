@@ -1,8 +1,5 @@
 # Deploying Multiple Sentinel Instances
 
-**Status**: Active
-**Owner**: HyperFleet Team
-**Last Updated**: 2026-03-12
 > **Audience:** Operations teams deploying Sentinel at scale.
 
 Sentinel supports horizontal scaling through multiple dimensions: by resource type (separate instances for clusters vs nodepools) and by label-based resource filtering within the same resource type. Deploy multiple Sentinel instances with different `resource_selector` values to distribute the workload.
@@ -15,19 +12,19 @@ Deploy multiple Sentinel instances by installing the Helm chart multiple times w
 
 ```bash
 # Instance 1: Watch clusters in us-east region
-helm install sentinel-us-east ./charts \
+helm install sentinel-us-east oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel-chart \
   --namespace hyperfleet-system \
   --set config.resourceSelector[0].label=region \
   --set config.resourceSelector[0].value=us-east
 
 # Instance 2: Watch clusters in us-west region
-helm install sentinel-us-west ./charts \
+helm install sentinel-us-west oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel-chart \
   --namespace hyperfleet-system \
   --set config.resourceSelector[0].label=region \
   --set config.resourceSelector[0].value=us-west
 
 # Instance 3: Watch clusters in eu-central region
-helm install sentinel-eu-central ./charts \
+helm install sentinel-eu-central oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel-chart \
   --namespace hyperfleet-system \
   --set config.resourceSelector[0].label=region \
   --set config.resourceSelector[0].value=eu-central
@@ -64,11 +61,11 @@ config:
 Deploy using values files:
 
 ```bash
-helm install sentinel-us-east ./charts \
+helm install sentinel-us-east oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel-chart \
   --namespace hyperfleet-system \
   -f values-us-east.yaml
 
-helm install sentinel-us-west ./charts \
+helm install sentinel-us-west oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel-chart \
   --namespace hyperfleet-system \
   -f values-us-west.yaml
 ```
@@ -90,14 +87,14 @@ When deploying multiple Sentinel instances, consider using separate broker topic
 
 ```bash
 # Instance for us-east with dedicated topic
-helm install sentinel-us-east ./charts \
+helm install sentinel-us-east oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel-chart \
   --namespace hyperfleet-system \
   --set config.resourceSelector[0].label=region \
   --set config.resourceSelector[0].value=us-east \
   --set broker.topic=hyperfleet-clusters-us-east
 
 # Instance for us-west with dedicated topic
-helm install sentinel-us-west ./charts \
+helm install sentinel-us-west oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel-chart \
   --namespace hyperfleet-system \
   --set config.resourceSelector[0].label=region \
   --set config.resourceSelector[0].value=us-west \

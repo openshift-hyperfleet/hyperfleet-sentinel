@@ -1,8 +1,5 @@
 # HyperFleet Sentinel Operator Guide
 
-**Status**: Active
-**Owner**: HyperFleet Team
-**Last Updated**: 2026-03-12
 > **Audience:** Operators deploying and configuring Sentinel service.
 
 This comprehensive guide teaches operators how to deploy, configure, and operate the HyperFleet Sentinel service—a polling-based event publisher that drives cluster lifecycle orchestration.
@@ -103,7 +100,7 @@ When Sentinel polls the HyperFleet API, it retrieves cluster or nodepool resourc
 - **`resource`** — the API resource as a map (`id`, `kind`, `href`, `generation`, `created_time`, `updated_time`, `labels`, `owner_references`, `metadata`)
 - **`now`** — the current evaluation timestamp (`timestamp` type)
 
-The **`condition(name)`** CEL function looks up a status condition by type name (e.g., `condition("Ready")`). Each condition exposes: `status`, `observed_generation`, `last_updated_time`, `last_transition_time`, `reason`, `message`. If the condition is absent, all fields are zero values (empty strings, `0` for `observed_generation`), so CEL expressions can guard safely with `ref_time != ""`.
+The **`condition(name)`** CEL function looks up a status condition by type name (e.g., `condition("Reconciled")`). Each condition exposes: `status`, `observed_generation`, `last_updated_time`, `last_transition_time`, `reason`, `message`. If the condition is absent, all fields are zero values (empty strings, `0` for `observed_generation`), so CEL expressions can guard safely with `ref_time != ""`.
 
 #### 2.1.1 How the Engine Works
 
@@ -529,7 +526,7 @@ export HYPERFLEET_BROKER_TOPIC="hyperfleet-prod-clusters"
 # No GOOGLE_APPLICATION_CREDENTIALS needed - Workload Identity handles authentication
 ```
 
-For Workload Identity setup instructions, see [Configure Workload Identity](running-sentinel.md#5-configure-workload-identity).
+For Workload Identity setup instructions, see [Configure Workload Identity](deployment.md#workload-identity-for-pubsub).
 
 **Broker Configuration Reference:**
 
@@ -611,7 +608,7 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
 - [ ] Install Sentinel using Helm chart:
 
   ```bash
-  helm install sentinel ./charts \
+  helm install sentinel oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel-chart \
     --namespace hyperfleet-system \
     --values values.yaml
   ```
@@ -656,7 +653,7 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
   - `published` - Number of events published (`message_decision` result was `true`)
   - `skipped` - Number of resources skipped (no reconciliation needed)
 
-For detailed deployment guidance, see [docs/running-sentinel.md](running-sentinel.md)
+For detailed deployment guidance, see [docs/deployment.md](deployment.md)
 
 ---
 
@@ -664,7 +661,7 @@ For detailed deployment guidance, see [docs/running-sentinel.md](running-sentine
 
 ### Documentation
 
-- **[Running Sentinel](running-sentinel.md)** - Detailed guide for local and GKE deployments
+- **[Running Sentinel](sentinel-for-gke-dev.md)** - Detailed guide for GKE deployments
 - **[Metrics Documentation](metrics.md)** - Complete metrics catalog with PromQL examples
 - **[Multi-Instance Deployment](multi-instance-deployment.md)** - Horizontal scaling strategies
 - **[Testcontainers Documentation](testcontainers.md)** - Integration testing with testcontainers
