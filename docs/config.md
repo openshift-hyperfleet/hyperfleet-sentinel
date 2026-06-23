@@ -35,6 +35,7 @@ clients:
     base_url: "http://hyperfleet-api:8000"
     version: "v1"
     timeout: "10s"
+    # page_size: 20
   broker:
     topic: ""
 
@@ -69,6 +70,7 @@ message_data:
 - `base_url` (string, required): Base URL for HyperFleet API requests.
 - `version` (string, optional): API version. Default: `v1`.
 - `timeout` (duration string, optional): HTTP client timeout. Default: `10s`.
+- `page_size` (int, optional): Number of resources per API page when polling. Must be between 1 and 500. Default: `20`.
 
 ### Broker (`clients.broker`)
 
@@ -102,6 +104,7 @@ The following CLI flags override YAML values:
 - `--hyperfleet-api-base-url` -> `clients.hyperfleet_api.base_url`
 - `--hyperfleet-api-version` -> `clients.hyperfleet_api.version`
 - `--hyperfleet-api-timeout` -> `clients.hyperfleet_api.timeout`
+- `--hyperfleet-api-page-size` -> `clients.hyperfleet_api.page_size`
 
 **Broker**
 
@@ -130,6 +133,7 @@ All deployment overrides use the `HYPERFLEET_` prefix unless noted.
 - `HYPERFLEET_API_BASE_URL` -> `clients.hyperfleet_api.base_url`
 - `HYPERFLEET_API_VERSION` -> `clients.hyperfleet_api.version`
 - `HYPERFLEET_API_TIMEOUT` -> `clients.hyperfleet_api.timeout`
+- `HYPERFLEET_API_PAGE_SIZE` -> `clients.hyperfleet_api.page_size`
 
 **Broker**
 

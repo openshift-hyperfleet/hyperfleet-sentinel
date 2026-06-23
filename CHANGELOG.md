@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - BREAKING CHANGE: `messaging_system` config field and `MESSAGING_SYSTEM` env var removed, `messaging.system` OTel span attribute is now derived from `publisher.BrokerType()`. Remove `messaging_system` from configs before upgrading.
 
 ### Fixed
+- Sentinel now paginates API responses, fetching all resources instead of only the first page (default size 20). Environments with more than 20 clusters/nodepools were missing reconciliation events.
 
 ### Security
 

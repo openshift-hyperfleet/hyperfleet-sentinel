@@ -162,7 +162,11 @@ func TestTrigger_Success(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
+	hyperfleetClient, err := client.NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -213,7 +217,11 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
+	hyperfleetClient, err := client.NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -250,7 +258,11 @@ func TestTrigger_FetchError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 1*time.Second, "test-sentinel", "test")
+	hyperfleetClient, err := client.NewHyperFleetClient(
+		server.URL, 1*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -286,7 +298,11 @@ func TestTrigger_PublishError(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
+	hyperfleetClient, err := client.NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{
 		publishError: errors.New("broker connection failed"),
@@ -326,7 +342,11 @@ func TestTrigger_MixedResources(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
+	hyperfleetClient, err := client.NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -371,7 +391,11 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
+	hyperfleetClient, err := client.NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -427,7 +451,11 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, _ := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
+	hyperfleetClient, err := client.NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
 	log := logger.NewHyperFleetLogger()
@@ -577,7 +605,8 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 	})
 	defer server.Close()
 
-	hyperfleetClient, err := client.NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test")
+	hyperfleetClient, err := client.NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
