@@ -368,7 +368,6 @@ func (c *HyperFleetClient) fetchClustersPage(
 }
 
 func convertCluster(item openapi.Cluster) Resource {
-	// Get ID and Kind with defaults for optional pointer fields
 	id := ""
 	if item.Id != nil {
 		id = *item.Id
@@ -377,15 +376,11 @@ func convertCluster(item openapi.Cluster) Resource {
 	if item.Href != nil {
 		href = *item.Href
 	}
-	kind := ""
-	if item.Kind != nil {
-		kind = *item.Kind
-	}
 
 	resource := Resource{
 		ID:          id,
 		Href:        href,
-		Kind:        kind,
+		Kind:        item.Kind,
 		Generation:  item.Generation,
 		CreatedTime: item.CreatedTime,
 		UpdatedTime: item.UpdatedTime,
@@ -461,15 +456,10 @@ func convertNodePool(item openapi.NodePool) Resource {
 	if item.Href != nil {
 		href = *item.Href
 	}
-	kind := ""
-	if item.Kind != nil {
-		kind = *item.Kind
-	}
-
 	resource := Resource{
 		ID:          id,
 		Href:        href,
-		Kind:        kind,
+		Kind:        item.Kind,
 		Generation:  item.Generation,
 		CreatedTime: item.CreatedTime,
 		UpdatedTime: item.UpdatedTime,
@@ -490,9 +480,7 @@ func convertNodePool(item openapi.NodePool) Resource {
 	if ownerRef.Href != nil {
 		ref.Href = *ownerRef.Href
 	}
-	if ownerRef.Kind != nil {
-		ref.Kind = *ownerRef.Kind
-	}
+	ref.Kind = ownerRef.Kind
 	if ref.ID != "" || ref.Href != "" || ref.Kind != "" {
 		resource.OwnerReferences = ref
 	}
