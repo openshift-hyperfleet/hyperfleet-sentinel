@@ -347,8 +347,8 @@ func (c *HyperFleetClient) fetchClustersPage(
 	ctx context.Context, page, pageSize int32, searchParam string,
 ) ([]openapi.Cluster, int32, error) {
 	params := &openapi.GetClustersParams{
-		Page:     &page,
-		PageSize: &pageSize,
+		Page: &page,
+		Size: &pageSize,
 	}
 	if searchParam != "" {
 		params.Search = &searchParam
@@ -426,8 +426,8 @@ func (c *HyperFleetClient) fetchNodePoolsPage(
 	ctx context.Context, page, pageSize int32, searchParam string,
 ) ([]openapi.NodePool, int32, error) {
 	params := &openapi.GetNodePoolsParams{
-		Page:     &page,
-		PageSize: &pageSize,
+		Page: &page,
+		Size: &pageSize,
 	}
 	if searchParam != "" {
 		params.Search = &searchParam

@@ -1250,29 +1250,56 @@ func TestFetchResources_PaginationErrorOnSecondPage(t *testing.T) {
 	}
 }
 
-// TestFetchResources_PaginationSendsPageSize verifies that page and pageSize
-// query parameters are sent in every request.
-func TestFetchResources_PaginationSendsPageSize(t *testing.T) {
-	var receivedPageSize string
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		receivedPageSize = r.URL.Query().Get("pageSize")
-		response := createMockClusterList([]map[string]interface{}{})
-		w.Header().Set("Content-Type", "application/json")
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			t.Errorf("Failed to encode response: %v", err)
-		}
-	}))
-	defer server.Close()
-
-	client := newTestClient(t, server.URL, 10*time.Second)
-	_, err := client.FetchResources(context.Background(), ResourceTypeClusters, nil)
-	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
+// TestFetchResources_PaginationSendsSize verifies that page and size
+// query parameters are sent for both clusters and nodepools.
+func TestFetchResources_PaginationSendsSize(t *testing.T) {
+	tests := []struct {
+		mockResponse func() map[string]interface{}
+		name         string
+		resourceType ResourceType
+		expectedPath string
+	}{
+		{
+			name:         "clusters",
+			resourceType: ResourceTypeClusters,
+			expectedPath: testClustersAPIPath,
+			mockResponse: func() map[string]interface{} {
+				return createMockClusterList([]map[string]interface{}{})
+			},
+		},
+		{
+			name:         "nodepools",
+			resourceType: ResourceTypeNodePools,
+			expectedPath: "/api/hyperfleet/v1/nodepools",
+			mockResponse: func() map[string]interface{} {
+				return createMockResourceList([]map[string]interface{}{}, 1, 0)
+			},
+		},
 	}
 
-	expected := strconv.Itoa(int(DefaultPageSize))
-	if receivedPageSize != expected {
-		t.Errorf("Expected pageSize=%s, got %q", expected, receivedPageSize)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var receivedSize string
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				receivedSize = r.URL.Query().Get(keySize)
+				w.Header().Set("Content-Type", "application/json")
+				if err := json.NewEncoder(w).Encode(tt.mockResponse()); err != nil {
+					t.Errorf("Failed to encode response: %v", err)
+				}
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server.URL, 10*time.Second)
+			_, err := client.FetchResources(context.Background(), tt.resourceType, nil)
+			if err != nil {
+				t.Fatalf("Expected no error, got %v", err)
+			}
+
+			expected := strconv.Itoa(int(DefaultPageSize))
+			if receivedSize != expected {
+				t.Errorf("Expected size=%s, got %q", expected, receivedSize)
+			}
+		})
 	}
 }
