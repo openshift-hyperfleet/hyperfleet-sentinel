@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - OpenAPI schema is now sourced from the versioned `hyperfleet-api-spec` Go module instead of being downloaded from `hyperfleet-api` main branch
+- Documented single-instance deployment limitation — running multiple replicas with overlapping resource selectors causes duplicate events. Added recommended deployment configuration and scaling guidance
 
 ### Deprecated
 

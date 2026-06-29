@@ -26,7 +26,7 @@ helm install hyperfleet-sentinel oci://quay.io/redhat-services-prod/hyperfleet-t
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| replicaCount | int | `1` | Number of sentinel replicas |
+| replicaCount | int | `1` | Number of sentinel replicas. Setting >1 duplicates events; scale via separate Helm releases with non-overlapping resourceSelector values instead. See docs/multi-instance-deployment.md. |
 | image.registry | string | `"CHANGE_ME"` | Container image registry (no default — must be set) |
 | image.repository | string | `"CHANGE_ME"` | Container image repository (no default — must be set) |
 | image.pullPolicy | string | `"Always"` | Image pull policy |

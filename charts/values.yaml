@@ -1,7 +1,9 @@
 # Default values for sentinel.
 # This is a YAML-formatted file.
 
-# -- Number of sentinel replicas
+# -- Number of sentinel replicas. Setting >1 duplicates events; scale via
+# separate Helm releases with non-overlapping resourceSelector values instead.
+# See docs/multi-instance-deployment.md.
 replicaCount: 1
 
 image:
