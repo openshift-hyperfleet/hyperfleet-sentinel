@@ -2,13 +2,16 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/api/openapi"
@@ -34,74 +37,70 @@ const (
 	DefaultPageSize int32 = 20
 )
 
-// ResourceType represents the type of HyperFleet resource
-type ResourceType string
-
-// Resource type constants
-const (
-	// ResourceTypeClusters represents cluster resources
-	ResourceTypeClusters ResourceType = "clusters"
-	// ResourceTypeNodePools represents nodepool resources
-	ResourceTypeNodePools ResourceType = "nodepools"
-)
-
-// HyperFleetClient wraps the OpenAPI-generated client
+// HyperFleetClient wraps the HTTP client for the HyperFleet API
 type HyperFleetClient struct {
-	apiClient *openapi.ClientWithResponses
-	log       logger.HyperFleetLogger
-	pageSize  int32
+	httpClient *http.Client
+	log        logger.HyperFleetLogger
+	baseURL    string
+	userAgent  string
+	pageSize   int32
 }
 
-// NewHyperFleetClient creates a new HyperFleet API client using OpenAPI-generated client.
+// NewHyperFleetClient creates a new HyperFleet API client.
 // sentinelName and version are used to build the User-Agent header sent with every request.
 func NewHyperFleetClient(
 	endpoint string, timeout time.Duration, sentinelName, version string, pageSize int32,
 ) (*HyperFleetClient, error) {
+	u, err := url.ParseRequestURI(endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client: invalid endpoint URL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("failed to create client: endpoint must use http or https scheme, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return nil, fmt.Errorf("failed to create client: endpoint must include a host")
+	}
+	if u.RawQuery != "" {
+		return nil, fmt.Errorf("failed to create client: endpoint must not contain a query string")
+	}
+
 	httpClient := &http.Client{
 		Timeout:   timeout,
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
-	userAgent := fmt.Sprintf("hyperfleet-sentinel/%s (%s)", version, sentinelName)
-
-	client, err := openapi.NewClientWithResponses(endpoint,
-		openapi.WithHTTPClient(httpClient),
-		openapi.WithRequestEditorFn(func(_ context.Context, req *http.Request) error {
-			req.Header.Set("User-Agent", userAgent)
-			return nil
-		}),
-	)
-	if err != nil {
-		// This should only fail if the endpoint URL is invalid
-		return nil, fmt.Errorf("failed to create OpenAPI client: %v", err)
-	}
-
 	return &HyperFleetClient{
-		apiClient: client,
-		log:       logger.NewHyperFleetLogger(),
-		pageSize:  pageSize,
+		httpClient: httpClient,
+		baseURL:    strings.TrimRight(endpoint, "/"),
+		userAgent:  fmt.Sprintf("hyperfleet-sentinel/%s (%s)", version, sentinelName),
+		log:        logger.NewHyperFleetLogger(),
+		pageSize:   pageSize,
 	}, nil
 }
 
-// OwnerReference identifies the owner of a resource
-type OwnerReference struct {
+// ObjectReference identifies a related resource
+type ObjectReference struct {
 	ID   string `json:"id"`
 	Href string `json:"href"`
 	Kind string `json:"kind"`
 }
 
-// Resource represents a HyperFleet resource (cluster, nodepool, etc.)
+// Resource represents a HyperFleet resource (cluster, nodepool, or any generic entity)
 type Resource struct {
-	CreatedTime     time.Time              `json:"created_time"`
-	UpdatedTime     time.Time              `json:"updated_time"`
-	Labels          map[string]string      `json:"labels"`
-	OwnerReferences *OwnerReference        `json:"owner_references,omitempty"`
-	Metadata        map[string]interface{} `json:"metadata,omitempty"`
-	ID              string                 `json:"id"`
-	Href            string                 `json:"href"`
-	Kind            string                 `json:"kind"`
-	Status          ResourceStatus         `json:"status"`
-	Generation      int32                  `json:"generation"`
+	CreatedTime     time.Time                    `json:"created_time"`
+	UpdatedTime     time.Time                    `json:"updated_time"`
+	Labels          map[string]string            `json:"labels"`
+	OwnerReferences *ObjectReference             `json:"owner_references,omitempty"`
+	References      map[string][]ObjectReference `json:"references,omitempty"`
+	Metadata        map[string]interface{}       `json:"metadata,omitempty"`
+	Spec            map[string]interface{}       `json:"spec,omitempty"`
+	ID              string                       `json:"id"`
+	Href            string                       `json:"href"`
+	Kind            string                       `json:"kind"`
+	Name            string                       `json:"name"`
+	Status          ResourceStatus               `json:"status"`
+	Generation      int32                        `json:"generation"`
 }
 
 // ResourceStatus represents the status of a resource.
@@ -121,7 +120,111 @@ type Condition struct {
 	ObservedGeneration int32     `json:"observedGeneration"`
 }
 
+// ToMap converts the Resource into a plain map suitable for CEL evaluation or
+// payload building. Generation is cast to int64 for CEL arithmetic. Status
+// conditions are included as a nested map.
+func (r *Resource) ToMap() map[string]interface{} {
+	status := map[string]interface{}{}
+	if len(r.Status.Conditions) > 0 {
+		conditions := make([]interface{}, len(r.Status.Conditions))
+		for i, c := range r.Status.Conditions {
+			cond := map[string]interface{}{
+				"type":                 c.Type,
+				"status":               c.Status,
+				"last_transition_time": c.LastTransitionTime.Format(time.RFC3339Nano),
+				"last_updated_time":    c.LastUpdatedTime.Format(time.RFC3339Nano),
+				"observed_generation":  c.ObservedGeneration,
+			}
+			if c.Reason != "" {
+				cond["reason"] = c.Reason
+			}
+			if c.Message != "" {
+				cond["message"] = c.Message
+			}
+			conditions[i] = cond
+		}
+		status["conditions"] = conditions
+	}
+
+	m := map[string]interface{}{
+		"id":           r.ID,
+		"href":         r.Href, //nolint:goconst // map key, not a magic string
+		"kind":         r.Kind, //nolint:goconst // map key, not a magic string
+		"name":         r.Name,
+		"created_time": r.CreatedTime.Format(time.RFC3339Nano),
+		"updated_time": r.UpdatedTime.Format(time.RFC3339Nano),
+		"generation":   int64(r.Generation),
+		"status":       status,
+	}
+
+	if len(r.Spec) > 0 {
+		m["spec"] = r.Spec
+	}
+
+	if len(r.Labels) > 0 {
+		labels := make(map[string]interface{}, len(r.Labels))
+		for k, v := range r.Labels {
+			labels[k] = v
+		}
+		m["labels"] = labels
+	}
+
+	if r.OwnerReferences != nil {
+		m["owner_references"] = map[string]interface{}{
+			"id":   r.OwnerReferences.ID,
+			"href": r.OwnerReferences.Href,
+			"kind": r.OwnerReferences.Kind,
+		}
+	}
+
+	if len(r.References) > 0 {
+		refs := make(map[string]interface{}, len(r.References))
+		for key, refList := range r.References {
+			converted := make([]interface{}, len(refList))
+			for i, ref := range refList {
+				converted[i] = map[string]interface{}{
+					"id":   ref.ID,
+					"href": ref.Href,
+					"kind": ref.Kind,
+				}
+			}
+			refs[key] = converted
+		}
+		m["references"] = refs
+	}
+
+	if r.Metadata != nil {
+		m["metadata"] = r.Metadata
+	}
+
+	return m
+}
+
+// validateResourceType ensures resourceType is a safe, single URL path segment.
+func validateResourceType(resourceType string) error {
+	if resourceType == "" {
+		return fmt.Errorf("resourceType cannot be empty")
+	}
+	if strings.TrimSpace(resourceType) != resourceType {
+		return fmt.Errorf("resourceType must not contain leading or trailing whitespace")
+	}
+	if resourceType == "." || resourceType == ".." {
+		return fmt.Errorf("resourceType must be a single URL path segment")
+	}
+	if strings.ContainsAny(resourceType, "/?#%\\") {
+		return fmt.Errorf("resourceType must be a single URL path segment")
+	}
+	for _, r := range resourceType {
+		if unicode.IsSpace(r) {
+			return fmt.Errorf("resourceType must not contain whitespace")
+		}
+	}
+	return nil
+}
+
 // FetchResources fetches resources from the HyperFleet API with retry logic.
+//
+// resourceType is the plural path segment (e.g. "clusters", "nodepools", "wifconfigs").
 //
 // Retry behavior:
 //   - Automatically retries on transient failures (5xx, timeouts, network errors)
@@ -139,49 +242,37 @@ type Condition struct {
 // Returns a slice of resources and an error if the fetch operation fails.
 func (c *HyperFleetClient) FetchResources(
 	ctx context.Context,
-	resourceType ResourceType,
+	resourceType string,
 	labelSelector map[string]string,
 	additionalFilters ...string,
 ) ([]Resource, error) {
-	// Validate inputs
 	if ctx == nil {
 		return nil, fmt.Errorf("context cannot be nil")
 	}
 
-	// Validate resourceType against known types
-	switch resourceType {
-	case ResourceTypeClusters, ResourceTypeNodePools:
-		// Valid type
-	default:
-		return nil, fmt.Errorf("invalid resourceType: %q (must be one of: %q, %q)",
-			resourceType, ResourceTypeClusters, ResourceTypeNodePools)
+	if err := validateResourceType(resourceType); err != nil {
+		return nil, err
 	}
 
-	// Configure exponential backoff
 	b := backoff.NewExponentialBackOff()
 	b.InitialInterval = DefaultInitialInterval
 	b.MaxInterval = DefaultMaxInterval
 	b.Multiplier = DefaultMultiplier
 	b.RandomizationFactor = DefaultRandomizationFactor
 
-	// Retry operation with backoff (v5 API)
 	operation := func() ([]Resource, error) {
 		resources, err := c.fetchResourcesOnce(ctx, resourceType, labelSelector, additionalFilters)
 		if err != nil {
-			// Check if error is retriable
 			if isRetriable(err) {
 				c.log.Debugf(ctx, "Retriable error fetching %s: %v (will retry)", resourceType, err)
-				return nil, err // Retry
+				return nil, err
 			}
-			// Non-retriable error - stop retrying
 			c.log.Debugf(ctx, "Non-retriable error fetching %s: %v (will not retry)", resourceType, err)
 			return nil, backoff.Permanent(err)
 		}
 		return resources, nil
 	}
 
-	// Execute with retry using v5 API
-	// Note: MaxElapsedTime is now a Retry option, not a BackOff field
 	resources, err := backoff.Retry(
 		ctx,
 		operation,
@@ -195,23 +286,38 @@ func (c *HyperFleetClient) FetchResources(
 	return resources, nil
 }
 
-// VerifyConnectivity checks the client connectivity by calling the /clusters endpoint
-func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context) error {
-	params := &openapi.GetClustersParams{}
-	search := labelSelectorToSearchString(map[string]string{"non_existing_label": "value"})
-	params.Search = &search
+// VerifyConnectivity checks the client connectivity by calling the API for the given resource type
+func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context, resourceType string) error {
+	if err := validateResourceType(resourceType); err != nil {
+		return fmt.Errorf("could not verify connectivity: %w", err)
+	}
 
-	response, err := c.apiClient.GetClustersWithResponse(ctx, params)
+	search := labelSelectorToSearchString(map[string]string{"non_existing_label": "value"})
+	size := int32(1)
+
+	reqURL := fmt.Sprintf("%s/api/hyperfleet/v1/%s?search=%s&size=%d",
+		c.baseURL, resourceType, url.QueryEscape(search), size)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return fmt.Errorf("an error occurred while fetching clusters: %w", err)
+		return fmt.Errorf("could not verify connectivity: %w", err)
 	}
-	if response == nil {
-		return fmt.Errorf("could not verify connectivity: received nil response")
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("an error occurred while fetching %s: %w", resourceType, err)
 	}
-	if response.StatusCode() == http.StatusOK {
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.log.Debugf(ctx, "failed to close response body: %v", closeErr)
+		}
+	}()
+
+	if resp.StatusCode == http.StatusOK {
 		return nil
 	}
-	return fmt.Errorf("could not verify connectivity: response status code %d", response.StatusCode())
+	return fmt.Errorf("could not verify connectivity: response status code %d", resp.StatusCode)
 }
 
 // labelSelectorToSearchString converts a label selector map to TSL (Tree Search Language) search parameter string
@@ -227,11 +333,9 @@ func labelSelectorToSearchString(labelSelector map[string]string) string {
 
 	parts := make([]string, 0, len(labelSelector))
 	for k, v := range labelSelector {
-		// Escape single quotes by doubling them ('' is the TSL escape sequence for a literal ')
 		escapedValue := strings.ReplaceAll(v, "'", "''")
 		parts = append(parts, fmt.Sprintf("labels.%s='%s'", k, escapedValue))
 	}
-	// Sort for deterministic output in tests
 	sort.Strings(parts)
 	return strings.Join(parts, " and ")
 }
@@ -256,25 +360,22 @@ func buildSearchString(labelSelector map[string]string, additionalFilters []stri
 	return strings.Join(parts, " and ")
 }
 
-// fetchResourcesOnce performs a single fetch operation without retry logic
 func (c *HyperFleetClient) fetchResourcesOnce(
 	ctx context.Context,
-	resourceType ResourceType,
+	resourceType string,
 	labelSelector map[string]string,
 	additionalFilters []string,
 ) ([]Resource, error) {
-	// Build search parameter from label selector and additional filters
 	searchParam := buildSearchString(labelSelector, additionalFilters)
+	return c.fetchResources(ctx, resourceType, searchParam)
+}
 
-	// Call appropriate endpoint based on resource type
-	switch resourceType {
-	case ResourceTypeClusters:
-		return c.fetchClusters(ctx, searchParam)
-	case ResourceTypeNodePools:
-		return c.fetchNodePools(ctx, searchParam)
-	default:
-		return nil, fmt.Errorf("unsupported resource type: %s", resourceType)
-	}
+func (c *HyperFleetClient) fetchResources(ctx context.Context, resourceType, searchParam string) ([]Resource, error) {
+	return fetchPaginated(ctx, c, searchParam,
+		func(ctx context.Context, page, pageSize int32, search string) ([]openapi.Resource, int64, error) {
+			return c.fetchResourcesPage(ctx, resourceType, page, pageSize, search)
+		},
+		convertResource, resourceType)
 }
 
 // fetchPaginated iterates through all pages of an API endpoint, collecting
@@ -283,7 +384,7 @@ func fetchPaginated[T any](
 	ctx context.Context,
 	c *HyperFleetClient,
 	searchParam string,
-	fetchPage func(ctx context.Context, page, pageSize int32, searchParam string) ([]T, int32, error),
+	fetchPage func(ctx context.Context, page, pageSize int32, searchParam string) ([]T, int64, error),
 	convert func(T) Resource,
 	resourceLabel string,
 ) ([]Resource, error) {
@@ -306,13 +407,133 @@ func fetchPaginated[T any](
 
 		c.log.Debugf(ctx, "Fetched %s page=%d size=%d total=%d", resourceLabel, page, len(items), total)
 
-		if len(allResources) >= int(total) || len(items) == 0 {
+		if int64(len(allResources)) >= total || len(items) == 0 {
 			break
 		}
 		page++
 	}
 
 	return allResources, nil
+}
+
+func (c *HyperFleetClient) fetchResourcesPage(
+	ctx context.Context, resourceType string, page, pageSize int32, searchParam string,
+) ([]openapi.Resource, int64, error) {
+	reqURL := fmt.Sprintf("%s/api/hyperfleet/v1/%s?page=%d&size=%d",
+		c.baseURL, resourceType, page, pageSize)
+	if searchParam != "" {
+		reqURL += "&search=" + url.QueryEscape(searchParam)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, 0, &APIError{StatusCode: 0, Message: fmt.Sprintf("failed to create request: %v", err), Retriable: false}
+	}
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, wrapNetworkError(err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.log.Debugf(ctx, "failed to close response body: %v", closeErr)
+		}
+	}()
+
+	if httpErr := checkHTTPStatus(resp); httpErr != nil {
+		return nil, 0, httpErr
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		msg := fmt.Sprintf("failed to read response body: %v", err)
+		return nil, 0, &APIError{StatusCode: 0, Message: msg, Retriable: false}
+	}
+
+	var resourceList openapi.ResourceList
+	if err := json.Unmarshal(body, &resourceList); err != nil {
+		msg := fmt.Sprintf("failed to decode response: %v", err)
+		return nil, 0, &APIError{StatusCode: 0, Message: msg, Retriable: false}
+	}
+
+	return resourceList.Items, resourceList.Total, nil
+}
+
+func convertResource(item openapi.Resource) Resource {
+	href := ""
+	if item.Href != nil {
+		href = *item.Href
+	}
+
+	resource := Resource{
+		ID:          item.Id,
+		Href:        href,
+		Kind:        item.Kind,
+		Name:        item.Name,
+		Generation:  item.Generation,
+		CreatedTime: item.CreatedTime,
+		UpdatedTime: item.UpdatedTime,
+		Spec:        item.Spec,
+		Status:      ResourceStatus{},
+	}
+
+	if item.Labels != nil {
+		resource.Labels = *item.Labels
+	}
+
+	if item.OwnerReferences != nil {
+		ref := &ObjectReference{Kind: item.OwnerReferences.Kind}
+		if item.OwnerReferences.Id != nil {
+			ref.ID = *item.OwnerReferences.Id
+		}
+		if item.OwnerReferences.Href != nil {
+			ref.Href = *item.OwnerReferences.Href
+		}
+		if ref.ID != "" || ref.Href != "" || ref.Kind != "" {
+			resource.OwnerReferences = ref
+		}
+	}
+
+	if item.References != nil {
+		resource.References = make(map[string][]ObjectReference, len(*item.References))
+		for key, refs := range *item.References {
+			converted := make([]ObjectReference, len(refs))
+			for i, r := range refs {
+				ref := ObjectReference{Kind: r.Kind}
+				if r.Id != nil {
+					ref.ID = *r.Id
+				}
+				if r.Href != nil {
+					ref.Href = *r.Href
+				}
+				converted[i] = ref
+			}
+			resource.References[key] = converted
+		}
+	}
+
+	if len(item.Status.Conditions) > 0 {
+		resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
+		for _, cond := range item.Status.Conditions {
+			condition := Condition{
+				Type:               cond.Type,
+				Status:             string(cond.Status),
+				LastTransitionTime: cond.LastTransitionTime,
+				LastUpdatedTime:    cond.LastUpdatedTime,
+				ObservedGeneration: cond.ObservedGeneration,
+			}
+			if cond.Reason != nil {
+				condition.Reason = *cond.Reason
+			}
+			if cond.Message != nil {
+				condition.Message = *cond.Message
+			}
+			resource.Status.Conditions = append(resource.Status.Conditions, condition)
+		}
+	}
+
+	return resource
 }
 
 // wrapNetworkError wraps a transport-level error into an APIError with retry metadata.
@@ -337,178 +558,6 @@ func checkHTTPStatus(resp *http.Response) error {
 	return nil
 }
 
-// fetchClusters fetches all cluster resources from the API, iterating through
-// pages until every resource has been collected.
-func (c *HyperFleetClient) fetchClusters(ctx context.Context, searchParam string) ([]Resource, error) {
-	return fetchPaginated(ctx, c, searchParam, c.fetchClustersPage, convertCluster, "clusters")
-}
-
-func (c *HyperFleetClient) fetchClustersPage(
-	ctx context.Context, page, pageSize int32, searchParam string,
-) ([]openapi.Cluster, int32, error) {
-	params := &openapi.GetClustersParams{
-		Page: &page,
-		Size: &pageSize,
-	}
-	if searchParam != "" {
-		params.Search = &searchParam
-	}
-
-	response, err := c.apiClient.GetClustersWithResponse(ctx, params)
-	if err != nil {
-		return nil, 0, wrapNetworkError(err)
-	}
-	if err := checkHTTPStatus(response.HTTPResponse); err != nil {
-		return nil, 0, err
-	}
-	if response.JSON200 == nil {
-		return nil, 0, &APIError{StatusCode: 0, Message: "received nil response from API", Retriable: false}
-	}
-	return response.JSON200.Items, response.JSON200.Total, nil
-}
-
-func convertCluster(item openapi.Cluster) Resource {
-	id := ""
-	if item.Id != nil {
-		id = *item.Id
-	}
-	href := ""
-	if item.Href != nil {
-		href = *item.Href
-	}
-
-	resource := Resource{
-		ID:          id,
-		Href:        href,
-		Kind:        item.Kind,
-		Generation:  item.Generation,
-		CreatedTime: item.CreatedTime,
-		UpdatedTime: item.UpdatedTime,
-		Status:      ResourceStatus{},
-	}
-
-	// Handle optional labels
-	if item.Labels != nil {
-		resource.Labels = *item.Labels
-	}
-
-	// Convert conditions from OpenAPI model
-	if len(item.Status.Conditions) > 0 {
-		resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
-		for _, cond := range item.Status.Conditions {
-			condition := Condition{
-				Type:               cond.Type,
-				Status:             string(cond.Status),
-				LastTransitionTime: cond.LastTransitionTime,
-				LastUpdatedTime:    cond.LastUpdatedTime,
-				ObservedGeneration: cond.ObservedGeneration,
-			}
-			if cond.Reason != nil {
-				condition.Reason = *cond.Reason
-			}
-			if cond.Message != nil {
-				condition.Message = *cond.Message
-			}
-			resource.Status.Conditions = append(resource.Status.Conditions, condition)
-		}
-	}
-
-	return resource
-}
-
-// fetchNodePools fetches all nodepool resources from the API, iterating through
-// pages until every resource has been collected.
-func (c *HyperFleetClient) fetchNodePools(ctx context.Context, searchParam string) ([]Resource, error) {
-	return fetchPaginated(ctx, c, searchParam, c.fetchNodePoolsPage, convertNodePool, "nodepools")
-}
-
-func (c *HyperFleetClient) fetchNodePoolsPage(
-	ctx context.Context, page, pageSize int32, searchParam string,
-) ([]openapi.NodePool, int32, error) {
-	params := &openapi.GetNodePoolsParams{
-		Page: &page,
-		Size: &pageSize,
-	}
-	if searchParam != "" {
-		params.Search = &searchParam
-	}
-
-	response, err := c.apiClient.GetNodePoolsWithResponse(ctx, params)
-	if err != nil {
-		return nil, 0, wrapNetworkError(err)
-	}
-	if err := checkHTTPStatus(response.HTTPResponse); err != nil {
-		return nil, 0, err
-	}
-	if response.JSON200 == nil {
-		return nil, 0, &APIError{StatusCode: 0, Message: "received nil response from API", Retriable: false}
-	}
-	return response.JSON200.Items, response.JSON200.Total, nil
-}
-
-func convertNodePool(item openapi.NodePool) Resource {
-	// Get ID and Href with defaults for optional pointer fields
-	id := ""
-	if item.Id != nil {
-		id = *item.Id
-	}
-	href := ""
-	if item.Href != nil {
-		href = *item.Href
-	}
-	resource := Resource{
-		ID:          id,
-		Href:        href,
-		Kind:        item.Kind,
-		Generation:  item.Generation,
-		CreatedTime: item.CreatedTime,
-		UpdatedTime: item.UpdatedTime,
-		Status:      ResourceStatus{},
-	}
-
-	// Handle optional labels
-	if item.Labels != nil {
-		resource.Labels = *item.Labels
-	}
-
-	// Map owner references
-	ownerRef := item.OwnerReferences
-	ref := &OwnerReference{}
-	if ownerRef.Id != nil {
-		ref.ID = *ownerRef.Id
-	}
-	if ownerRef.Href != nil {
-		ref.Href = *ownerRef.Href
-	}
-	ref.Kind = ownerRef.Kind
-	if ref.ID != "" || ref.Href != "" || ref.Kind != "" {
-		resource.OwnerReferences = ref
-	}
-
-	// Convert conditions from OpenAPI model
-	if len(item.Status.Conditions) > 0 {
-		resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
-		for _, cond := range item.Status.Conditions {
-			condition := Condition{
-				Type:               cond.Type,
-				Status:             string(cond.Status),
-				LastTransitionTime: cond.LastTransitionTime,
-				LastUpdatedTime:    cond.LastUpdatedTime,
-				ObservedGeneration: cond.ObservedGeneration,
-			}
-			if cond.Reason != nil {
-				condition.Reason = *cond.Reason
-			}
-			if cond.Message != nil {
-				condition.Message = *cond.Message
-			}
-			resource.Status.Conditions = append(resource.Status.Conditions, condition)
-		}
-	}
-
-	return resource
-}
-
 // APIError represents an API error with retry information
 type APIError struct {
 	Message    string
@@ -523,32 +572,23 @@ func (e *APIError) Error() string {
 	return e.Message
 }
 
-// isRetriable determines if an error should be retried
-// Uses errors.As for proper error unwrapping (Go 1.13+)
 func isRetriable(err error) bool {
 	var apiErr *APIError
 	if errors.As(err, &apiErr) {
 		return apiErr.Retriable
 	}
-	// Unknown errors are not retriable by default
 	return false
 }
 
-// isHTTPStatusRetriable determines if an HTTP status code is retriable
 func isHTTPStatusRetriable(statusCode int) bool {
-	// 5xx server errors are retriable
 	if statusCode >= 500 && statusCode < 600 {
 		return true
 	}
-	// 429 Too Many Requests is retriable
 	if statusCode == http.StatusTooManyRequests {
 		return true
 	}
-	// 408 Request Timeout is retriable
 	if statusCode == http.StatusRequestTimeout {
 		return true
 	}
-	// 4xx client errors are NOT retriable (except 408 and 429 above)
-	// 2xx and 3xx are successful, no retry needed
 	return false
 }

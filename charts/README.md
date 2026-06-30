@@ -68,7 +68,7 @@ helm install hyperfleet-sentinel oci://quay.io/redhat-services-prod/hyperfleet-t
 | config.clients.hyperfleetApi.baseUrl | string | `"http://hyperfleet-api:8000"` | API base URL (use in-cluster service name) |
 | config.clients.hyperfleetApi.version | string | `"v1"` | API version |
 | config.clients.hyperfleetApi.timeout | string | `"10s"` | HTTP client timeout |
-| config.resourceType | string | `"clusters"` | Resource type to watch (`clusters` or `nodepools`) |
+| config.resourceType | string | `"clusters"` | Resource type plural to watch (any registered entity type, e.g. `clusters`, `nodepools`, `wifconfigs`) |
 | config.pollInterval | string | `"5s"` | How often to poll the API for resource updates |
 | config.messageDecision | object | See values.yaml for default CEL expressions | CEL-based decision logic that determines whether to publish an event. `params` are named CEL expressions evaluated in dependency order. `result` is a boolean CEL expression using the params. |
 | config.resourceSelector | list | `[]` | Resource selector for horizontal sharding. Deploy multiple sentinel instances with different shard values. Empty by default (no filtering). Example: resourceSelector: [{label: shard, value: "1"}] |

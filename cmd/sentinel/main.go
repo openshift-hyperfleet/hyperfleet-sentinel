@@ -266,7 +266,7 @@ func runServe(
 	}
 
 	// verify HyperFleet client connectivity
-	if err = hyperfleetClient.VerifyConnectivity(ctx); err != nil {
+	if err = hyperfleetClient.VerifyConnectivity(ctx, cfg.ResourceType); err != nil {
 		log.Errorf(ctx, "Failed to verify HyperFleet client connectivity: %v", err)
 		return fmt.Errorf("failed to verify HyperFleet client connectivity: %w", err)
 	}

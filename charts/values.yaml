@@ -127,7 +127,7 @@ config:
       # -- HTTP client timeout
       timeout: 10s
 
-  # -- Resource type to watch (`clusters` or `nodepools`)
+  # -- Resource type plural to watch (any registered entity type, e.g. `clusters`, `nodepools`, `wifconfigs`)
   resourceType: clusters
 
   # -- How often to poll the API for resource updates
