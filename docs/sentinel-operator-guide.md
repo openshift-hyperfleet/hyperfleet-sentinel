@@ -227,8 +227,9 @@ graph TB
 
 1. **No Coordination**: Sentinel instances operate independently with no coordination
 2. **Coverage Responsibility**: Operators must ensure all resources are covered by selectors
-3. **Overlap Allowed**: Multiple instances can watch the same resource (events will be duplicated)
-4. **Gaps Dangerous**: Resources not matching any selector will never reconcile
+3. **Gaps Dangerous**: Resources not matching any selector will never reconcile
+
+> **Important**: Multiple instances watching the same resource **will** produce duplicate events. Always use non-overlapping `resource_selector` values across instances. Do not increase `replicaCount` to scale — deploy separate instances with distinct selectors instead. See the [Known Limitations](multi-instance-deployment.md#known-limitations) section for details.
 
 **Broker Topic Isolation:**
 
