@@ -34,7 +34,7 @@ All fields use **snake_case** naming.
 
 | Field | Type | Description | Example |
 |-------|------|-------------|---------|
-| `resource_type` | string | Resource to watch (`clusters` or `nodepools`) | `clusters` |
+| `resource_type` | string | Resource type plural to watch (e.g. `clusters`, `nodepools`, `wifconfigs`) | `clusters` |
 | `clients.hyperfleet_api.base_url` | string | HyperFleet API base URL | `http://hyperfleet-api:8000` |
 
 ### Optional Fields
@@ -174,7 +174,7 @@ All overrides use the `HYPERFLEET_` prefix unless noted.
 Sentinel validates configuration at startup and fails fast on errors:
 
 - **Required fields present**: `resource_type`, `clients.hyperfleet_api.base_url`
-- **Valid enums**: `resource_type` must be `clusters` or `nodepools`
+- **Non-empty string**: `resource_type` must be a valid entity type plural (e.g. `clusters`, `nodepools`, `wifconfigs`)
 - **Valid durations**: All interval fields must be positive
 - **Valid CEL expressions**: All `message_data` and `message_decision` expressions must compile
 - **API connectivity**: HyperFleet API must be reachable at startup

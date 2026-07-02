@@ -296,7 +296,7 @@ func TestValidate_InvalidResourceType(t *testing.T) {
 	}
 }
 
-func TestValidate_InvalidResourceTypes(t *testing.T) {
+func TestValidate_ResourceTypes(t *testing.T) {
 	tests := []struct {
 		name         string
 		resourceType string
@@ -304,10 +304,8 @@ func TestValidate_InvalidResourceTypes(t *testing.T) {
 	}{
 		{"valid clusters", testResourceType, false},
 		{"valid nodepools", "nodepools", false},
-		{"invalid manifests", "manifests", true},
-		{"invalid workloads", "workloads", true},
-		{"invalid pods", "pods", true},
-		{"invalid deployments", "deployments", true},
+		{"valid wifconfigs", "wifconfigs", false},
+		{"valid custom type", "myresources", false},
 		{"empty", "", true},
 	}
 

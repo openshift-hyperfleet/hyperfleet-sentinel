@@ -350,18 +350,17 @@ func (c *SentinelConfig) Validate() error {
 		return validationErr("resource_type", "required")
 	}
 
-	validResourceTypes := []string{"clusters", "nodepools"}
-	if !contains(validResourceTypes, c.ResourceType) {
-		return validationErr("resource_type", fmt.Sprintf("invalid value %q (must be one of: %s)",
-			c.ResourceType, strings.Join(validResourceTypes, ", ")))
-	}
-
 	if c.Clients.HyperFleetAPI == nil {
 		return validationErr("clients.hyperfleet_api", "required")
 	}
 
 	if c.Clients.HyperFleetAPI.BaseURL == "" {
 		return validationErr("clients.hyperfleet_api.base_url", "required")
+	}
+
+	if c.Clients.HyperFleetAPI.Timeout <= 0 {
+		return validationErr("clients.hyperfleet_api.timeout", "must be positive",
+			c.Clients.HyperFleetAPI.Timeout.String())
 	}
 
 	if c.Clients.HyperFleetAPI.PageSize <= 0 || c.Clients.HyperFleetAPI.PageSize > 500 {
@@ -444,16 +443,6 @@ func validateMessageDataLeaves(data map[string]interface{}, path string) error {
 		}
 	}
 	return nil
-}
-
-// contains checks if a string slice contains a value
-func contains(slice []string, value string) bool {
-	for _, v := range slice {
-		if v == value {
-			return true
-		}
-	}
-	return false
 }
 
 // RedactedCopy returns a deep copy of the config. Use this copy when logging

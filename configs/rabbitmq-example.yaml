@@ -42,7 +42,7 @@ clients:
   broker:
     topic: ""  # Can be overridden by HYPERFLEET_BROKER_TOPIC
 
-# Resource type to watch - must be one of: clusters, nodepools
+# Resource type plural to watch (any registered entity type, e.g. clusters, nodepools, wifconfigs)
 resource_type: clusters
 
 # How often to poll the HyperFleet API for resource updates.
