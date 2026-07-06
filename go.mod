@@ -3,7 +3,7 @@ module github.com/openshift-hyperfleet/hyperfleet-sentinel
 go 1.26.0
 
 require (
-	github.com/cenkalti/backoff/v5 v5.0.3
+	github.com/cenkalti/backoff/v7 v7.0.0
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.4.2
