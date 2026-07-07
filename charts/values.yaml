@@ -126,6 +126,20 @@ config:
       version: v1
       # -- HTTP client timeout
       timeout: 10s
+      # -- Optional JWT authentication via a Kubernetes projected service account token.
+      # When enabled, a projected volume is mounted and the token is sent as a Bearer
+      # Authorization header on every API request.
+      auth:
+        # -- Enable JWT authentication
+        enabled: false
+        # -- Audience for the projected service account token
+        audience: hyperfleet-api
+        # -- Full path where the token file is mounted in the container
+        tokenPath: /var/run/secrets/hyperfleet/token
+        # -- Token lifetime in seconds; Kubernetes rotates the token before it expires
+        expirationSeconds: 3600
+        # -- How long the token is cached in memory before the file is re-read; 0 disables caching
+        tokenCacheTtl: 30s
 
   # -- Resource type plural to watch (any registered entity type, e.g. `clusters`, `nodepools`, `wifconfigs`)
   resourceType: clusters

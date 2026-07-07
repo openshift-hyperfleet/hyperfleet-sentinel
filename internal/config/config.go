@@ -79,12 +79,32 @@ type ClientsConfig struct {
 	Broker        *BrokerConfig        `yaml:"broker,omitempty" mapstructure:"broker"`
 }
 
+// HyperFleetAPIAuthConfig defines optional JWT authentication via a Kubernetes
+// projected service account token. When set, the bearer token is read from
+// TokenPath and injected into every API request.
+type HyperFleetAPIAuthConfig struct {
+	TokenPath     string        `yaml:"token_path" mapstructure:"token_path"`
+	TokenCacheTTL time.Duration `yaml:"token_cache_ttl" mapstructure:"token_cache_ttl"`
+}
+
+// Validate returns an error if the auth config is incomplete.
+func (a *HyperFleetAPIAuthConfig) Validate() error {
+	if a.TokenPath == "" {
+		return fmt.Errorf("token_path is required")
+	}
+	if a.TokenCacheTTL < 0 {
+		return fmt.Errorf("token_cache_ttl must not be negative")
+	}
+	return nil
+}
+
 // HyperFleetAPIConfig defines the HyperFleet API client configuration
 type HyperFleetAPIConfig struct {
-	BaseURL  string        `yaml:"base_url" mapstructure:"base_url"`
-	Version  string        `yaml:"version,omitempty" mapstructure:"version"`
-	Timeout  time.Duration `yaml:"timeout" mapstructure:"timeout"`
-	PageSize int32         `yaml:"page_size,omitempty" mapstructure:"page_size"`
+	Auth     *HyperFleetAPIAuthConfig `yaml:"auth,omitempty" mapstructure:"auth"`
+	BaseURL  string                   `yaml:"base_url" mapstructure:"base_url"`
+	Version  string                   `yaml:"version,omitempty" mapstructure:"version"`
+	Timeout  time.Duration            `yaml:"timeout" mapstructure:"timeout"`
+	PageSize int32                    `yaml:"page_size,omitempty" mapstructure:"page_size"`
 }
 
 // BrokerConfig contains broker configuration
@@ -159,19 +179,21 @@ func NewSentinelConfig() *SentinelConfig {
 // Note: Uses "::" as key delimiter to avoid conflicts with dots in YAML keys
 // Complex types (maps, slices) are intentionally excluded — they cannot be expressed as scalar env vars.
 var viperKeyMappings = map[string]string{
-	"debug_config":                       "DEBUG_CONFIG",
-	"sentinel::name":                     "SENTINEL_NAME",
-	"log::level":                         "LOG_LEVEL",
-	"log::format":                        "LOG_FORMAT",
-	"log::output":                        "LOG_OUTPUT",
-	"clients::hyperfleet_api::base_url":  "API_BASE_URL",
-	"clients::hyperfleet_api::version":   "API_VERSION",
-	"clients::hyperfleet_api::timeout":   "API_TIMEOUT",
-	"clients::hyperfleet_api::page_size": "API_PAGE_SIZE",
-	"clients::broker::topic":             "BROKER_TOPIC",
-	"resource_type":                      "RESOURCE_TYPE",
-	"poll_interval":                      "POLL_INTERVAL",
-	"tracing_enabled":                    "TRACING_ENABLED",
+	"debug_config":                                   "DEBUG_CONFIG",
+	"sentinel::name":                                 "SENTINEL_NAME",
+	"log::level":                                     "LOG_LEVEL",
+	"log::format":                                    "LOG_FORMAT",
+	"log::output":                                    "LOG_OUTPUT",
+	"clients::hyperfleet_api::base_url":              "API_BASE_URL",
+	"clients::hyperfleet_api::version":               "API_VERSION",
+	"clients::hyperfleet_api::timeout":               "API_TIMEOUT",
+	"clients::hyperfleet_api::page_size":             "API_PAGE_SIZE",
+	"clients::hyperfleet_api::auth::token_path":      "API_AUTH_TOKEN_PATH",
+	"clients::hyperfleet_api::auth::token_cache_ttl": "API_AUTH_TOKEN_CACHE_TTL",
+	"clients::broker::topic":                         "BROKER_TOPIC",
+	"resource_type":                                  "RESOURCE_TYPE",
+	"poll_interval":                                  "POLL_INTERVAL",
+	"tracing_enabled":                                "TRACING_ENABLED",
 }
 
 // cliFlags defines mappings from CLI flag names to config paths
@@ -367,6 +389,12 @@ func (c *SentinelConfig) Validate() error {
 		return validationErr("clients.hyperfleet_api.page_size",
 			"must be between 1 and 500",
 			fmt.Sprintf("%d", c.Clients.HyperFleetAPI.PageSize))
+	}
+
+	if c.Clients.HyperFleetAPI.Auth != nil {
+		if err := c.Clients.HyperFleetAPI.Auth.Validate(); err != nil {
+			return fmt.Errorf("clients.hyperfleet_api.auth: %w", err)
+		}
 	}
 
 	if c.PollInterval <= 0 {

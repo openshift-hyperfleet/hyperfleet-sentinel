@@ -726,7 +726,7 @@ func TestNewHyperFleetClient_UserAgent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "my-sentinel", "v1.2.3", DefaultPageSize)
+	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "my-sentinel", "v1.2.3", DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("NewHyperFleetClient: %v", err)
 	}
@@ -909,7 +909,7 @@ func TestBuildSearchString(t *testing.T) {
 
 func newTestClient(t *testing.T, url string, timeout time.Duration) *HyperFleetClient {
 	t.Helper()
-	client, err := NewHyperFleetClient(url, timeout, "test-sentinel", "test", DefaultPageSize)
+	client, err := NewHyperFleetClient(url, timeout, "test-sentinel", "test", DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -951,7 +951,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1053,7 +1053,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation_ErrorCase(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1090,7 +1090,7 @@ func TestFetchResources_WithAdditionalFilters(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
 	labelSelector := map[string]string{testLabelShard: "1"}
 
 	_, err := client.FetchResources(
@@ -1121,7 +1121,7 @@ func TestFetchResources_WithConditionFilterOnly(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
 
 	_, err := client.FetchResources(
 		context.Background(), "clusters", nil,

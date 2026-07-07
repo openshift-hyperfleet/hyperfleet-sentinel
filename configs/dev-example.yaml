@@ -38,6 +38,11 @@ clients:
     version: "v1"
     timeout: 10s
     # page_size: 20
+    # Optional: JWT authentication via Kubernetes projected service account token.
+    # Not typically needed for local development.
+    # auth:
+    #   token_path: /var/run/secrets/hyperfleet/token
+    #   token_cache_ttl: 30s  # 0 disables caching
 
   # Broker configuration
   # Note: broker implementation details (RabbitMQ URL, etc.) are in broker.yaml
