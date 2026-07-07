@@ -169,7 +169,7 @@ func TestIntegration_EndToEnd(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -248,7 +248,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -460,7 +460,7 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -627,7 +627,7 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	helper := NewHelper()
 
 	hyperfleetClient, clientErr := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
 	if clientErr != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", clientErr)
 	}

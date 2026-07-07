@@ -75,6 +75,12 @@ Validate required values that must not remain as placeholders.
 {{- if not (trim (toString .Values.image.tag)) -}}
 {{- fail "image.tag must be set (e.g. --set image.tag=abc1234)" -}}
 {{- end -}}
+{{- if .Values.config.clients.hyperfleetApi.auth.enabled -}}
+{{- $tokenPath := trim (toString .Values.config.clients.hyperfleetApi.auth.tokenPath) -}}
+{{- if not (hasPrefix "/" $tokenPath) -}}
+{{- fail "config.clients.hyperfleetApi.auth.tokenPath must be an absolute path (e.g. /var/run/secrets/hyperfleet/token)" -}}
+{{- end -}}
+{{- end -}}
 {{- end }}
 
 {{/*

@@ -256,9 +256,16 @@ func runServe(
 	metrics.NewSentinelMetrics(registry, version)
 
 	// Initialize components
+	tokenPath := ""
+	var tokenCacheTTL time.Duration
+	if cfg.Clients.HyperFleetAPI.Auth != nil {
+		tokenPath = cfg.Clients.HyperFleetAPI.Auth.TokenPath
+		tokenCacheTTL = cfg.Clients.HyperFleetAPI.Auth.TokenCacheTTL
+	}
 	hyperfleetClient, err := client.NewHyperFleetClient(
 		cfg.Clients.HyperFleetAPI.BaseURL, cfg.Clients.HyperFleetAPI.Timeout,
 		cfg.Sentinel.Name, version, cfg.Clients.HyperFleetAPI.PageSize,
+		tokenPath, tokenCacheTTL,
 	)
 	if err != nil {
 		log.Errorf(ctx, "Failed to initialize OpenAPI client: %v", err)

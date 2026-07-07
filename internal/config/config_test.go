@@ -863,3 +863,57 @@ func TestLoadConfig_TopicEmpty(t *testing.T) {
 		t.Errorf("Expected empty topic, got '%s'", cfg.Clients.Broker.Topic)
 	}
 }
+
+func TestHyperFleetAPIAuthConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		wantErr string
+		cfg     HyperFleetAPIAuthConfig
+	}{
+		{
+			name:    "missing token_path",
+			cfg:     HyperFleetAPIAuthConfig{},
+			wantErr: "token_path is required",
+		},
+		{
+			name:    "relative token_path",
+			cfg:     HyperFleetAPIAuthConfig{TokenPath: "token"},
+			wantErr: "token_path must be an absolute path",
+		},
+		{
+			name:    "relative token_path with subdirectory",
+			cfg:     HyperFleetAPIAuthConfig{TokenPath: "secrets/token"},
+			wantErr: "token_path must be an absolute path",
+		},
+		{
+			name:    "negative token_cache_ttl",
+			cfg:     HyperFleetAPIAuthConfig{TokenPath: "/var/run/secrets/token", TokenCacheTTL: -1},
+			wantErr: "token_cache_ttl must not be negative",
+		},
+		{
+			name: "valid absolute path",
+			cfg:  HyperFleetAPIAuthConfig{TokenPath: "/var/run/secrets/hyperfleet/token", TokenCacheTTL: 30 * time.Second},
+		},
+		{
+			name: "valid absolute path zero ttl",
+			cfg:  HyperFleetAPIAuthConfig{TokenPath: "/var/run/secrets/token"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error containing %q, got nil", tt.wantErr)
+				}
+				if !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("expected error containing %q, got %q", tt.wantErr, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("expected no error, got %v", err)
+			}
+		})
+	}
+}
