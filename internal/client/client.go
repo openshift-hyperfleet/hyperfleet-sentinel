@@ -39,17 +39,22 @@ const (
 
 // HyperFleetClient wraps the HTTP client for the HyperFleet API
 type HyperFleetClient struct {
-	httpClient *http.Client
-	log        logger.HyperFleetLogger
-	baseURL    string
-	userAgent  string
-	pageSize   int32
+	httpClient  *http.Client
+	log         logger.HyperFleetLogger
+	tokenSource *fileTokenSource
+	baseURL     string
+	userAgent   string
+	pageSize    int32
 }
 
 // NewHyperFleetClient creates a new HyperFleet API client.
 // sentinelName and version are used to build the User-Agent header sent with every request.
+// tokenPath is optional; when non-empty the client reads a bearer token from that file and
+// injects it as an Authorization header on every request. tokenCacheTTL controls how long
+// the token is cached before the file is re-read; 0 disables caching and re-reads the file on every request.
 func NewHyperFleetClient(
 	endpoint string, timeout time.Duration, sentinelName, version string, pageSize int32,
+	tokenPath string, tokenCacheTTL time.Duration,
 ) (*HyperFleetClient, error) {
 	u, err := url.ParseRequestURI(endpoint)
 	if err != nil {
@@ -70,12 +75,18 @@ func NewHyperFleetClient(
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
 
+	var ts *fileTokenSource
+	if tokenPath != "" {
+		ts = newFileTokenSource(tokenPath, tokenCacheTTL)
+	}
+
 	return &HyperFleetClient{
-		httpClient: httpClient,
-		baseURL:    strings.TrimRight(endpoint, "/"),
-		userAgent:  fmt.Sprintf("hyperfleet-sentinel/%s (%s)", version, sentinelName),
-		log:        logger.NewHyperFleetLogger(),
-		pageSize:   pageSize,
+		httpClient:  httpClient,
+		baseURL:     strings.TrimRight(endpoint, "/"),
+		userAgent:   fmt.Sprintf("hyperfleet-sentinel/%s (%s)", version, sentinelName),
+		log:         logger.NewHyperFleetLogger(),
+		pageSize:    pageSize,
+		tokenSource: ts,
 	}, nil
 }
 
@@ -286,6 +297,20 @@ func (c *HyperFleetClient) FetchResources(
 	return resources, nil
 }
 
+// setAuthHeader attaches the Authorization header to req if a token source is configured.
+// Returns a *TokenError if the token cannot be read.
+func (c *HyperFleetClient) setAuthHeader(req *http.Request) error {
+	if c.tokenSource == nil {
+		return nil
+	}
+	tok, err := c.tokenSource.get()
+	if err != nil {
+		return &TokenError{cause: err}
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	return nil
+}
+
 // VerifyConnectivity checks the client connectivity by calling the API for the given resource type
 func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context, resourceType string) error {
 	if err := validateResourceType(resourceType); err != nil {
@@ -303,6 +328,9 @@ func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context, resourceType 
 		return fmt.Errorf("could not verify connectivity: %w", err)
 	}
 	req.Header.Set("User-Agent", c.userAgent)
+	if authErr := c.setAuthHeader(req); authErr != nil {
+		return fmt.Errorf("bearer token unavailable: %w", authErr)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -430,6 +458,9 @@ func (c *HyperFleetClient) fetchResourcesPage(
 		return nil, 0, &APIError{StatusCode: 0, Message: fmt.Sprintf("failed to create request: %v", err), Retriable: false}
 	}
 	req.Header.Set("User-Agent", c.userAgent)
+	if authErr := c.setAuthHeader(req); authErr != nil {
+		return nil, 0, &APIError{StatusCode: 0, Message: authErr.Error(), Retriable: false, cause: authErr}
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -560,6 +591,7 @@ func checkHTTPStatus(resp *http.Response) error {
 
 // APIError represents an API error with retry information
 type APIError struct {
+	cause      error
 	Message    string
 	StatusCode int
 	Retriable  bool
@@ -571,6 +603,8 @@ func (e *APIError) Error() string {
 	}
 	return e.Message
 }
+
+func (e *APIError) Unwrap() error { return e.cause }
 
 func isRetriable(err error) bool {
 	var apiErr *APIError

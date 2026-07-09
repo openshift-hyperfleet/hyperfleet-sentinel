@@ -3,9 +3,11 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -574,6 +576,34 @@ func TestFetchResources_NilStatus(t *testing.T) {
 	}
 }
 
+func TestFetchResources_MissingTokenFile(t *testing.T) {
+	requestReceived := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestReceived = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client, err := NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "/nonexistent/token", 0,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	_, err = client.FetchResources(context.Background(), "clusters", nil)
+	if err == nil {
+		t.Fatal("Expected error for missing token file, got nil")
+	}
+	var apiErr *APIError
+	if errors.As(err, &apiErr) && apiErr.Retriable {
+		t.Errorf("Expected non-retriable error, got retriable: %v", err)
+	}
+	if requestReceived {
+		t.Error("Expected no request to reach the server, but one was sent")
+	}
+}
+
 func TestIsHTTPStatusRetriable(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -726,7 +756,7 @@ func TestNewHyperFleetClient_UserAgent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "my-sentinel", "v1.2.3", DefaultPageSize)
+	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "my-sentinel", "v1.2.3", DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("NewHyperFleetClient: %v", err)
 	}
@@ -846,6 +876,33 @@ func TestVerifyConnectivity_NonOKStatus(t *testing.T) {
 	}
 }
 
+func TestVerifyConnectivity_MissingTokenFile(t *testing.T) {
+	requestReceived := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestReceived = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client, err := NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "/nonexistent/token", 0,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	err = client.VerifyConnectivity(context.Background(), "clusters")
+	if err == nil {
+		t.Fatal("Expected error for missing token file, got nil")
+	}
+	if !IsTokenError(err) {
+		t.Errorf("Expected IsTokenError to be true, got false for: %v", err)
+	}
+	if requestReceived {
+		t.Error("Expected no request to reach the server, but one was sent")
+	}
+}
+
 func TestVerifyConnectivity_CustomResourceType(t *testing.T) {
 	var receivedPath string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -866,6 +923,36 @@ func TestVerifyConnectivity_CustomResourceType(t *testing.T) {
 	}
 	if receivedPath != "/api/hyperfleet/v1/wifconfigs" {
 		t.Errorf("Expected path /api/hyperfleet/v1/wifconfigs, got %s", receivedPath)
+	}
+}
+
+func TestVerifyConnectivity_SendsAuthHeader(t *testing.T) {
+	var receivedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(map[string]string{keyStatus: "ok"}); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	tokenFile := t.TempDir() + "/token"
+	if err := os.WriteFile(tokenFile, []byte("test-token"), 0600); err != nil {
+		t.Fatalf("Failed to write token file: %v", err)
+	}
+
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, tokenFile, 0)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	if err := client.VerifyConnectivity(context.Background(), "clusters"); err != nil {
+		t.Fatalf("VerifyConnectivity returned unexpected error: %v", err)
+	}
+	if receivedAuth != "Bearer test-token" {
+		t.Errorf("Expected Authorization header %q, got %q", "Bearer test-token", receivedAuth)
 	}
 }
 
@@ -909,7 +996,7 @@ func TestBuildSearchString(t *testing.T) {
 
 func newTestClient(t *testing.T, url string, timeout time.Duration) *HyperFleetClient {
 	t.Helper()
-	client, err := NewHyperFleetClient(url, timeout, "test-sentinel", "test", DefaultPageSize)
+	client, err := NewHyperFleetClient(url, timeout, "test-sentinel", "test", DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -951,7 +1038,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1053,7 +1140,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation_ErrorCase(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1090,7 +1177,7 @@ func TestFetchResources_WithAdditionalFilters(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
 	labelSelector := map[string]string{testLabelShard: "1"}
 
 	_, err := client.FetchResources(
@@ -1121,7 +1208,7 @@ func TestFetchResources_WithConditionFilterOnly(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
 
 	_, err := client.FetchResources(
 		context.Background(), "clusters", nil,
