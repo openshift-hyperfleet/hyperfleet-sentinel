@@ -35,7 +35,7 @@ Setup sequence for a fresh clone:
 | Command | What it does |
 |---|---|
 | `make verify` | go vet + format check (fast) |
-| `make lint` | golangci-lint (comprehensive) |
+| `make lint` | golangci-lint (pinned in `tools/go.mod`) |
 | `make test` | all tests (`./...`), writes `coverage.out` profile |
 | `make test-unit` | unit tests only — specific internal/ and pkg/ packages |
 | `make test-integration` | integration tests with testcontainers (Docker required) |

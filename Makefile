@@ -1,9 +1,12 @@
-include .bingo/Variables.mk
-
 .DEFAULT_GOAL := help
 
 GO ?= go
 GOFMT ?= gofmt
+
+# Invoke a pinned tool: $(call gotool,name)
+# All tools share tools/go.mod with Go 1.24+ tool directives.
+TOOL_MOD := tools/go.mod
+gotool = $(GO) tool -modfile=$(TOOL_MOD) $(1)
 
 # Schema variant for OpenAPI generation (core, gcp)
 VARIANT ?= core
@@ -50,12 +53,12 @@ help: ## Display this help
 ##@ Code Generation
 
 .PHONY: generate
-generate: $(OAPI_CODEGEN) download ## Generate OpenAPI types using oapi-codegen
+generate: download ## Generate OpenAPI types using oapi-codegen
 	@rm -rf pkg/api/openapi
 	@mkdir -p pkg/api/openapi openapi
 	@rm -f openapi/openapi.yaml
 	@cp "$$($(GO) list -m -f '{{.Dir}}' github.com/openshift-hyperfleet/hyperfleet-api-spec)/schemas/$(VARIANT)/openapi.yaml" openapi/openapi.yaml
-	$(OAPI_CODEGEN) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
+	$(call gotool,oapi-codegen) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
 	@printf 'package openapi\n\nimport _ "github.com/oapi-codegen/runtime"\n' > pkg/api/openapi/stub.go
 
 ##@ Development
@@ -137,8 +140,8 @@ vet: ## Run go vet
 go-vet: vet ## Alias for vet
 
 .PHONY: lint
-lint: $(GOLANGCI_LINT) ## Run golangci-lint
-	$(GOLANGCI_LINT) run
+lint: ## Run golangci-lint
+	$(call gotool,golangci-lint) run
 
 .PHONY: verify
 verify: fmt-check vet ## Run all verification checks
@@ -152,6 +155,14 @@ lint-check: fmt-check vet ## Run static code analysis (alias for verify, follows
 tidy: ## Tidy go.mod
 	$(GO) mod tidy
 
+.PHONY: tools
+tools: ## Ensure tool dependencies are up to date
+	cd tools && GOWORK=off $(GO) mod tidy
+
+.PHONY: verify-tools
+verify-tools: tools ## Fail in CI if tool module drifted
+	@git diff --exit-code tools/go.mod tools/go.sum || (echo "tool modules out of date; run 'make tools'" && exit 1)
+
 .PHONY: download
 download: ## Download dependencies
 	$(GO) mod download
@@ -161,12 +172,12 @@ download: ## Download dependencies
 HELM_CHART_DIR := charts
 
 .PHONY: helm-docs
-helm-docs: $(HELM_DOCS) ## Generate Helm chart README from values.yaml annotations
-	$(HELM_DOCS) --chart-search-root=$(HELM_CHART_DIR) --sort-values-order=file
+helm-docs: ## Generate Helm chart README from values.yaml annotations
+	$(call gotool,helm-docs) --chart-search-root=$(HELM_CHART_DIR) --sort-values-order=file
 
 .PHONY: verify-helm-docs
-verify-helm-docs: $(HELM_DOCS) ## Verify chart README is up to date
-	$(HELM_DOCS) --chart-search-root=$(HELM_CHART_DIR) --sort-values-order=file
+verify-helm-docs: ## Verify chart README is up to date
+	$(call gotool,helm-docs) --chart-search-root=$(HELM_CHART_DIR) --sort-values-order=file
 	@git diff --exit-code $(HELM_CHART_DIR)/README.md > /dev/null 2>&1 || \
 		(echo "ERROR: $(HELM_CHART_DIR)/README.md is out of date. Run 'make helm-docs' and commit the result." && exit 1)
 
@@ -180,7 +191,7 @@ KUBECONFORM_FLAGS := \
 	-schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
 
 .PHONY: test-helm
-test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, validate, kubeconform)
+test-helm: verify-helm-docs ## Test Helm charts (lint, template, validate, kubeconform)
 	@echo "Testing Helm charts..."
 	@if ! command -v helm > /dev/null; then \
 		echo "Error: helm not found. Please install Helm:"; \
@@ -198,14 +209,14 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 	helm template test-release $(HELM_CHART_DIR)/ \
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
-		--set image.tag=latest | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set image.tag=latest | $(call gotool,kubeconform) $(KUBECONFORM_FLAGS)
 	@echo "Default values template OK"
 	@echo ""
 	@echo "Testing template with custom image..."
 	helm template test-release $(HELM_CHART_DIR)/ \
 		--set image.registry=quay.io \
 		--set image.repository=myorg/hyperfleet-sentinel \
-		--set image.tag=v1.0.0 | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set image.tag=v1.0.0 | $(call gotool,kubeconform) $(KUBECONFORM_FLAGS)
 	@echo "Custom image config template OK"
 	@echo ""
 	@echo "Testing template with PDB enabled..."
@@ -214,7 +225,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set podDisruptionBudget.enabled=true \
-		--set podDisruptionBudget.maxUnavailable=1 | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set podDisruptionBudget.maxUnavailable=1 | $(call gotool,kubeconform) $(KUBECONFORM_FLAGS)
 	@echo "PDB config template OK"
 	@echo ""
 	@echo "Testing template with PDB disabled..."
@@ -222,7 +233,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
-		--set podDisruptionBudget.enabled=false | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set podDisruptionBudget.enabled=false | $(call gotool,kubeconform) $(KUBECONFORM_FLAGS)
 	@echo "PDB disabled template OK"
 	@echo ""
 	@echo "Testing template with RabbitMQ broker..."
@@ -231,7 +242,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set broker.type=rabbitmq \
-		--set broker.rabbitmq.url=amqp://user:pass@rabbitmq:5672/hyperfleet | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set broker.rabbitmq.url=amqp://user:pass@rabbitmq:5672/hyperfleet | $(call gotool,kubeconform) $(KUBECONFORM_FLAGS)
 	@echo "RabbitMQ broker template OK"
 	@echo ""
 	@echo "Testing template with Google Pub/Sub broker..."
@@ -240,7 +251,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set broker.type=googlepubsub \
-		--set broker.googlepubsub.projectId=test-project | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set broker.googlepubsub.projectId=test-project | $(call gotool,kubeconform) $(KUBECONFORM_FLAGS)
 	@echo "Google Pub/Sub broker template OK"
 	@echo ""
 	@echo "Testing template with PodMonitoring enabled..."
@@ -249,7 +260,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set monitoring.podMonitoring.enabled=true \
-		--set monitoring.podMonitoring.interval=15s | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set monitoring.podMonitoring.interval=15s | $(call gotool,kubeconform) $(KUBECONFORM_FLAGS)
 	@echo "PodMonitoring config template OK"
 	@echo ""
 	@echo "Testing template with ServiceMonitor enabled..."
@@ -258,7 +269,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set monitoring.serviceMonitor.enabled=true \
-		--set monitoring.serviceMonitor.interval=30s | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set monitoring.serviceMonitor.interval=30s | $(call gotool,kubeconform) $(KUBECONFORM_FLAGS)
 	@echo "ServiceMonitor config template OK"
 	@echo ""
 	@echo "Testing template with PrometheusRule enabled..."
@@ -266,7 +277,7 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set image.registry=quay.io \
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
-		--set monitoring.prometheusRule.enabled=true | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set monitoring.prometheusRule.enabled=true | $(call gotool,kubeconform) $(KUBECONFORM_FLAGS)
 	@echo "PrometheusRule config template OK"
 	@echo ""
 	@echo "Testing template with custom resource selector..."
@@ -275,10 +286,11 @@ test-helm: $(KUBECONFORM) verify-helm-docs ## Test Helm charts (lint, template, 
 		--set image.repository=openshift-hyperfleet/hyperfleet-sentinel \
 		--set image.tag=latest \
 		--set config.resourceType=nodepools \
-		--set config.pollInterval=10s | $(KUBECONFORM) $(KUBECONFORM_FLAGS)
+		--set config.pollInterval=10s | $(call gotool,kubeconform) $(KUBECONFORM_FLAGS)
 	@echo "Custom resource selector template OK"
 	@echo ""
 	@echo "All Helm chart tests passed!"
+
 
 ##@ Container Images
 
