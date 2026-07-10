@@ -6,7 +6,7 @@ This document describes all Sentinel configuration options and how to set them v
 
 Overrides are applied in this order: **CLI flags > environment variables > YAML file > defaults**.
 
-For decision engine concepts and CEL expression guidance, see the [Operator Guide](sentinel-operator-guide.md).
+For decision engine concepts and CEL expression guidance, see the [Operator Guide](sentinel-operator-guide.md). For the complete CEL function reference, test scenarios, and adapter status contract, see the [Decision Engine Reference](decision-engine.md).
 
 ## Config File Location
 

@@ -275,9 +275,10 @@ resource_selector:
     value: us-east-1
 
 # Required: HyperFleet API configuration
-hyperfleet_api:
-  endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
-  timeout: 5s
+clients:
+  hyperfleet_api:
+    base_url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
+    timeout: 5s
 
 # Optional: CloudEvent payload definition
 message_data:
@@ -300,7 +301,7 @@ These fields MUST be present in the configuration file or Sentinel will fail to 
 | Field | Type | Description | Example                                                          |
 |-------|------|-------------|------------------------------------------------------------------|
 | `resource_type` | string | Resource to watch (`clusters` or `nodepools`) | `clusters`                                                       |
-| `hyperfleet_api.endpoint` | string | HyperFleet API base URL | `http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000` |
+| `clients.hyperfleet_api.base_url` | string | HyperFleet API base URL | `http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000` |
 
 ### 3.3 Optional Fields
 
@@ -310,7 +311,7 @@ These fields have sensible defaults and can be omitted:
 |-------|------|---------|-------------|
 | `poll_interval` | duration | `5s` | How often to poll the API for resource updates |
 | `message_decision` | object | See defaults | CEL-based decision logic (params + result expression) |
-| `hyperfleet_api.timeout` | duration | `5s` | Request timeout for API calls |
+| `clients.hyperfleet_api.timeout` | duration | `5s` | Request timeout for API calls |
 | `resource_selector` | array | `[]` | Label selectors for filtering (empty = all resources) |
 | `message_data` | map | `{}` | CEL expressions for CloudEvents payload |
 | `topic` | string | `""` | Override broker topic name (defaults to Helm template) |
@@ -566,8 +567,8 @@ Follow this checklist to ensure successful Sentinel deployment and operation.
 - [ ] **Ensure HyperFleet API is deployed and accessible**
   - **Critical:** Sentinel performs connectivity verification at startup and **will fail to start if the API is unavailable**
   - **Rolling updates will not succeed** until API connectivity is restored
-- [ ] Set `hyperfleet_api.endpoint` to HyperFleet API URL
-- [ ] Adjust `hyperfleet_api.timeout` if needed (default: `5s`)
+- [ ] Set `clients.hyperfleet_api.base_url` to HyperFleet API URL
+- [ ] Adjust `clients.hyperfleet_api.timeout` if needed (default: `5s`)
 - [ ] Reference: [Required Fields](#required-fields)
 
 ### Phase 2: Broker Preparation
@@ -662,6 +663,7 @@ For detailed deployment guidance, see [docs/deployment.md](deployment.md)
 
 ### Documentation
 
+- **[Decision Engine Reference](decision-engine.md)** - CEL function reference, test scenarios, adapter status contract
 - **[Running Sentinel](sentinel-for-gke-dev.md)** - Detailed guide for GKE deployments
 - **[Metrics Documentation](metrics.md)** - Complete metrics catalog with PromQL examples
 - **[Multi-Instance Deployment](multi-instance-deployment.md)** - Horizontal scaling strategies
@@ -682,7 +684,7 @@ For detailed deployment guidance, see [docs/deployment.md](deployment.md)
 | **Events not published, resources not found** | Resource selector mismatch | Verify `resource_selector` matches resource labels. Empty selector watches ALL resources. Check logs: `kubectl logs -n hyperfleet-system -l app.kubernetes.io/name=sentinel`                                                                                                                                             |
 | **Events not published, resources found but skipped**                                                                           | Decision result is false | Normal behavior (reason: `"message decision result is false"`). Events publish when the `message_decision` result expression evaluates to `true`. With the default config: new resource (`generation==1 && !reconciled`), generation mismatch, reconciled and stale >30m, or not reconciled and debounced >10s.                                          |
 | **API connection errors, DNS lookup fails**                                                                                  | Wrong service name or namespace | Verify endpoint format: `http://<service>.<namespace>.svc.cluster.local:8000`. Check API is running: `kubectl get pods -n hyperfleet-system -l app=hyperfleet-api`                                                                                                                                                       |
-| **API returns 401 Unauthorized**                                                                                             | Missing authentication | Add auth headers to `hyperfleet_api` config if API requires authentication.                                                                                                                                                                                                                                              |
+| **API returns 401 Unauthorized**                                                                                             | Missing authentication | Add auth headers to `clients.hyperfleet_api` config if API requires authentication.                                                                                                                                                                                                                                              |
 | **API returns 404 Not Found**                                                                                                | Wrong API version in path | Verify endpoint uses correct API version: `/api/v1/clusters` or `/api/hyperfleet/v1/clusters`                                                                                                                                                                                                                            |
 | **Broker PermissionDenied (Pub/Sub)**                                                                                        | Missing publisher role | Grant role: `gcloud projects add-iam-policy-binding ${GCP_PROJECT} --role="roles/pubsub.publisher" --member="principal://iam.googleapis.com/..."`                                                                                                                                                                        |
 | **Broker Topic not found (Pub/Sub)**                                                                                         | Topic doesn't exist | Create topic: `gcloud pubsub topics create hyperfleet-prod-clusters --project=${GCP_PROJECT}`                                                                                                                                                                                                                            |
@@ -690,7 +692,7 @@ For detailed deployment guidance, see [docs/deployment.md](deployment.md)
 | **High CPU/memory usage**                                                                                                    | Too many resources or slow API | Check `kubectl top pod -n hyperfleet-system -l app=sentinel`. Consider horizontal scaling with `resource_selector` or increase poll intervals.                                                                                                                                                                           |
 | **Error: resource_type is required**                                                                                         | Missing required config field | Add `resource_type: clusters` or `resource_type: nodepools` to configuration.                                                                                                                                                                                                                                            |
 | **Error: invalid resource_type**                                                                                             | Invalid value | Use only `clusters` or `nodepools`.                                                                                                                                                                                                                                                                                      |
-| **Error: hyperfleet_api.endpoint is required**                                                                               | Missing required config field | Add `hyperfleet_api.endpoint: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000`                                                                                                                                                                                                                            |
+| **Error: clients.hyperfleet_api.base_url is required**                                                                       | Missing required config field | Add `clients.hyperfleet_api.base_url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000`                                                                                                                                                                                                                            |
 | **Error: poll_interval must be positive**                                                                                    | Zero or negative interval | Set `poll_interval: 5s` (must be > 0).                                                                                                                                                                                                                                                                                   |
 | **Error: OpenAPI client not generated**                                                                                      | Missing generated code | Run `make generate && make build` before starting Sentinel.                                                                                                                                                                                                                                                              |
 | **Pods stay unready after startup**                                                                                         | Normal startup behavior | The `/readyz` endpoint returns `false` until the first successful poll completes and broker health checks pass. This is expected. If readiness probe failures persist beyond initial startup, check pod logs and broker connectivity. Tune probe timing (e.g., increase `initialDelaySeconds`) in Helm values if needed. |
