@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - OpenAPI schema is now sourced from the versioned `hyperfleet-api-spec` Go module instead of being downloaded from `hyperfleet-api` main branch
 - Documented single-instance deployment limitation — running multiple replicas with overlapping resource selectors causes duplicate events. Added recommended deployment configuration and scaling guidance
 - `resource_type` config accepts any registered entity type plural (e.g. `wifconfigs`), no longer limited to `clusters` and `nodepools`
+- Helm chart `values.schema.json` no longer restricts `config.resourceType` to an enum of `clusters`/`nodepools`; it now accepts any generic, non-empty, whitespace-free resource type string, matching the Go-side validation
 - API client replaced typed per-entity endpoints with generic `GET /api/hyperfleet/v1/{plural}` resource list endpoint (`hyperfleet-api-spec` v1.0.25)
 
 ### Deprecated
