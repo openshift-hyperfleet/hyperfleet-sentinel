@@ -300,10 +300,7 @@
         "resourceType": {
           "type": "string",
           "description": "Resource type to watch",
-          "enum": [
-            "clusters",
-            "nodepools"
-          ]
+          "pattern": "^\\S+$"
         },
         "pollInterval": {
           "type": "string",
