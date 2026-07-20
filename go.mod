@@ -6,7 +6,7 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/google/uuid v1.6.0
-	github.com/oapi-codegen/runtime v1.4.2
+	github.com/oapi-codegen/runtime v1.6.0
 	github.com/openshift-hyperfleet/hyperfleet-api-spec v1.0.26
 	github.com/openshift-hyperfleet/hyperfleet-broker v1.1.1
 	github.com/prometheus/client_golang v1.23.2
