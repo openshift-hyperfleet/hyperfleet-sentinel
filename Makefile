@@ -6,7 +6,7 @@ GOFMT ?= gofmt
 # Invoke a pinned tool: $(call gotool,name)
 # All tools share tools/go.mod with Go 1.24+ tool directives.
 TOOL_MOD := tools/go.mod
-gotool = GOWORK=off "$(GO)" tool -modfile="$(TOOL_MOD)" $(1)
+gotool = "$(GO)" tool -modfile="$(TOOL_MOD)" $(1)
 
 # Schema variant for OpenAPI generation (core, gcp)
 VARIANT ?= core
@@ -157,7 +157,7 @@ tidy: ## Tidy go.mod
 
 .PHONY: tools
 tools: ## Ensure tool dependencies are up to date
-	cd tools && GOWORK=off "$(GO)" mod tidy
+	cd tools && "$(GO)" mod tidy
 
 .PHONY: verify-tools
 verify-tools: tools ## Fail in CI if tool module drifted
