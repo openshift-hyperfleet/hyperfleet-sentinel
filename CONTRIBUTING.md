@@ -10,7 +10,7 @@ git clone https://github.com/openshift-hyperfleet/hyperfleet-sentinel.git
 cd hyperfleet-sentinel
 
 # 2. Install prerequisites
-# - Go 1.25 or later
+# - Go 1.26 or later
 # - Docker or Podman
 # - Make
 # - pre-commit

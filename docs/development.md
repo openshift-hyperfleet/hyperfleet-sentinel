@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - Docker or Podman
 - Make
 - pre-commit

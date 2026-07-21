@@ -4,7 +4,7 @@
 
 HyperFleet Sentinel is a **Kubernetes resource watcher** that polls the HyperFleet API for cluster/nodepool updates, makes orchestration decisions via CEL-based decision logic, and publishes CloudEvents to message brokers. Stateless, horizontally scalable via label-based sharding, delegates all state persistence to the API.
 
-- **Language**: Go 1.25 (see `go.mod`)
+- **Language**: Go 1.26 (see `go.mod`)
 - **Messaging**: Broker abstraction (RabbitMQ, GCP Pub/Sub, Stub)
 - **API Client**: Generated from [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) — see [openapi/README.md](openapi/README.md)
 - **Deployment**: Helm chart in `charts/`
@@ -35,7 +35,7 @@ Setup sequence for a fresh clone:
 | Command | What it does |
 |---|---|
 | `make verify` | go vet + format check (fast) |
-| `make lint` | golangci-lint (comprehensive) |
+| `make lint` | golangci-lint (pinned in `tools/go.mod`) |
 | `make test` | all tests (`./...`), writes `coverage.out` profile |
 | `make test-unit` | unit tests only — specific internal/ and pkg/ packages |
 | `make test-integration` | integration tests with testcontainers (Docker required) |
