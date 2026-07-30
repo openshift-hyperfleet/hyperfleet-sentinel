@@ -35,6 +35,12 @@ data:
     # Sentinel configuration
     resource_type: {{ .Values.config.resourceType }}
     poll_interval: {{ .Values.config.pollInterval }}
+    {{- if .Values.config.required_adapters }}
+    required_adapters:
+      {{- range .Values.config.required_adapters }}
+      - {{ . }}
+      {{- end }}
+    {{- end }}
 
     {{- if .Values.config.resourceSelector }}
     # Resource selector for horizontal sharding
