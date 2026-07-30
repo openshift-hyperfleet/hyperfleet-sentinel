@@ -142,6 +142,21 @@ config:
         # -- How long the token is cached in memory before the file is re-read; 0 disables caching
         tokenCacheTtl: 30s
 
+    # -- PostgreSQL database connection for the reconciliation queue
+    database:
+      # -- Database host
+      host: ""
+      # -- Database port
+      port: 5432
+      # -- Database user
+      user: ""
+      # -- Database password
+      password: ""
+      # -- Database name
+      dbname: ""
+      # -- SSL mode for database connection
+      sslmode: "disable"
+
   # -- Resource type plural to watch (any registered entity type, e.g. `clusters`, `nodepools`, `wifconfigs`)
   resourceType: clusters
 
@@ -189,35 +204,6 @@ config:
 #    kind: "resource.owner_references.kind"
 
 
-# -- Broker configuration for event publishing.
-# **WARNING:** Never commit real credentials to git. Use external secrets
-# management (External Secrets Operator, Sealed Secrets, Vault).
-broker:
-  # -- Broker type (`rabbitmq` or `googlepubsub`).
-  # See the [broker library](https://github.com/openshift-hyperfleet/hyperfleet-broker).
-  type: rabbitmq
-
-  # -- Topic name for event publishing. Default uses Helm template
-  # `{namespace}-{resourceType}` for multi-tenant isolation.
-  topic: '{{ .Release.Namespace }}-{{ .Values.config.resourceType }}'
-
-  # -- RabbitMQ configuration
-  rabbitmq:
-    # -- Connection URL (`amqp://user:password@host:port/vhost`)
-    url: amqp://<USER>:<PASSWORD>@rabbitmq.hyperfleet-system.svc.cluster.local:5672/hyperfleet
-    # -- Exchange type
-    exchangeType: topic
-
-  # -- Google Pub/Sub configuration
-  googlepubsub:
-    # -- GCP project ID (required when using Pub/Sub)
-    projectId: your-gcp-project-id
-    # -- Maximum outstanding messages
-    maxOutstandingMessages: 1000
-    # -- Number of subscriber goroutines
-    numGoroutines: 10
-    # -- Auto-create topic if it does not exist (use `false` in production)
-    createTopicIfMissing: false
 
 # -- Monitoring and metrics configuration
 monitoring:
@@ -284,7 +270,3 @@ tracing:
   samplerArg: "1.0"
   # -- Context propagation formats
   propagators: "tracecontext,baggage"
-
-# Existing secret name (optional)
-# If provided, the chart will not create a Secret and will use this existing one
-# existingSecret: sentinel-broker-credentials

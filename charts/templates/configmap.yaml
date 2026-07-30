@@ -32,10 +32,6 @@ data:
           token_cache_ttl: {{ .Values.config.clients.hyperfleetApi.auth.tokenCacheTtl | quote }}
         {{- end }}
 
-      # Broker client
-      broker:
-        topic: {{ tpl .Values.broker.topic . | quote }}
-
     # Sentinel configuration
     resource_type: {{ .Values.config.resourceType }}
     poll_interval: {{ .Values.config.pollInterval }}
@@ -67,46 +63,3 @@ data:
     message_data:
       {{- toYaml .Values.config.messageData | nindent 6 }}
     {{- end }}
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "sentinel.fullname" . }}-broker-config
-  labels:
-    {{- include "sentinel.labels" . | nindent 4 }}
-data:
-  broker.yaml: |
-    # Broker configuration for hyperfleet-broker library
-    broker:
-      type: {{ .Values.broker.type }}
-      {{- if eq .Values.broker.type "rabbitmq" }}
-      rabbitmq:
-        url: {{ .Values.broker.rabbitmq.url | quote }}
-        exchange_type: {{ .Values.broker.rabbitmq.exchangeType | default "topic" }}
-        {{- if .Values.broker.rabbitmq.prefetchCount }}
-        prefetch_count: {{ .Values.broker.rabbitmq.prefetchCount }}
-        {{- end }}
-        {{- if .Values.broker.rabbitmq.prefetchSize }}
-        prefetch_size: {{ .Values.broker.rabbitmq.prefetchSize }}
-        {{- end }}
-      {{- else if eq .Values.broker.type "googlepubsub" }}
-      googlepubsub:
-        project_id: {{ .Values.broker.googlepubsub.projectId | quote }}
-        {{- if .Values.broker.googlepubsub.maxOutstandingMessages }}
-        max_outstanding_messages: {{ .Values.broker.googlepubsub.maxOutstandingMessages }}
-        {{- end }}
-        {{- if .Values.broker.googlepubsub.numGoroutines }}
-        num_goroutines: {{ .Values.broker.googlepubsub.numGoroutines }}
-        {{- end }}
-        {{- if hasKey .Values.broker.googlepubsub "createTopicIfMissing" }}
-        create_topic_if_missing: {{ .Values.broker.googlepubsub.createTopicIfMissing }}
-        {{- end }}
-      {{- end }}
-
-    {{- if .Values.subscriber }}
-    subscriber:
-      parallelism: {{ .Values.subscriber.parallelism | default 1 }}
-    {{- end }}
-
-    # Set to true for debugging broker configuration
-    log_config: false

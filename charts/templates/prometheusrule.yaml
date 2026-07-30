@@ -44,18 +44,18 @@ spec:
         description: "Sentinel is experiencing {{`{{ $value | humanize }}`}} API errors/sec for resource_type {{`{{ $labels.resource_type }}`}}. Check HyperFleet API availability."
         runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/alerts.md#sentinelapierrorratehigh"
 
-    # Alert when broker errors are happening
-    - alert: SentinelBrokerErrorRateHigh
+    # Alert when queue errors are happening
+    - alert: SentinelQueueErrorRateHigh
       expr: |
-        rate(hyperfleet_sentinel_broker_errors_total[5m]) > 0.05
+        rate(hyperfleet_sentinel_queue_errors_total[5m]) > 0.05
       for: 5m
       labels:
         severity: critical
         component: sentinel
       annotations:
-        summary: "High broker error rate in Sentinel"
-        description: "Sentinel is experiencing {{`{{ $value | humanize }}`}} broker errors/sec for resource_type {{`{{ $labels.resource_type }}`}}. Check message broker connectivity."
-        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/alerts.md#sentinelbrokererrorratehigh"
+        summary: "High queue error rate in Sentinel"
+        description: "Sentinel is experiencing {{`{{ $value | humanize }}`}} queue errors/sec for resource_type {{`{{ $labels.resource_type }}`}}. Check database connectivity."
+        runbook_url: "https://github.com/openshift-hyperfleet/hyperfleet-sentinel/blob/main/docs/alerts.md#sentinelqueueerrorratehigh"
 
     # Alert when polling is too slow
     - alert: SentinelSlowPolling

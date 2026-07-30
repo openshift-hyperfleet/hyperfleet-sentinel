@@ -294,6 +294,39 @@
                   "description": "Request timeout (e.g. 10s)"
                 }
               }
+            },
+            "database": {
+              "type": "object",
+              "description": "PostgreSQL database connection for the reconciliation queue",
+              "properties": {
+                "host": {
+                  "type": "string",
+                  "description": "Database host"
+                },
+                "port": {
+                  "type": "integer",
+                  "description": "Database port",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "user": {
+                  "type": "string",
+                  "description": "Database user"
+                },
+                "password": {
+                  "type": "string",
+                  "description": "Database password"
+                },
+                "dbname": {
+                  "type": "string",
+                  "description": "Database name"
+                },
+                "sslmode": {
+                  "type": "string",
+                  "description": "SSL mode for database connection",
+                  "enum": ["disable", "require", "verify-ca", "verify-full"]
+                }
+              }
             }
           }
         },
@@ -357,81 +390,6 @@
         "messageData": {
           "type": "object",
           "description": "CloudEvents data payload configuration"
-        }
-      }
-    },
-    "broker": {
-      "type": "object",
-      "description": "Message broker configuration",
-      "required": [
-        "type"
-      ],
-      "properties": {
-        "type": {
-          "type": "string",
-          "description": "Broker type",
-          "enum": [
-            "rabbitmq",
-            "googlepubsub"
-          ]
-        },
-        "topic": {
-          "type": "string",
-          "description": "Topic name for broker publishing (supports Helm templates)"
-        },
-        "rabbitmq": {
-          "type": "object",
-          "description": "RabbitMQ configuration",
-          "properties": {
-            "url": {
-              "type": "string",
-              "description": "RabbitMQ connection URL (amqp://user:password@host:port/vhost)"
-            },
-            "exchangeType": {
-              "type": "string",
-              "description": "Exchange type",
-              "enum": [
-                "direct",
-                "fanout",
-                "topic",
-                "headers"
-              ]
-            },
-            "prefetchCount": {
-              "type": "integer",
-              "description": "RabbitMQ consumer prefetch count",
-              "minimum": 0
-            },
-            "prefetchSize": {
-              "type": "integer",
-              "description": "RabbitMQ consumer prefetch size in bytes",
-              "minimum": 0
-            }
-          }
-        },
-        "googlepubsub": {
-          "type": "object",
-          "description": "Google Pub/Sub configuration",
-          "properties": {
-            "projectId": {
-              "type": "string",
-              "description": "GCP project ID"
-            },
-            "maxOutstandingMessages": {
-              "type": "integer",
-              "description": "Maximum number of outstanding messages",
-              "minimum": 1
-            },
-            "numGoroutines": {
-              "type": "integer",
-              "description": "Number of goroutines for message processing",
-              "minimum": 1
-            },
-            "createTopicIfMissing": {
-              "type": "boolean",
-              "description": "Automatically create topic if it does not exist"
-            }
-          }
         }
       }
     },
@@ -584,10 +542,6 @@
         }
       }
     },
-    "existingSecret": {
-      "type": "string",
-      "description": "Name of an existing secret to use instead of creating one"
-    },
     "global": {
       "type": "object",
       "description": "Global overrides shared across charts in umbrella deployments",
@@ -599,17 +553,6 @@
         "imageTag": {
           "type": "string",
           "description": "Override image tag for all containers"
-        }
-      }
-    },
-    "subscriber": {
-      "type": "object",
-      "description": "Subscriber configuration",
-      "properties": {
-        "parallelism": {
-          "type": "integer",
-          "description": "Number of parallel message processing goroutines",
-          "minimum": 1
         }
       }
     }

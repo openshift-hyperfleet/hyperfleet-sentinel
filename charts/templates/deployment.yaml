@@ -14,7 +14,6 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -64,17 +63,18 @@ spec:
           timeoutSeconds: 3
           failureThreshold: 3
         env:
-          # Broker configuration file location
-          - name: BROKER_CONFIG_FILE
-            value: /etc/hyperfleet/broker.yaml
-          # Broker credentials can be overridden via environment variables from Secret
-          {{- if eq .Values.broker.type "rabbitmq" }}
-          - name: BROKER_RABBITMQ_URL
-            valueFrom:
-              secretKeyRef:
-                name: {{ include "sentinel.secretName" . }}
-                key: BROKER_RABBITMQ_URL
-          {{- end }}
+          - name: HYPERFLEET_DB_HOST
+            value: {{ .Values.config.clients.database.host | quote }}
+          - name: HYPERFLEET_DB_PORT
+            value: {{ .Values.config.clients.database.port | quote }}
+          - name: HYPERFLEET_DB_USER
+            value: {{ .Values.config.clients.database.user | quote }}
+          - name: HYPERFLEET_DB_PASSWORD
+            value: {{ .Values.config.clients.database.password | quote }}
+          - name: HYPERFLEET_DB_NAME
+            value: {{ .Values.config.clients.database.dbname | quote }}
+          - name: HYPERFLEET_DB_SSLMODE
+            value: {{ .Values.config.clients.database.sslmode | quote }}
           {{- with .Values.tracing }}
           - name: HYPERFLEET_TRACING_ENABLED
             value: {{ .enabled | quote }}
@@ -104,10 +104,6 @@ spec:
             mountPath: /etc/hyperfleet/config.yaml
             subPath: config.yaml
             readOnly: true
-          - name: broker-config
-            mountPath: /etc/hyperfleet/broker.yaml
-            subPath: broker.yaml
-            readOnly: true
           {{- if .Values.config.clients.hyperfleetApi.auth.enabled }}
           - name: hyperfleet-api-token
             mountPath: {{ .Values.config.clients.hyperfleetApi.auth.tokenPath | dir }}
@@ -119,9 +115,6 @@ spec:
         - name: config
           configMap:
             name: {{ include "sentinel.fullname" . }}-config
-        - name: broker-config
-          configMap:
-            name: {{ include "sentinel.fullname" . }}-broker-config
         {{- if .Values.config.clients.hyperfleetApi.auth.enabled }}
         - name: hyperfleet-api-token
           projected:

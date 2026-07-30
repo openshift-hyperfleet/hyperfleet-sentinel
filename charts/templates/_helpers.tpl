@@ -83,13 +83,3 @@ Validate required values that must not remain as placeholders.
 {{- end -}}
 {{- end }}
 
-{{/*
-Create the name of the secret to use
-*/}}
-{{- define "sentinel.secretName" -}}
-{{- if .Values.existingSecret }}
-{{- .Values.existingSecret }}
-{{- else }}
-{{- include "sentinel.fullname" . }}-broker-credentials
-{{- end }}
-{{- end }}
