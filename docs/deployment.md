@@ -130,8 +130,12 @@ helm install sentinel oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyper
   --set image.repository=redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel \
   --set image.tag=v1.0.0 \
   --set broker.type=rabbitmq \
-  --set broker.rabbitmq.url="amqp://<username>:<password>@rabbitmq.hyperfleet-system.svc.cluster.local:5672/hyperfleet"
+  --set broker.rabbitmq.url="amqp://<username>:<password>@<rabbitmq-service>.<rabbitmq-namespace>.svc.cluster.local:5672/<vhost>"
 ```
+
+> **Broker URL format:** `amqp://<username>:<password>@<service-name>.<namespace>.svc.cluster.local:5672/<vhost>`
+> The namespace in the URL is **where RabbitMQ is deployed**, e.g.:
+> `amqp://<username>:<password>@rabbitmq.hyperfleet-system.svc.cluster.local:5672/hyperfleet`
 
 ### Production — Pub/Sub with Sharding and Tracing
 
