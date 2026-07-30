@@ -5,13 +5,11 @@ import (
 	"os"
 	"testing"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
-	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 func TestInitTraceProvider_StdoutExporter(t *testing.T) {
@@ -158,7 +156,6 @@ func TestInitTraceProvider_SamplerEnvironmentVariables(t *testing.T) {
 					t.Error("Expected valid span context for sampling=true")
 				}
 			} else {
-				// Add missing validation for expectedSample=false
 				if span.SpanContext().IsValid() && span.SpanContext().TraceFlags().IsSampled() {
 					t.Error("Expected span to NOT be sampled for sampling=false")
 				}
@@ -246,88 +243,5 @@ func TestStartSpan(t *testing.T) {
 	}
 	if spanID != expectedSpanID {
 		t.Errorf("Expected span ID %s, got %s", expectedSpanID, spanID)
-	}
-}
-
-func TestSetTraceContext(t *testing.T) {
-	ctx := context.Background()
-
-	// Initialize trace provider
-	exporter := tracetest.NewInMemoryExporter()
-	tp := trace.NewTracerProvider(
-		trace.WithSampler(trace.AlwaysSample()),
-		trace.WithBatcher(exporter),
-	)
-	otel.SetTracerProvider(tp)
-	defer func(ctx context.Context, tp *trace.TracerProvider) {
-		err := Shutdown(ctx, tp)
-		if err != nil {
-			t.Error("Failed to shutdown trace provider")
-		}
-	}(ctx, tp)
-
-	// Create a span
-	tracer := otel.Tracer("test")
-	_, span := tracer.Start(ctx, "test-span")
-
-	// Create CloudEvent
-	event := cloudevents.NewEvent()
-	event.SetType("test.event")
-	event.SetSource("test")
-	event.SetID("test-123")
-
-	// Set trace context
-	SetTraceContext(&event, span)
-	span.End()
-
-	// Verify traceparent extension was added
-	extensions := event.Extensions()
-	traceparent, exists := extensions["traceparent"]
-	if !exists {
-		t.Fatal("Expected traceparent extension to be set")
-	}
-
-	// Verify traceparent format: 00-{trace_id}-{span_id}-01
-	traceParentStr, ok := traceparent.(string)
-	if !ok {
-		t.Fatal("Expected traceparent to be a string")
-	}
-
-	if len(traceParentStr) != 55 { // 00-{32 chars}-{16 chars}-01
-		t.Errorf("Expected traceparent length 55, got %d", len(traceParentStr))
-	}
-
-	if traceParentStr[:3] != "00-" {
-		t.Errorf("Expected traceparent to start with '00-', got %s", traceParentStr[:3])
-	}
-
-	if traceParentStr[len(traceParentStr)-3:] != "-01" {
-		t.Errorf("Expected traceparent to end with '-01', got %s", traceParentStr[len(traceParentStr)-3:])
-	}
-}
-
-func TestSetTraceContext_InvalidSpan(t *testing.T) {
-	// Test with invalid span context using no-op span
-	event := cloudevents.NewEvent()
-	event.SetType("test.event")
-	event.SetSource("test")
-	event.SetID("test-123")
-
-	// Create a no-op span with invalid span context
-	// trace.SpanFromContext() with background context returns a no-op span
-	span := oteltrace.SpanFromContext(context.Background())
-
-	// Verify the span context is actually invalid
-	if span.SpanContext().IsValid() {
-		t.Fatal("Expected invalid span context, but got valid one")
-	}
-
-	// This should not panic or error, and should not set traceparent
-	SetTraceContext(&event, span)
-
-	// Should NOT have traceparent extension since span context is invalid
-	extensions := event.Extensions()
-	if _, exists := extensions["traceparent"]; exists {
-		t.Error("Expected no traceparent extension for invalid span context, but got one")
 	}
 }

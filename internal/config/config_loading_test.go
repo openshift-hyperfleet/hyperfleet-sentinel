@@ -20,6 +20,8 @@ log:
   output: stdout
 resource_type: clusters
 poll_interval: 5s
+required_adapters:
+  - validation
 message_data:
   id: "resource.id"
 clients:
@@ -27,8 +29,12 @@ clients:
     base_url: https://api.example.com
     version: v1
     timeout: 10s
-  broker:
-    topic: base-topic
+  database:
+    host: localhost
+    port: 5432
+    user: hyperfleet
+    dbname: hyperfleet
+    sslmode: disable
 `
 
 // makeFlags creates a pflag.FlagSet pre-populated with all config override flags
@@ -50,8 +56,6 @@ func makeFlags(t *testing.T, pairs map[string]string) *pflag.FlagSet {
 	fs.String("hyperfleet-api-base-url", "", "")
 	fs.String("hyperfleet-api-version", "", "")
 	fs.String("hyperfleet-api-timeout", "", "")
-	// Broker
-	fs.String("broker-topic", "", "")
 	// Sentinel-specific
 	fs.String("resource-type", "", "")
 	fs.String("poll-interval", "", "")
@@ -153,16 +157,6 @@ func TestLoadConfig_EnvVarOverrides(t *testing.T) {
 				want := 20 * time.Second
 				if cfg.Clients.HyperFleetAPI.Timeout != want {
 					t.Errorf("expected Timeout=%v, got %v", want, cfg.Clients.HyperFleetAPI.Timeout)
-				}
-			},
-		},
-		{
-			name:     "clients::broker::topic",
-			envVar:   "HYPERFLEET_BROKER_TOPIC",
-			envValue: "env-topic",
-			check: func(t *testing.T, cfg *SentinelConfig) {
-				if cfg.Clients.Broker.Topic != "env-topic" {
-					t.Errorf("expected Topic=%q, got %q", "env-topic", cfg.Clients.Broker.Topic)
 				}
 			},
 		},
@@ -310,9 +304,6 @@ func TestLoadConfig_FilePrecedence(t *testing.T) {
 	}
 	if cfg.Log.Level != "info" {
 		t.Errorf("expected Log.Level=%q, got %q", "info", cfg.Log.Level)
-	}
-	if cfg.Clients.Broker.Topic != "base-topic" {
-		t.Errorf("expected Topic=%q, got %q", "base-topic", cfg.Clients.Broker.Topic)
 	}
 }
 

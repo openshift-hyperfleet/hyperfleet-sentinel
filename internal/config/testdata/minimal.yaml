@@ -4,8 +4,17 @@ sentinel:
 clients:
   hyperfleet_api:
     base_url: http://api.example.com
+  database:
+    host: localhost
+    port: 5432
+    user: hyperfleet
+    dbname: hyperfleet
+    sslmode: disable
 
 resource_type: clusters
+
+required_adapters:
+  - validation
 
 message_data:
   id: "resource.id"

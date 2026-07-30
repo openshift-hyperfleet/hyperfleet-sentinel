@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel"
@@ -152,20 +151,6 @@ func StartSpan(ctx context.Context, spanName string, attrs ...attribute.KeyValue
 	}
 
 	return ctx, span
-}
-
-// SetTraceContext adds W3C traceParent extension to CloudEvent for distributed tracing
-func SetTraceContext(event *cloudevents.Event, span oteltrace.Span) {
-	if event == nil || span == nil {
-		return
-	}
-	if span.SpanContext().IsValid() {
-		traceParent := fmt.Sprintf("00-%s-%s-%02x",
-			span.SpanContext().TraceID().String(),
-			span.SpanContext().SpanID().String(),
-			uint8(span.SpanContext().TraceFlags()))
-		event.SetExtension("traceparent", traceParent)
-	}
 }
 
 // Helper to parse sampling rate from env

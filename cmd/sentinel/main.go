@@ -18,12 +18,13 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace"
 	"gopkg.in/yaml.v3"
 
-	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
+	sentineldb "github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/db"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/health"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/queue"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/sentinel"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
@@ -84,7 +85,7 @@ func newServeCommand() *cobra.Command {
 		SilenceErrors: true, // Don't print errors - we handle logging ourselves
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load configuration with CLI flags, env vars, and file
-			// Precedence: flags → environment variables → config file → defaults
+			// Precedence: flags -> environment variables -> config file -> defaults
 			cfg, err := config.LoadConfig(configFile, cmd.Flags())
 			if err != nil {
 				return err
@@ -153,9 +154,6 @@ func addConfigOverrideFlags(cmd *cobra.Command) {
 	cmd.Flags().String("hyperfleet-api-base-url", "", "HyperFleet API base URL. Env: HYPERFLEET_API_BASE_URL")
 	cmd.Flags().String("hyperfleet-api-version", "", "HyperFleet API version. Env: HYPERFLEET_API_VERSION")
 	cmd.Flags().String("hyperfleet-api-timeout", "", "HyperFleet API timeout (e.g., 10s). Env: HYPERFLEET_API_TIMEOUT")
-
-	// Broker
-	cmd.Flags().String("broker-topic", "", "Broker topic. Env: HYPERFLEET_BROKER_TOPIC")
 
 	// Sentinel-specific
 	cmd.Flags().String("resource-type", "", "Resource type to watch (clusters, nodepools). Env: HYPERFLEET_RESOURCE_TYPE")
@@ -279,41 +277,38 @@ func runServe(
 	}
 	log.Info(ctx, "Initialized HyperFleet client")
 
-	decisionEngine, err := engine.NewDecisionEngine(cfg.MessageDecision)
+	decisionEngine, err := engine.NewDecisionEngine(cfg.MessageDecision, cfg.RequiredAdapters)
 	if err != nil {
 		log.Errorf(ctx, "Failed to create decision engine: %v", err)
 		return fmt.Errorf("failed to create decision engine: %w", err)
 	}
 
-	// Initialize broker metrics recorder
-	// Broker metrics (messages_published_total, errors_total, etc.) are registered
-	// in the same Prometheus registry used by sentinel metrics.
-	brokerMetrics := broker.NewMetricsRecorder("sentinel", version, registry)
-
-	// Initialize publisher using hyperfleet-broker library
-	// Configuration is loaded from broker.yaml or BROKER_CONFIG_FILE env var
-	pub, err := broker.NewPublisher(log, brokerMetrics)
+	// Initialize database connection
+	db, err := sentineldb.NewConnection(cfg.Clients.Database)
 	if err != nil {
-		log.Errorf(ctx, "Failed to initialize broker publisher: %v", err)
-		return fmt.Errorf("failed to initialize broker publisher: %w", err)
+		log.Errorf(ctx, "Failed to connect to database: %v", err)
+		return fmt.Errorf("failed to connect to database: %w", err)
 	}
-	if pub != nil {
-		defer func() {
-			if closeErr := pub.Close(); closeErr != nil {
-				log.Errorf(ctx, "Error closing publisher: %v", closeErr)
-			}
-		}()
+	defer func() {
+		if sqlDB, err := db.DB(); err == nil {
+			sqlDB.Close()
+		}
+	}()
+
+	// Run queue table migration
+	if err := queue.Migrate(db); err != nil {
+		log.Errorf(ctx, "Failed to migrate queue table: %v", err)
+		return fmt.Errorf("failed to migrate queue table: %w", err)
 	}
-	log.Info(ctx, "Initialized broker publisher")
+	log.Info(ctx, "Database connected and queue table migrated")
+
+	// Create queue publisher
+	queuePublisher := queue.NewPublisher(db)
 
 	// Initialize readiness checker with dependency checks.
-	// Checks are evaluated on each /readyz request.
 	readiness := health.NewReadinessChecker(log)
-	readiness.AddCheck("broker", func() error {
-		if pub == nil {
-			return fmt.Errorf("broker publisher not initialized")
-		}
-		return pub.Health(ctx)
+	readiness.AddCheck("database", func() error {
+		return queuePublisher.Health(ctx)
 	})
 	readiness.SetReady(true)
 
@@ -322,7 +317,7 @@ func runServe(
 	defer cancel()
 
 	// Initialize sentinel
-	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, pub, log)
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, queuePublisher, log)
 	if err != nil {
 		return fmt.Errorf("failed to initialize sentinel: %w", err)
 	}

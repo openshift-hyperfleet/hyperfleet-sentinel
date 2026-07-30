@@ -56,6 +56,7 @@ type SentinelConfig struct {
 	MessageData      map[string]interface{} `yaml:"message_data,omitempty" mapstructure:"message_data"`
 	MessageDecision  *MessageDecisionConfig `yaml:"message_decision,omitempty" mapstructure:"message_decision"`
 	ResourceSelector LabelSelectorList      `yaml:"resource_selector,omitempty" mapstructure:"resource_selector"`
+	RequiredAdapters []string               `yaml:"required_adapters,omitempty" mapstructure:"required_adapters"`
 	PollInterval     time.Duration          `yaml:"poll_interval" mapstructure:"poll_interval"`
 	DebugConfig      bool                   `yaml:"debug_config,omitempty" mapstructure:"debug_config"`
 	TracingEnabled   bool                   `yaml:"tracing_enabled,omitempty" mapstructure:"tracing_enabled"`
@@ -77,7 +78,17 @@ type LogConfig struct {
 // ClientsConfig contains all client configurations
 type ClientsConfig struct {
 	HyperFleetAPI *HyperFleetAPIConfig `yaml:"hyperfleet_api" mapstructure:"hyperfleet_api"`
-	Broker        *BrokerConfig        `yaml:"broker,omitempty" mapstructure:"broker"`
+	Database      *DatabaseConfig      `yaml:"database,omitempty" mapstructure:"database"`
+}
+
+// DatabaseConfig contains PostgreSQL database configuration
+type DatabaseConfig struct {
+	Host     string `yaml:"host" mapstructure:"host"`
+	Port     int    `yaml:"port" mapstructure:"port"`
+	User     string `yaml:"user" mapstructure:"user"`
+	Password string `yaml:"password" mapstructure:"password"`
+	DBName   string `yaml:"dbname" mapstructure:"dbname"`
+	SSLMode  string `yaml:"sslmode" mapstructure:"sslmode"`
 }
 
 // HyperFleetAPIAuthConfig defines optional JWT authentication via a Kubernetes
@@ -111,11 +122,6 @@ type HyperFleetAPIConfig struct {
 	PageSize int32                    `yaml:"page_size,omitempty" mapstructure:"page_size"`
 }
 
-// BrokerConfig contains broker configuration
-type BrokerConfig struct {
-	Topic string `yaml:"topic,omitempty" mapstructure:"topic"`
-}
-
 // ToMap converts label selectors to a map for filtering
 func (ls LabelSelectorList) ToMap() map[string]string {
 	if len(ls) == 0 {
@@ -136,16 +142,13 @@ func (ls LabelSelectorList) ToMap() map[string]string {
 func DefaultMessageDecision() *MessageDecisionConfig {
 	return &MessageDecisionConfig{
 		Params: []Param{
-			{Name: "ref_time", Expr: `condition("Reconciled").last_updated_time`},
-			{Name: "is_reconciled", Expr: `condition("Reconciled").status == "True"`},
+			{Name: "is_reconciled", Expr: `all_adapters_available`},
+			{Name: "ref_time", Expr: `latest_report_time`},
 			{Name: "has_ref_time", Expr: `ref_time != ""`},
 			{Name: "is_new_resource", Expr: `resource.generation == 1 && !has_ref_time`},
-			{Name: "generation_mismatch", Expr: `resource.generation > condition("Reconciled").observed_generation`},
+			{Name: "generation_mismatch", Expr: `!all_adapters_current_generation`},
 			{Name: "reconciled_and_stale", Expr: `is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("30m")`},
-			{
-				Name: "not_reconciled_and_debounced",
-				Expr: `!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("10s")`,
-			},
+			{Name: "not_reconciled_and_debounced", Expr: `!is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("10s")`},
 		},
 		Result: "is_new_resource || generation_mismatch || reconciled_and_stale || not_reconciled_and_debounced",
 	}
@@ -170,7 +173,13 @@ func NewSentinelConfig() *SentinelConfig {
 				Timeout:  10 * time.Second,
 				PageSize: 20,
 			},
-			Broker: &BrokerConfig{},
+			Database: &DatabaseConfig{
+				Host:    "localhost",
+				Port:    5432,
+				User:    "hyperfleet",
+				DBName:  "hyperfleet",
+				SSLMode: "disable",
+			},
 		},
 		// ResourceType is required and must be set in config file
 		PollInterval:     5 * time.Second,
@@ -194,8 +203,13 @@ var viperKeyMappings = map[string]string{
 	"clients::hyperfleet_api::page_size":             "API_PAGE_SIZE",
 	"clients::hyperfleet_api::auth::token_path":      "API_AUTH_TOKEN_PATH",
 	"clients::hyperfleet_api::auth::token_cache_ttl": "API_AUTH_TOKEN_CACHE_TTL",
-	"clients::broker::topic":                         "BROKER_TOPIC",
-	"resource_type":                                  "RESOURCE_TYPE",
+	"clients::database::host":                         "DB_HOST",
+	"clients::database::port":                         "DB_PORT",
+	"clients::database::user":                         "DB_USER",
+	"clients::database::password":                     "DB_PASSWORD",
+	"clients::database::dbname":                       "DB_NAME",
+	"clients::database::sslmode":                      "DB_SSLMODE",
+	"resource_type":                                   "RESOURCE_TYPE",
 	"poll_interval":                                  "POLL_INTERVAL",
 	"tracing_enabled":                                "TRACING_ENABLED",
 }
@@ -209,7 +223,6 @@ var cliFlags = map[string]string{
 	"hyperfleet-api-version":   "clients::hyperfleet_api::version",
 	"hyperfleet-api-timeout":   "clients::hyperfleet_api::timeout",
 	"hyperfleet-api-page-size": "clients::hyperfleet_api::page_size",
-	"broker-topic":             "clients::broker::topic",
 	"resource-type":            "resource_type",
 	"poll-interval":            "poll_interval",
 	"log-level":                "log::level",
@@ -401,6 +414,26 @@ func (c *SentinelConfig) Validate() error {
 		}
 	}
 
+	if len(c.RequiredAdapters) == 0 {
+		return validationErr("required_adapters", "at least one required adapter must be specified")
+	}
+
+	if c.Clients.Database == nil {
+		return validationErr("clients.database", "required")
+	}
+	if c.Clients.Database.Host == "" {
+		return validationErr("clients.database.host", "required")
+	}
+	if c.Clients.Database.Port <= 0 {
+		return validationErr("clients.database.port", "must be positive")
+	}
+	if c.Clients.Database.User == "" {
+		return validationErr("clients.database.user", "required")
+	}
+	if c.Clients.Database.DBName == "" {
+		return validationErr("clients.database.dbname", "required")
+	}
+
 	if c.PollInterval <= 0 {
 		return validationErr("poll_interval", "must be positive", c.PollInterval.String())
 	}
@@ -489,9 +522,10 @@ func (c *SentinelConfig) RedactedCopy() *SentinelConfig {
 		cp.Clients.HyperFleetAPI = &api
 	}
 
-	if cp.Clients.Broker != nil {
-		b := *cp.Clients.Broker
-		cp.Clients.Broker = &b
+	if cp.Clients.Database != nil {
+		db := *cp.Clients.Database
+		db.Password = "***REDACTED***"
+		cp.Clients.Database = &db
 	}
 
 	if c.ResourceSelector != nil {

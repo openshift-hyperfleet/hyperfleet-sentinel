@@ -13,11 +13,18 @@ clients:
     base_url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
     version: "v1"
     timeout: 20s
-  broker:
-    topic: ""
+  database:
+    host: localhost
+    port: 5432
+    user: hyperfleet
+    dbname: hyperfleet
+    sslmode: disable
 
 resource_type: nodepools
 poll_interval: 3s
+
+required_adapters:
+  - validation
 
 resource_selector:
   - label: cluster-id
@@ -27,16 +34,16 @@ resource_selector:
 
 message_decision:
   params:
-    - name: ref_time
-      expr: 'condition("Reconciled").last_updated_time'
     - name: is_reconciled
-      expr: 'condition("Reconciled").status == "True"'
+      expr: 'all_adapters_available'
+    - name: ref_time
+      expr: 'latest_report_time'
     - name: has_ref_time
       expr: 'ref_time != ""'
     - name: is_new_resource
       expr: 'resource.generation == 1 && !has_ref_time'
     - name: generation_mismatch
-      expr: 'resource.generation > condition("Reconciled").observed_generation'
+      expr: '!all_adapters_current_generation'
     - name: reconciled_and_stale
       expr: 'is_reconciled && has_ref_time && now - timestamp(ref_time) > duration("15m")'
     - name: not_reconciled_and_debounced

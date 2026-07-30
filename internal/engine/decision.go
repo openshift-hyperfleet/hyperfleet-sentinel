@@ -27,15 +27,17 @@ type paramEntry struct {
 // DecisionEngine evaluates whether a resource needs an event published
 // using configurable CEL expressions.
 type DecisionEngine struct {
-	resultProg       cel.Program
-	conditionsLookup map[string]map[string]interface{}
-	params           []paramEntry
-	mu               sync.Mutex
+	resultProg          cel.Program
+	conditionsLookup    map[string]map[string]interface{}
+	adapterStatusLookup map[string]map[string]interface{}
+	params              []paramEntry
+	requiredAdapters    []string
+	mu                  sync.Mutex
 }
 
 // NewDecisionEngine creates a new CEL-based decision engine from a MessageDecisionConfig.
 // All CEL expressions are compiled at creation time for fail-fast validation.
-func NewDecisionEngine(cfg *config.MessageDecisionConfig) (*DecisionEngine, error) {
+func NewDecisionEngine(cfg *config.MessageDecisionConfig, requiredAdapters []string) (*DecisionEngine, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("message_decision config is required")
 	}
@@ -44,15 +46,17 @@ func NewDecisionEngine(cfg *config.MessageDecisionConfig) (*DecisionEngine, erro
 		return nil, fmt.Errorf("invalid message_decision config: %w", err)
 	}
 
-	de := &DecisionEngine{}
+	de := &DecisionEngine{
+		requiredAdapters: requiredAdapters,
+	}
 
-	// Build CEL environment with all variables and the condition() function.
-	// The function declaration includes the implementation via FunctionBinding,
-	// which reads from the engine's conditionsLookup (updated per-evaluation).
 	envOpts := []cel.EnvOption{
 		ext.Strings(),
 		cel.Variable("resource", cel.DynType),
 		cel.Variable("now", cel.TimestampType),
+		cel.Variable("all_adapters_available", cel.BoolType),
+		cel.Variable("all_adapters_current_generation", cel.BoolType),
+		cel.Variable("latest_report_time", cel.StringType),
 		cel.Function("condition",
 			cel.Overload("condition_string_to_dyn",
 				[]*cel.Type{cel.StringType},
@@ -69,6 +73,25 @@ func NewDecisionEngine(cfg *config.MessageDecisionConfig) (*DecisionEngine, erro
 						return types.DefaultTypeAdapter.NativeToValue(cond)
 					}
 					return types.DefaultTypeAdapter.NativeToValue(zeroCondition())
+				}),
+			),
+		),
+		cel.Function("adapterStatus",
+			cel.Overload("adapter_status_string_to_dyn",
+				[]*cel.Type{cel.StringType},
+				cel.DynType,
+				cel.UnaryBinding(func(val ref.Val) ref.Val {
+					name, ok := val.Value().(string)
+					if !ok {
+						return types.DefaultTypeAdapter.NativeToValue(zeroAdapterStatus())
+					}
+					de.mu.Lock()
+					lookup := de.adapterStatusLookup
+					de.mu.Unlock()
+					if as, exists := lookup[name]; exists {
+						return types.DefaultTypeAdapter.NativeToValue(as)
+					}
+					return types.DefaultTypeAdapter.NativeToValue(zeroAdapterStatus())
 				}),
 			),
 		),
@@ -130,12 +153,63 @@ func (e *DecisionEngine) Evaluate(resource *client.Resource, now time.Time) Deci
 	// Update the conditions lookup for the condition() function binding
 	e.mu.Lock()
 	e.conditionsLookup = buildConditionsLookup(resource.Status.Conditions)
+	e.adapterStatusLookup = buildAdapterStatusLookup(resource.AdapterStatuses)
 	e.mu.Unlock()
 
-	// Build base activation with resource and now
+	// Compute adapter status helper variables
+	allAvailable := true
+	allCurrentGen := true
+	var latestReportTime time.Time
+
+	for _, adapter := range e.requiredAdapters {
+		as, exists := e.adapterStatusLookup[adapter]
+		if !exists {
+			allAvailable = false
+			allCurrentGen = false
+			continue
+		}
+
+		hasAvailable := false
+		if conditions, ok := as["conditions"].([]interface{}); ok {
+			for _, c := range conditions {
+				if cond, ok := c.(map[string]interface{}); ok {
+					if cond["type"] == "Available" && cond["status"] == "True" {
+						hasAvailable = true
+					}
+				}
+			}
+		}
+		if !hasAvailable {
+			allAvailable = false
+		}
+
+		if og, ok := as["observed_generation"].(int64); ok {
+			if og < int64(resource.Generation) {
+				allCurrentGen = false
+			}
+		}
+
+		if rt, ok := as["last_report_time"].(string); ok && rt != "" {
+			if t, err := time.Parse(time.RFC3339Nano, rt); err == nil {
+				if t.After(latestReportTime) {
+					latestReportTime = t
+				}
+			}
+		}
+	}
+
+	latestReportTimeStr := ""
+	if !latestReportTime.IsZero() {
+		latestReportTimeStr = latestReportTime.Format(time.RFC3339Nano)
+	}
+
+	// Build base activation with resource, now, and adapter status variables
 	activation := map[string]interface{}{
-		"resource": resourceMap,
-		"now":      now,
+		"resource":                        resourceMap,
+		"now":                             now,
+		"all_adapters_available":          allAvailable,
+		"all_adapters_current_generation": allCurrentGen,
+		"latest_report_time":              latestReportTimeStr,
 	}
 
 	// Evaluate params in authored order
@@ -215,9 +289,38 @@ func buildConditionsLookup(conditions []client.Condition) map[string]map[string]
 	return lookup
 }
 
+// buildAdapterStatusLookup creates a map from adapter name to adapter status data
+// for use by the adapterStatus() CEL function.
+func buildAdapterStatusLookup(statuses []client.AdapterStatus) map[string]map[string]interface{} {
+	lookup := make(map[string]map[string]interface{}, len(statuses))
+	for _, as := range statuses {
+		conditions := make([]interface{}, len(as.Conditions))
+		for i, c := range as.Conditions {
+			cond := map[string]interface{}{
+				"type":                 c.Type,
+				"status":               c.Status,
+				"last_transition_time": c.LastTransitionTime.Format(time.RFC3339Nano),
+			}
+			if c.Reason != "" {
+				cond["reason"] = c.Reason
+			}
+			if c.Message != "" {
+				cond["message"] = c.Message
+			}
+			conditions[i] = cond
+		}
+		lookup[as.Adapter] = map[string]interface{}{
+			"adapter":             as.Adapter,
+			"observed_generation": int64(as.ObservedGeneration),
+			"conditions":          conditions,
+			"last_report_time":    as.LastReportTime.Format(time.RFC3339Nano),
+		}
+	}
+	return lookup
+}
+
 // zeroCondition returns a zero-value condition map for safe field access
-// when a condition is not found. Time fields are empty strings so that
-// CEL expressions can guard against missing conditions with `ref_time != ""`.
+// when a condition is not found.
 func zeroCondition() map[string]interface{} {
 	return map[string]interface{}{
 		"status":               "",
@@ -226,5 +329,16 @@ func zeroCondition() map[string]interface{} {
 		"last_transition_time": "",
 		"reason":               "",
 		"message":              "",
+	}
+}
+
+// zeroAdapterStatus returns a zero-value adapter status map for safe field access
+// when an adapter status is not found.
+func zeroAdapterStatus() map[string]interface{} {
+	return map[string]interface{}{
+		"adapter":             "",
+		"observed_generation": int64(0),
+		"conditions":          []interface{}{},
+		"last_report_time":    "",
 	}
 }

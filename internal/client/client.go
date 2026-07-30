@@ -97,6 +97,23 @@ type ObjectReference struct {
 	Kind string `json:"kind"`
 }
 
+// AdapterStatus represents the status reported by a single adapter
+type AdapterStatus struct {
+	Adapter            string             `json:"adapter"`
+	ObservedGeneration int32              `json:"observed_generation"`
+	Conditions         []AdapterCondition `json:"conditions"`
+	LastReportTime     time.Time          `json:"last_report_time"`
+}
+
+// AdapterCondition represents a condition within an adapter status
+type AdapterCondition struct {
+	Type               string    `json:"type"`
+	Status             string    `json:"status"`
+	LastTransitionTime time.Time `json:"last_transition_time"`
+	Reason             string    `json:"reason,omitempty"`
+	Message            string    `json:"message,omitempty"`
+}
+
 // Resource represents a HyperFleet resource (cluster, nodepool, or any generic entity)
 type Resource struct {
 	CreatedTime     time.Time                    `json:"created_time"`
@@ -110,8 +127,9 @@ type Resource struct {
 	Href            string                       `json:"href"`
 	Kind            string                       `json:"kind"`
 	Name            string                       `json:"name"`
-	Status          ResourceStatus               `json:"status"`
-	Generation      int32                        `json:"generation"`
+	Status           ResourceStatus               `json:"status"`
+	AdapterStatuses  []AdapterStatus              `json:"adapter_statuses,omitempty"`
+	Generation       int32                        `json:"generation"`
 }
 
 // ResourceStatus represents the status of a resource.
@@ -206,6 +224,34 @@ func (r *Resource) ToMap() map[string]interface{} {
 
 	if r.Metadata != nil {
 		m["metadata"] = r.Metadata
+	}
+
+	if len(r.AdapterStatuses) > 0 {
+		statuses := make([]interface{}, len(r.AdapterStatuses))
+		for i, as := range r.AdapterStatuses {
+			conditions := make([]interface{}, len(as.Conditions))
+			for j, c := range as.Conditions {
+				cond := map[string]interface{}{
+					"type":                 c.Type,
+					"status":               c.Status,
+					"last_transition_time": c.LastTransitionTime.Format(time.RFC3339Nano),
+				}
+				if c.Reason != "" {
+					cond["reason"] = c.Reason
+				}
+				if c.Message != "" {
+					cond["message"] = c.Message
+				}
+				conditions[j] = cond
+			}
+			statuses[i] = map[string]interface{}{
+				"adapter":             as.Adapter,
+				"observed_generation": int64(as.ObservedGeneration),
+				"conditions":          conditions,
+				"last_report_time":    as.LastReportTime.Format(time.RFC3339Nano),
+			}
+		}
+		m["adapter_statuses"] = statuses
 	}
 
 	return m
@@ -565,6 +611,156 @@ func convertResource(item openapi.Resource) Resource {
 	}
 
 	return resource
+}
+
+// resourceWithStatusesItem represents a single item in the statuses API response
+type resourceWithStatusesItem struct {
+	Resource        json.RawMessage `json:"resource"`
+	AdapterStatuses []AdapterStatus `json:"adapter_statuses"`
+}
+
+// resourceWithStatusesResponse represents the paginated statuses API response
+type resourceWithStatusesResponse struct {
+	Items []resourceWithStatusesItem `json:"items"`
+	Page  int32                      `json:"page"`
+	Size  int32                      `json:"size"`
+	Total int64                      `json:"total"`
+}
+
+// FetchResourceStatuses fetches resources with their adapter statuses from the
+// /statuses endpoint. Follows the same retry and pagination pattern as FetchResources.
+func (c *HyperFleetClient) FetchResourceStatuses(
+	ctx context.Context,
+	resourceType string,
+	labelSelector map[string]string,
+) ([]Resource, error) {
+	if ctx == nil {
+		return nil, fmt.Errorf("context cannot be nil")
+	}
+
+	if err := validateResourceType(resourceType); err != nil {
+		return nil, err
+	}
+
+	b := backoff.NewExponentialBackOff()
+	b.InitialInterval = DefaultInitialInterval
+	b.MaxInterval = DefaultMaxInterval
+	b.Multiplier = DefaultMultiplier
+	b.RandomizationFactor = DefaultRandomizationFactor
+
+	operation := func() ([]Resource, error) {
+		resources, err := c.fetchResourceStatusesOnce(ctx, resourceType, labelSelector)
+		if err != nil {
+			if isRetriable(err) {
+				c.log.Debugf(ctx, "Retriable error fetching %s statuses: %v (will retry)", resourceType, err)
+				return nil, err
+			}
+			c.log.Debugf(ctx, "Non-retriable error fetching %s statuses: %v (will not retry)", resourceType, err)
+			return nil, backoff.Permanent(err)
+		}
+		return resources, nil
+	}
+
+	resources, err := backoff.Retry(
+		ctx,
+		operation,
+		backoff.WithBackOff(b),
+		backoff.WithMaxElapsedTime(DefaultMaxElapsedTime),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch %s statuses after retries: %w", resourceType, err)
+	}
+
+	return resources, nil
+}
+
+func (c *HyperFleetClient) fetchResourceStatusesOnce(
+	ctx context.Context,
+	resourceType string,
+	labelSelector map[string]string,
+) ([]Resource, error) {
+	searchParam := buildSearchString(labelSelector, nil)
+	var allResources []Resource
+	page := int32(1)
+
+	for {
+		items, total, err := c.fetchResourceStatusesPage(ctx, resourceType, page, c.pageSize, searchParam)
+		if err != nil {
+			return nil, err
+		}
+
+		if allResources == nil {
+			allResources = make([]Resource, 0, len(items))
+		}
+		allResources = append(allResources, items...)
+
+		c.log.Debugf(ctx, "Fetched %s/statuses page=%d size=%d total=%d", resourceType, page, len(items), total)
+
+		if int64(len(allResources)) >= total || len(items) == 0 {
+			break
+		}
+		page++
+	}
+
+	return allResources, nil
+}
+
+func (c *HyperFleetClient) fetchResourceStatusesPage(
+	ctx context.Context, resourceType string, page, pageSize int32, searchParam string,
+) ([]Resource, int64, error) {
+	reqURL := fmt.Sprintf("%s/api/hyperfleet/v1/%s/statuses?page=%d&size=%d",
+		c.baseURL, resourceType, page, pageSize)
+	if searchParam != "" {
+		reqURL += "&search=" + url.QueryEscape(searchParam)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, 0, &APIError{StatusCode: 0, Message: fmt.Sprintf("failed to create request: %v", err), Retriable: false}
+	}
+	req.Header.Set("User-Agent", c.userAgent)
+	if authErr := c.setAuthHeader(req); authErr != nil {
+		return nil, 0, &APIError{StatusCode: 0, Message: authErr.Error(), Retriable: false, cause: authErr}
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, wrapNetworkError(err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			c.log.Debugf(ctx, "failed to close response body: %v", closeErr)
+		}
+	}()
+
+	if httpErr := checkHTTPStatus(resp); httpErr != nil {
+		return nil, 0, httpErr
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		msg := fmt.Sprintf("failed to read response body: %v", err)
+		return nil, 0, &APIError{StatusCode: 0, Message: msg, Retriable: false}
+	}
+
+	var statusResp resourceWithStatusesResponse
+	if err := json.Unmarshal(body, &statusResp); err != nil {
+		msg := fmt.Sprintf("failed to decode statuses response: %v", err)
+		return nil, 0, &APIError{StatusCode: 0, Message: msg, Retriable: false}
+	}
+
+	resources := make([]Resource, 0, len(statusResp.Items))
+	for _, item := range statusResp.Items {
+		var res Resource
+		if err := json.Unmarshal(item.Resource, &res); err != nil {
+			c.log.Debugf(ctx, "failed to unmarshal resource in statuses response: %v", err)
+			continue
+		}
+		res.AdapterStatuses = item.AdapterStatuses
+		resources = append(resources, res)
+	}
+
+	return resources, statusResp.Total, nil
 }
 
 // wrapNetworkError wraps a transport-level error into an APIError with retry metadata.

@@ -13,27 +13,91 @@ import (
 const (
 	testResourceID   = "test-cluster-1"
 	testResourceKind = "Cluster"
+	testAdapterName  = "validation"
 )
 
-// newDefaultDecisionConfig returns the default message decision config
-// matching the sentinel architecture: ref_time, is_reconciled, is_new_resource,
-// reconciled_and_stale, not_reconciled_and_debounced.
+var testRequiredAdapters = []string{testAdapterName}
+
 func newDefaultDecisionConfig() *config.MessageDecisionConfig {
 	return config.DefaultMessageDecision()
 }
 
-// newTestDecisionEngine creates a decision engine with the default config.
 func newTestDecisionEngine(t *testing.T) *DecisionEngine {
 	t.Helper()
 	cfg := newDefaultDecisionConfig()
-	engine, err := NewDecisionEngine(cfg)
+	engine, err := NewDecisionEngine(cfg, testRequiredAdapters)
 	if err != nil {
 		t.Fatalf("NewDecisionEngine failed: %v", err)
 	}
 	return engine
 }
 
-// newResourceWithCondition creates a test resource with a single "Reconciled" condition.
+func newResourceReconciled(lastReportTime time.Time, generation int32) *client.Resource {
+	return &client.Resource{
+		ID:          testResourceID,
+		Kind:        testResourceKind,
+		Generation:  generation,
+		CreatedTime: time.Now().Add(-1 * time.Hour),
+		AdapterStatuses: []client.AdapterStatus{
+			{
+				Adapter:            testAdapterName,
+				ObservedGeneration: generation,
+				LastReportTime:     lastReportTime,
+				Conditions: []client.AdapterCondition{
+					{Type: "Available", Status: "True", LastTransitionTime: lastReportTime},
+				},
+			},
+		},
+	}
+}
+
+func newResourceNotReconciled(lastReportTime time.Time, generation int32) *client.Resource {
+	return &client.Resource{
+		ID:          testResourceID,
+		Kind:        testResourceKind,
+		Generation:  generation,
+		CreatedTime: time.Now().Add(-1 * time.Hour),
+		AdapterStatuses: []client.AdapterStatus{
+			{
+				Adapter:            testAdapterName,
+				ObservedGeneration: generation,
+				LastReportTime:     lastReportTime,
+				Conditions: []client.AdapterCondition{
+					{Type: "Available", Status: "False", LastTransitionTime: lastReportTime},
+				},
+			},
+		},
+	}
+}
+
+func newResourceGenMismatch(lastReportTime time.Time, generation, observedGeneration int32) *client.Resource {
+	return &client.Resource{
+		ID:          testResourceID,
+		Kind:        testResourceKind,
+		Generation:  generation,
+		CreatedTime: time.Now().Add(-1 * time.Hour),
+		AdapterStatuses: []client.AdapterStatus{
+			{
+				Adapter:            testAdapterName,
+				ObservedGeneration: observedGeneration,
+				LastReportTime:     lastReportTime,
+				Conditions: []client.AdapterCondition{
+					{Type: "Available", Status: "True", LastTransitionTime: lastReportTime},
+				},
+			},
+		},
+	}
+}
+
+func newResourceNoAdapterStatuses(generation int32) *client.Resource {
+	return &client.Resource{
+		ID:          testResourceID,
+		Kind:        testResourceKind,
+		Generation:  generation,
+		CreatedTime: time.Now().Add(-1 * time.Hour),
+	}
+}
+
 func newResourceWithCondition(status string, lastUpdated time.Time, generation int32) *client.Resource {
 	return &client.Resource{
 		ID:          testResourceID,
@@ -53,42 +117,9 @@ func newResourceWithCondition(status string, lastUpdated time.Time, generation i
 	}
 }
 
-// newResourceWithGenerationMismatch creates a test resource where generation > observed_generation.
-func newResourceWithGenerationMismatch(
-	status string, lastUpdated time.Time, generation, observedGeneration int32,
-) *client.Resource {
-	return &client.Resource{
-		ID:          testResourceID,
-		Kind:        testResourceKind,
-		Generation:  generation,
-		CreatedTime: time.Now().Add(-1 * time.Hour),
-		Status: client.ResourceStatus{
-			Conditions: []client.Condition{
-				{
-					Type:               "Reconciled",
-					Status:             status,
-					LastUpdatedTime:    lastUpdated,
-					ObservedGeneration: observedGeneration,
-				},
-			},
-		},
-	}
-}
-
-// newResourceNoConditions creates a test resource with no conditions.
-func newResourceNoConditions(generation int32) *client.Resource {
-	return &client.Resource{
-		ID:          testResourceID,
-		Kind:        testResourceKind,
-		Generation:  generation,
-		CreatedTime: time.Now().Add(-1 * time.Hour),
-		Status:      client.ResourceStatus{},
-	}
-}
-
 func TestNewDecisionEngine(t *testing.T) {
 	t.Run("valid config", func(t *testing.T) {
-		engine, err := NewDecisionEngine(newDefaultDecisionConfig())
+		engine, err := NewDecisionEngine(newDefaultDecisionConfig(), nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -98,7 +129,7 @@ func TestNewDecisionEngine(t *testing.T) {
 	})
 
 	t.Run("nil config", func(t *testing.T) {
-		_, err := NewDecisionEngine(nil)
+		_, err := NewDecisionEngine(nil, nil)
 		if err == nil {
 			t.Fatal("expected error for nil config")
 		}
@@ -111,7 +142,7 @@ func TestNewDecisionEngine(t *testing.T) {
 			},
 			Result: "bad",
 		}
-		_, err := NewDecisionEngine(cfg)
+		_, err := NewDecisionEngine(cfg, nil)
 		if err == nil {
 			t.Fatal("expected error for invalid CEL expression")
 		}
@@ -122,7 +153,7 @@ func TestNewDecisionEngine(t *testing.T) {
 			Params: []config.Param{},
 			Result: "not valid !!!",
 		}
-		_, err := NewDecisionEngine(cfg)
+		_, err := NewDecisionEngine(cfg, nil)
 		if err == nil {
 			t.Fatal("expected error for invalid result expression")
 		}
@@ -133,7 +164,7 @@ func TestNewDecisionEngine(t *testing.T) {
 			Params: []config.Param{},
 			Result: "true",
 		}
-		engine, err := NewDecisionEngine(cfg)
+		engine, err := NewDecisionEngine(cfg, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -156,84 +187,84 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 	}{
 		{
 			name:              "reconciled and stale - should publish",
-			resource:          newResourceWithCondition("True", now.Add(-31*time.Minute), 2),
+			resource:          newResourceReconciled(now.Add(-31*time.Minute), 2),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
 			name:              "reconciled and recent - should not publish",
-			resource:          newResourceWithCondition("True", now.Add(-5*time.Minute), 2),
+			resource:          newResourceReconciled(now.Add(-5*time.Minute), 2),
 			now:               now,
 			wantShouldPublish: false,
 			wantReason:        "message decision result is false",
 		},
 		{
 			name:              "not reconciled and debounced - should publish",
-			resource:          newResourceWithCondition("False", now.Add(-11*time.Second), 2),
+			resource:          newResourceNotReconciled(now.Add(-11*time.Second), 2),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
 			name:              "not reconciled and too recent - should not publish",
-			resource:          newResourceWithCondition("False", now.Add(-3*time.Second), 2),
+			resource:          newResourceNotReconciled(now.Add(-3*time.Second), 2),
 			now:               now,
 			wantShouldPublish: false,
 			wantReason:        "message decision result is false",
 		},
 		{
-			name:              "gen 1 with condition (adapter seen) - debounce applies, too recent",
-			resource:          newResourceWithCondition("False", now, 1),
+			name:              "gen 1 with adapter status (adapter seen) - debounce applies, too recent",
+			resource:          newResourceNotReconciled(now, 1),
 			now:               now,
 			wantShouldPublish: false,
 			wantReason:        "message decision result is false",
 		},
 		{
-			name:              "gen 1 no conditions (truly new) - should publish immediately",
-			resource:          newResourceNoConditions(1),
+			name:              "gen 1 no adapter statuses (truly new) - should publish immediately",
+			resource:          newResourceNoAdapterStatuses(1),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
-			name:              "gen 1 with condition debounce exceeded - should publish via not_reconciled_and_debounced",
-			resource:          newResourceWithCondition("False", now.Add(-11*time.Second), 1),
+			name:              "gen 1 with adapter status debounce exceeded - should publish via not_reconciled_and_debounced",
+			resource:          newResourceNotReconciled(now.Add(-11*time.Second), 1),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
 			name:              "gen 1 reconciled recent - should not publish",
-			resource:          newResourceWithCondition("True", now.Add(-5*time.Minute), 1),
+			resource:          newResourceReconciled(now.Add(-5*time.Minute), 1),
 			now:               now,
 			wantShouldPublish: false,
 			wantReason:        "message decision result is false",
 		},
 		{
 			name:              "gen 1 reconciled stale - should publish via reconciled_and_stale",
-			resource:          newResourceWithCondition("True", now.Add(-31*time.Minute), 1),
+			resource:          newResourceReconciled(now.Add(-31*time.Minute), 1),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
 			name:              "generation mismatch (reconciled, recent) - should publish immediately",
-			resource:          newResourceWithGenerationMismatch("True", now.Add(-1*time.Minute), 3, 2),
+			resource:          newResourceGenMismatch(now.Add(-1*time.Minute), 3, 2),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
 			name:              "generation mismatch (not reconciled, recent) - should publish immediately",
-			resource:          newResourceWithGenerationMismatch("False", now.Add(-1*time.Second), 5, 4),
+			resource:          newResourceGenMismatch(now.Add(-1*time.Second), 5, 4),
 			now:               now,
 			wantShouldPublish: true,
 			wantReason:        "message decision matched",
 		},
 		{
 			name:              "no generation mismatch (reconciled, recent) - should not publish",
-			resource:          newResourceWithGenerationMismatch("True", now.Add(-1*time.Minute), 2, 2),
+			resource:          newResourceReconciled(now.Add(-1*time.Minute), 2),
 			now:               now,
 			wantShouldPublish: false,
 			wantReason:        "message decision result is false",
@@ -247,7 +278,7 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 		},
 		{
 			name:              "zero now time - should not publish",
-			resource:          newResourceWithCondition("True", now, 2),
+			resource:          newResourceReconciled(now, 2),
 			now:               time.Time{},
 			wantShouldPublish: false,
 			wantReason:        "now time is zero",
@@ -268,29 +299,27 @@ func TestDecisionEngine_Evaluate(t *testing.T) {
 	}
 }
 
-func TestDecisionEngine_Evaluate_MissingCondition(t *testing.T) {
+func TestDecisionEngine_Evaluate_MissingAdapterStatus(t *testing.T) {
 	now := time.Now()
 	engine := newTestDecisionEngine(t)
 
-	// Resource with no conditions at all - condition("Reconciled") returns zero-value.
-	// Zero-value: status="" (not "True"), last_updated_time is zero time (very old).
-	// is_reconciled = false, is_new_resource depends on generation.
-	t.Run("no conditions generation 1 - new resource publishes", func(t *testing.T) {
-		resource := newResourceNoConditions(1)
+	t.Run("no adapter statuses generation 1 - new resource publishes", func(t *testing.T) {
+		resource := newResourceNoAdapterStatuses(1)
 		decision := engine.Evaluate(resource, now)
 
 		if !decision.ShouldPublish {
-			t.Errorf("expected ShouldPublish=true for new resource with no conditions, got false")
+			t.Errorf("expected ShouldPublish=true for new resource with no adapter statuses, got false")
 		}
 	})
 
-	t.Run("no conditions generation 2 - generation mismatch publishes", func(t *testing.T) {
-		resource := newResourceNoConditions(2)
+	t.Run("no adapter statuses generation 2 - not reconciled debounce fails (no ref time)", func(t *testing.T) {
+		resource := newResourceNoAdapterStatuses(2)
 		decision := engine.Evaluate(resource, now)
 
-		// No conditions → observed_generation=0, generation=2 → generation_mismatch triggers
+		// No adapter statuses → all_adapters_available=false, latest_report_time=""
+		// is_new_resource=false (gen!=1), generation_mismatch=true (adapters not current gen)
 		if !decision.ShouldPublish {
-			t.Errorf("expected ShouldPublish=true for resource with generation mismatch (gen=2, observed=0), got false")
+			t.Errorf("expected ShouldPublish=true for resource with no adapter statuses and gen>1 (generation_mismatch), got false")
 		}
 	})
 }
@@ -303,7 +332,7 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 			Params: []config.Param{},
 			Result: "true",
 		}
-		engine, err := NewDecisionEngine(cfg)
+		engine, err := NewDecisionEngine(cfg, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -321,7 +350,7 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 			Params: []config.Param{},
 			Result: "false",
 		}
-		engine, err := NewDecisionEngine(cfg)
+		engine, err := NewDecisionEngine(cfg, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -343,19 +372,17 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 			},
 			Result: "should_pub",
 		}
-		engine, err := NewDecisionEngine(cfg)
+		engine, err := NewDecisionEngine(cfg, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
-		// generation 1 → should publish
 		resource := newResourceWithCondition("False", now, 1)
 		decision := engine.Evaluate(resource, now)
 		if !decision.ShouldPublish {
 			t.Error("expected ShouldPublish=true for generation 1")
 		}
 
-		// generation 2 → should not publish
 		resource2 := newResourceWithCondition("False", now, 2)
 		decision2 := engine.Evaluate(resource2, now)
 		if decision2.ShouldPublish {
@@ -370,7 +397,7 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 			},
 			Result: "is_last_known_reconciled",
 		}
-		engine, err := NewDecisionEngine(cfg)
+		engine, err := NewDecisionEngine(cfg, nil)
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -391,7 +418,6 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 			t.Error("expected ShouldPublish=true for LastKnownReconciled=True condition")
 		}
 
-		// Missing LastKnownReconciled condition → zero-value → status="" → false
 		resource2 := &client.Resource{
 			ID:         testResourceID,
 			Kind:       testResourceKind,
@@ -408,12 +434,46 @@ func TestDecisionEngine_Evaluate_CustomExpressions(t *testing.T) {
 			t.Error("expected ShouldPublish=false when LastKnownReconciled condition is missing")
 		}
 	})
+
+	t.Run("adapterStatus function", func(t *testing.T) {
+		cfg := &config.MessageDecisionConfig{
+			Params: []config.Param{
+				{Name: "val_gen", Expr: `adapterStatus("validation").observed_generation`},
+			},
+			Result: `val_gen == 3`,
+		}
+		engine, err := NewDecisionEngine(cfg, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		resource := &client.Resource{
+			ID:         testResourceID,
+			Kind:       testResourceKind,
+			Generation: 3,
+			AdapterStatuses: []client.AdapterStatus{
+				{
+					Adapter:            "validation",
+					ObservedGeneration: 3,
+					LastReportTime:     now,
+					Conditions: []client.AdapterCondition{
+						{Type: "Available", Status: "True", LastTransitionTime: now},
+					},
+				},
+			},
+		}
+
+		decision := engine.Evaluate(resource, now)
+		if !decision.ShouldPublish {
+			t.Error("expected ShouldPublish=true when adapter observed_generation matches")
+		}
+	})
 }
 
 func TestDecisionEngine_Evaluate_ConsistentBehavior(t *testing.T) {
 	engine := newTestDecisionEngine(t)
 	now := time.Now()
-	resource := newResourceWithCondition("True", now.Add(-31*time.Minute), 2)
+	resource := newResourceReconciled(now.Add(-31*time.Minute), 2)
 
 	decision1 := engine.Evaluate(resource, now)
 	decision2 := engine.Evaluate(resource, now)
@@ -431,10 +491,9 @@ func TestDecisionEngine_Evaluate_ReconciledBoundary(t *testing.T) {
 	now := time.Now()
 	engine := newTestDecisionEngine(t)
 
-	// Default reconciled_and_stale threshold is 30m (strictly greater than)
 	tests := []struct {
 		name              string
-		lastUpdated       time.Duration
+		lastReportOffset  time.Duration
 		wantShouldPublish bool
 	}{
 		{"exactly 30m - should not publish (> not >=)", -30 * time.Minute, false},
@@ -444,12 +503,12 @@ func TestDecisionEngine_Evaluate_ReconciledBoundary(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resource := newResourceWithCondition("True", now.Add(tt.lastUpdated), 2)
+			resource := newResourceReconciled(now.Add(tt.lastReportOffset), 2)
 			decision := engine.Evaluate(resource, now)
 
 			if decision.ShouldPublish != tt.wantShouldPublish {
-				t.Errorf("ShouldPublish = %v, want %v (lastUpdated offset: %v)",
-					decision.ShouldPublish, tt.wantShouldPublish, tt.lastUpdated)
+				t.Errorf("ShouldPublish = %v, want %v (lastReport offset: %v)",
+					decision.ShouldPublish, tt.wantShouldPublish, tt.lastReportOffset)
 			}
 		})
 	}
@@ -459,10 +518,9 @@ func TestDecisionEngine_Evaluate_NotReconciledBoundary(t *testing.T) {
 	now := time.Now()
 	engine := newTestDecisionEngine(t)
 
-	// Default not_reconciled_and_debounced threshold is 10s (strictly greater than)
 	tests := []struct {
 		name              string
-		lastUpdated       time.Duration
+		lastReportOffset  time.Duration
 		wantShouldPublish bool
 	}{
 		{"exactly 10s - should not publish (> not >=)", -10 * time.Second, false},
@@ -472,27 +530,25 @@ func TestDecisionEngine_Evaluate_NotReconciledBoundary(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			resource := newResourceWithCondition("False", now.Add(tt.lastUpdated), 2)
+			resource := newResourceNotReconciled(now.Add(tt.lastReportOffset), 2)
 			decision := engine.Evaluate(resource, now)
 
 			if decision.ShouldPublish != tt.wantShouldPublish {
-				t.Errorf("ShouldPublish = %v, want %v (lastUpdated offset: %v)",
-					decision.ShouldPublish, tt.wantShouldPublish, tt.lastUpdated)
+				t.Errorf("ShouldPublish = %v, want %v (lastReport offset: %v)",
+					decision.ShouldPublish, tt.wantShouldPublish, tt.lastReportOffset)
 			}
 		})
 	}
 }
 
 func TestNewDecisionEngine_AcceptsStringHelperExpressions(t *testing.T) {
-	// Regression guard: ext.Strings() must be registered so DecisionEngine accepts
-	// string helper expressions. Without it, compilation fails with "undefined field 'split'".
 	cfg := &config.MessageDecisionConfig{
 		Params: []config.Param{
 			{Name: "channel_group", Expr: `"candidate-4.22".split("-")[0]`},
 		},
 		Result: `channel_group == "candidate"`,
 	}
-	engine, err := NewDecisionEngine(cfg)
+	engine, err := NewDecisionEngine(cfg, nil)
 	if err != nil {
 		t.Fatalf("ext.Strings() not registered — DecisionEngine rejects string helper expressions: %v", err)
 	}
@@ -568,6 +624,48 @@ func TestZeroCondition(t *testing.T) {
 	}
 	if zero["last_transition_time"] != "" {
 		t.Errorf("last_transition_time = %q, want empty string", zero["last_transition_time"])
+	}
+}
+
+func TestBuildAdapterStatusLookup(t *testing.T) {
+	now := time.Now()
+	statuses := []client.AdapterStatus{
+		{
+			Adapter:            "validation",
+			ObservedGeneration: 3,
+			LastReportTime:     now,
+			Conditions: []client.AdapterCondition{
+				{Type: "Available", Status: "True", LastTransitionTime: now},
+			},
+		},
+	}
+
+	lookup := buildAdapterStatusLookup(statuses)
+
+	if len(lookup) != 1 {
+		t.Fatalf("expected 1 entry, got %d", len(lookup))
+	}
+
+	val, ok := lookup["validation"]
+	if !ok {
+		t.Fatal("missing validation adapter status")
+	}
+	if val["observed_generation"] != int64(3) {
+		t.Errorf("observed_generation = %v, want 3", val["observed_generation"])
+	}
+}
+
+func TestZeroAdapterStatus(t *testing.T) {
+	zero := zeroAdapterStatus()
+
+	if zero["adapter"] != "" {
+		t.Errorf("adapter = %q, want empty string", zero["adapter"])
+	}
+	if zero["observed_generation"] != int64(0) {
+		t.Errorf("observed_generation = %v, want 0", zero["observed_generation"])
+	}
+	if zero["last_report_time"] != "" {
+		t.Errorf("last_report_time = %q, want empty string", zero["last_report_time"])
 	}
 }
 

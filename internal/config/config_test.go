@@ -35,6 +35,18 @@ func newTestMessageDecision() *MessageDecisionConfig {
 	}
 }
 
+// newValidTestConfig creates a SentinelConfig with all required fields set for validation tests.
+func newValidTestConfig() *SentinelConfig {
+	cfg := NewSentinelConfig()
+	cfg.ResourceType = testResourceType
+	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
+	cfg.MessageDecision = newTestMessageDecision()
+	cfg.RequiredAdapters = []string{"validation"}
+	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+	cfg.RequiredAdapters = []string{"validation"}
+	return cfg
+}
+
 // ============================================================================
 // Loading & Parsing Tests
 // ============================================================================
@@ -142,6 +154,8 @@ func TestLoadConfig_HyperfleetConfigEnvVar(t *testing.T) {
 sentinel:
   name: env-var-sentinel
 resource_type: clusters
+required_adapters:
+  - validation
 message_data:
   id: "resource.id"
   kind: "resource.kind"
@@ -150,6 +164,12 @@ clients:
   hyperfleet_api:
     base_url: https://example.com
     timeout: 10s
+  database:
+    host: localhost
+    port: 5432
+    user: hyperfleet
+    dbname: hyperfleet
+    sslmode: disable
 `
 	configPath := createTempConfigFile(t, yaml)
 	t.Setenv("HYPERFLEET_CONFIG", configPath)
@@ -172,7 +192,15 @@ sentinel:
 clients:
   hyperfleet_api:
     base_url: http://api.example.com
+  database:
+    host: localhost
+    port: 5432
+    user: hyperfleet
+    dbname: hyperfleet
+    sslmode: disable
 resource_type: clusters
+required_adapters:
+  - validation
 message_data:
   id: "resource.id"
 tracing_enabled: false
@@ -316,6 +344,7 @@ func TestValidate_ResourceTypes(t *testing.T) {
 			cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 			cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 			cfg.MessageDecision = newTestMessageDecision()
+			cfg.RequiredAdapters = []string{"validation"}
 
 			err := cfg.Validate()
 			if tt.shouldFail && err == nil {
@@ -354,6 +383,7 @@ func TestValidate_NegativeDurations(t *testing.T) {
 			cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 			cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 			cfg.MessageDecision = newTestMessageDecision()
+			cfg.RequiredAdapters = []string{"validation"}
 			tt.modifier(cfg)
 
 			err := cfg.Validate()
@@ -385,6 +415,7 @@ func TestValidate_PageSize(t *testing.T) {
 			cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 			cfg.MessageData = map[string]interface{}{"id": "resource.id"}
 			cfg.MessageDecision = newTestMessageDecision()
+			cfg.RequiredAdapters = []string{"validation"}
 			cfg.Clients.HyperFleetAPI.PageSize = tt.size
 
 			err := cfg.Validate()
@@ -451,6 +482,7 @@ func TestValidate_ValidMessageDataFlat(t *testing.T) {
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageDecision = newTestMessageDecision()
+	cfg.RequiredAdapters = []string{"validation"}
 	cfg.MessageData = map[string]interface{}{
 		"id":     "resource.id",
 		"kind":   "resource.kind",
@@ -467,6 +499,7 @@ func TestValidate_ValidMessageDataNested(t *testing.T) {
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageDecision = newTestMessageDecision()
+	cfg.RequiredAdapters = []string{"validation"}
 	cfg.MessageData = map[string]interface{}{
 		"origin": `"sentinel"`,
 		"ref": map[string]interface{}{
@@ -485,6 +518,7 @@ func TestValidate_NilMessageData(t *testing.T) {
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageDecision = newTestMessageDecision()
+	cfg.RequiredAdapters = []string{"validation"}
 	// MessageData is nil by default — message_data is required so this must fail
 
 	if err := cfg.Validate(); err == nil {
@@ -497,6 +531,7 @@ func TestValidate_NilLeafInMessageData(t *testing.T) {
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageDecision = newTestMessageDecision()
+	cfg.RequiredAdapters = []string{"validation"}
 	cfg.MessageData = map[string]interface{}{
 		"id":   nil,
 		"kind": "resource.kind",
@@ -512,6 +547,7 @@ func TestValidate_EmptyStringLeafInMessageData(t *testing.T) {
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageDecision = newTestMessageDecision()
+	cfg.RequiredAdapters = []string{"validation"}
 	cfg.MessageData = map[string]interface{}{
 		"id":   "",
 		"kind": "resource.kind",
@@ -527,6 +563,7 @@ func TestValidate_NilLeafInNestedMessageData(t *testing.T) {
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageDecision = newTestMessageDecision()
+	cfg.RequiredAdapters = []string{"validation"}
 	cfg.MessageData = map[string]interface{}{
 		"ref": map[string]interface{}{
 			"id":   nil,
@@ -548,6 +585,7 @@ func TestValidate_MissingMessageDecision(t *testing.T) {
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+	cfg.RequiredAdapters = []string{"validation"}
 	cfg.MessageDecision = nil
 
 	if err := cfg.Validate(); err == nil {
@@ -560,6 +598,7 @@ func TestValidate_EmptyResultExpression(t *testing.T) {
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+	cfg.RequiredAdapters = []string{"validation"}
 	cfg.MessageDecision = &MessageDecisionConfig{
 		Params: []Param{},
 		Result: "",
@@ -576,6 +615,7 @@ func TestValidate_EmptyParamExpression(t *testing.T) {
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+	cfg.RequiredAdapters = []string{"validation"}
 	cfg.MessageDecision = &MessageDecisionConfig{
 		Params: []Param{
 			{Name: "is_reconciled", Expr: ""},
@@ -594,6 +634,7 @@ func TestValidate_EmptyParamName(t *testing.T) {
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+	cfg.RequiredAdapters = []string{"validation"}
 	cfg.MessageDecision = &MessageDecisionConfig{
 		Params: []Param{
 			{Name: "", Expr: `condition("Reconciled").status == "True"`},
@@ -612,6 +653,7 @@ func TestValidate_DuplicateParamName(t *testing.T) {
 	cfg.ResourceType = testResourceType
 	cfg.Clients.HyperFleetAPI.BaseURL = testAPIEndpoint
 	cfg.MessageData = map[string]interface{}{"id": "resource.id"}
+	cfg.RequiredAdapters = []string{"validation"}
 	cfg.MessageDecision = &MessageDecisionConfig{
 		Params: []Param{
 			{Name: "is_reconciled", Expr: `condition("Reconciled").status == "True"`},
@@ -726,25 +768,28 @@ func TestLoadConfig_FullWorkflow(t *testing.T) {
 // RedactedCopy Tests
 // ============================================================================
 
-func TestRedactedCopy_NilBrokerHandled(t *testing.T) {
+func TestRedactedCopy_NilDatabaseHandled(t *testing.T) {
 	cfg := NewSentinelConfig()
-	cfg.Clients.Broker = nil
+	cfg.Clients.Database = nil
 
 	redacted := cfg.RedactedCopy()
 
-	if redacted.Clients.Broker != nil {
-		t.Errorf("Expected nil Broker to stay nil after redaction")
+	if redacted.Clients.Database != nil {
+		t.Errorf("Expected nil Database to stay nil after redaction")
 	}
 }
 
 func TestRedactedCopy_DoesNotMutateOriginal(t *testing.T) {
 	cfg := NewSentinelConfig()
-	cfg.Clients.Broker = &BrokerConfig{Topic: "my-topic"}
+	cfg.Clients.Database.Password = "secret"
 
-	_ = cfg.RedactedCopy()
+	redacted := cfg.RedactedCopy()
 
-	if cfg.Clients.Broker.Topic != "my-topic" {
-		t.Errorf("RedactedCopy must not mutate the original; got '%s'", cfg.Clients.Broker.Topic)
+	if cfg.Clients.Database.Password != "secret" {
+		t.Errorf("RedactedCopy must not mutate the original; got '%s'", cfg.Clients.Database.Password)
+	}
+	if redacted.Clients.Database.Password != "***REDACTED***" {
+		t.Errorf("RedactedCopy should redact database password; got '%s'", redacted.Clients.Database.Password)
 	}
 }
 
@@ -780,89 +825,7 @@ hyperfleet_api:
 	}
 }
 
-// ============================================================================
-// Topic Tests
-// ============================================================================
-
-func TestLoadConfig_TopicFromEnvVar(t *testing.T) {
-	t.Setenv("HYPERFLEET_BROKER_TOPIC", "test-namespace-clusters")
-
-	configPath := filepath.Join("testdata", "minimal.yaml")
-
-	cfg, err := LoadConfig(configPath, nil)
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if cfg.Clients.Broker.Topic != "test-namespace-clusters" {
-		t.Errorf("Expected topic 'test-namespace-clusters', got '%s'", cfg.Clients.Broker.Topic)
-	}
-}
-
-func TestLoadConfig_TopicEnvVarOverridesConfig(t *testing.T) {
-	t.Setenv("HYPERFLEET_BROKER_TOPIC", "env-topic")
-
-	yaml := `
-sentinel:
-  name: test-sentinel
-clients:
-  hyperfleet_api:
-    base_url: http://localhost:8000
-  broker:
-    topic: config-topic
-resource_type: clusters
-message_data:
-  id: resource.id
-`
-	configPath := createTempConfigFile(t, yaml)
-
-	cfg, err := LoadConfig(configPath, nil)
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if cfg.Clients.Broker.Topic != "env-topic" {
-		t.Errorf("Expected topic 'env-topic' (from env), got '%s'", cfg.Clients.Broker.Topic)
-	}
-}
-
-func TestLoadConfig_TopicFromConfigFile(t *testing.T) {
-	yaml := `
-sentinel:
-  name: test-sentinel
-clients:
-  hyperfleet_api:
-    base_url: http://localhost:8000
-  broker:
-    topic: my-namespace-clusters
-resource_type: clusters
-message_data:
-  id: resource.id
-`
-	configPath := createTempConfigFile(t, yaml)
-
-	cfg, err := LoadConfig(configPath, nil)
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if cfg.Clients.Broker.Topic != "my-namespace-clusters" {
-		t.Errorf("Expected topic 'my-namespace-clusters', got '%s'", cfg.Clients.Broker.Topic)
-	}
-}
-
-func TestLoadConfig_TopicEmpty(t *testing.T) {
-	configPath := filepath.Join("testdata", "minimal.yaml")
-
-	cfg, err := LoadConfig(configPath, nil)
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if cfg.Clients.Broker.Topic != "" {
-		t.Errorf("Expected empty topic, got '%s'", cfg.Clients.Broker.Topic)
-	}
-}
+// Broker topic tests removed for POC sentinel-db branch (broker replaced with PostgreSQL queue)
 
 func TestHyperFleetAPIAuthConfig_Validate(t *testing.T) {
 	tests := []struct {
