@@ -156,16 +156,18 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Add decision reason to context for structured logging
 			eventCtx := logger.WithDecisionReason(evalCtx, decision.Reason)
 
-			msg := &queue.QueueMessage{
-				ResourceID: resource.ID,
-				Kind:       resource.Kind,
-				Href:       resource.Href,
-				Generation: resource.Generation,
-				EventType:  fmt.Sprintf("com.redhat.hyperfleet.%s.reconcile", strings.ToLower(resource.Kind)),
-			}
+			ownerRefs := "null"
 			if resource.OwnerReferences != nil {
 				ownerJSON, _ := json.Marshal(resource.OwnerReferences)
-				msg.OwnerReferences = string(ownerJSON)
+				ownerRefs = string(ownerJSON)
+			}
+			msg := &queue.QueueMessage{
+				ResourceID:      resource.ID,
+				Kind:            resource.Kind,
+				Href:            resource.Href,
+				Generation:      resource.Generation,
+				OwnerReferences: ownerRefs,
+				EventType:       fmt.Sprintf("com.redhat.hyperfleet.%s.reconcile", strings.ToLower(resource.Kind)),
 			}
 
 			if err := s.publisher.Publish(eventCtx, msg); err != nil {
