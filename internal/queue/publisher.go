@@ -13,6 +13,7 @@ type QueueMessage struct {
 	ID              string    `gorm:"primaryKey;size:255"`
 	ResourceID      string    `gorm:"size:255;not null"`
 	Kind            string    `gorm:"size:100;not null"`
+	TargetAdapter   string    `gorm:"size:100;not null"`
 	Href            string    `gorm:"size:500"`
 	Generation      int32     `gorm:"not null"`
 	OwnerReferences string    `gorm:"type:jsonb"`

@@ -161,28 +161,33 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				ownerJSON, _ := json.Marshal(resource.OwnerReferences)
 				ownerRefs = string(ownerJSON)
 			}
-			msg := &queue.QueueMessage{
-				ResourceID:      resource.ID,
-				Kind:            resource.Kind,
-				Href:            resource.Href,
-				Generation:      resource.Generation,
-				OwnerReferences: ownerRefs,
-				EventType:       fmt.Sprintf("com.redhat.hyperfleet.%s.reconcile", strings.ToLower(resource.Kind)),
-			}
 
-			if err := s.publisher.Publish(eventCtx, msg); err != nil {
-				evalSpan.RecordError(err)
-				evalSpan.SetStatus(codes.Error, "publish failed")
-				s.logger.Errorf(eventCtx, "Failed to publish queue message resource_id=%s error=%v", resource.ID, err)
-				evalSpan.End()
-				continue
+			// Publish one message per required adapter
+			for _, adapter := range s.config.RequiredAdapters {
+				msg := &queue.QueueMessage{
+					ResourceID:      resource.ID,
+					Kind:            resource.Kind,
+					TargetAdapter:   adapter,
+					Href:            resource.Href,
+					Generation:      resource.Generation,
+					OwnerReferences: ownerRefs,
+					EventType:       fmt.Sprintf("com.redhat.hyperfleet.%s.reconcile", strings.ToLower(resource.Kind)),
+				}
+
+				if err := s.publisher.Publish(eventCtx, msg); err != nil {
+					evalSpan.RecordError(err)
+					evalSpan.SetStatus(codes.Error, "publish failed")
+					s.logger.Errorf(eventCtx, "Failed to publish queue message resource_id=%s adapter=%s error=%v", resource.ID, adapter, err)
+					continue
+				}
+
+				published++
 			}
 
 			// Record successful event publication
 			metrics.UpdateEventsPublishedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.Infof(eventCtx, "Published queue message resource_id=%s", resource.ID)
-			published++
+			s.logger.Infof(eventCtx, "Published queue messages resource_id=%s adapters=%d", resource.ID, len(s.config.RequiredAdapters))
 		} else {
 			// Add decision reason to context for structured logging
 			skipCtx := logger.WithDecisionReason(evalCtx, decision.Reason)
