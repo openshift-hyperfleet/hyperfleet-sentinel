@@ -156,7 +156,7 @@ helm upgrade --install sentinel-test ./charts \
   --set broker.type=googlepubsub \
   --set broker.googlepubsub.projectId=${GCP_PROJECT} \
   --set monitoring.serviceMonitor.enabled=true \
-  --set monitoring.serviceMonitor.additionalLabels.release=prometheus
+  --set monitoring.serviceMonitor.labels.release=prometheus
 ```
 
 > **Tip**: The default topic is `{namespace}-{resourceType}`

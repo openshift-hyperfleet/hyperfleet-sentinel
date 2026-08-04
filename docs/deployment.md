@@ -53,17 +53,17 @@ Both can coexist for hybrid environments. For metrics details, see [Metrics](met
 Distributed tracing is disabled by default. Enable via Helm:
 
 ```bash
---set tracing.enabled=true \
---set tracing.otlpEndpoint=<collector-endpoint>
+--set monitoring.tracing.enabled=true \
+--set monitoring.tracing.otlpEndpoint=<collector-endpoint>
 ```
 
 | Helm value | Description | Default |
 |------------|-------------|---------|
-| `tracing.enabled` | Enable trace export | `false` |
-| `tracing.otlpEndpoint` | OTLP collector endpoint (stdout when empty) | `""` |
-| `tracing.otlpProtocol` | `grpc` or `http/protobuf` | `grpc` |
-| `tracing.sampler` | Sampler type | `parentbased_traceidratio` |
-| `tracing.samplerArg` | Sampling rate (`1.0` for dev, `0.01` for prod) | `1.0` |
+| `monitoring.tracing.enabled` | Enable trace export | `false` |
+| `monitoring.tracing.otlpEndpoint` | OTLP collector endpoint (stdout when empty) | `""` |
+| `monitoring.tracing.otlpProtocol` | `grpc` or `http/protobuf` | `grpc` |
+| `monitoring.tracing.sampler` | Sampler type | `parentbased_always_on` |
+| `monitoring.tracing.samplerArg` | Sampling rate (only used with ratio-based samplers) | `""` |
 
 ## GKE-Specific Setup
 
@@ -152,8 +152,8 @@ helm install sentinel-shard1 oci://quay.io/redhat-services-prod/hyperfleet-tenan
   --set config.resourceSelector[0].value=1 \
   --set monitoring.podMonitoring.enabled=true \
   --set monitoring.prometheusRule.enabled=true \
-  --set tracing.enabled=true \
-  --set tracing.otlpEndpoint=otel-collector.observability.svc:4317
+  --set monitoring.tracing.enabled=true \
+  --set monitoring.tracing.otlpEndpoint=otel-collector.observability.svc:4317
 ```
 
 For horizontal scaling patterns and multi-instance deployment, see [Scaling](multi-instance-deployment.md).

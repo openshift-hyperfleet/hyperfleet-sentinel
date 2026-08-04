@@ -184,7 +184,7 @@ If no endpoint is set, traces are written to stdout (useful for local debugging)
 
 ### Adjusting Sampling for Debugging
 
-By default, Sentinel uses `parentbased_traceidratio` sampling. To control sampling:
+By default, Sentinel uses `parentbased_always_on` sampling. To control sampling:
 
 ```bash
 # Sample all traces (useful for debugging a specific issue)

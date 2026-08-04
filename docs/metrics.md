@@ -274,7 +274,7 @@ sum by (error_type) (rate(hyperfleet_broker_errors_total{component="sentinel"}[5
 
 ## Grafana Dashboard
 
-A pre-built Grafana dashboard is available at `deployments/dashboards/sentinel-metrics.json`. The dashboard includes:
+A pre-built Grafana dashboard is available at `charts/dashboards/sentinel-metrics.json`. The dashboard includes:
 
 1. **Pending Resources** - Current backlog gauge and time series
 2. **Events Published Rate** - Event publication throughput by reason
@@ -289,7 +289,7 @@ A pre-built Grafana dashboard is available at `deployments/dashboards/sentinel-m
 To import the dashboard into Grafana:
 
 1. Navigate to Grafana → Dashboards → Import
-2. Upload `deployments/dashboards/sentinel-metrics.json`
+2. Upload `charts/dashboards/sentinel-metrics.json`
 3. Select your Prometheus datasource
 4. Click "Import"
 
@@ -374,7 +374,7 @@ Then set the matching labels:
 helm install sentinel oci://quay.io/redhat-services-prod/hyperfleet-tenant/hyperfleet/hyperfleet-sentinel-chart \
   --namespace hyperfleet-system \
   --set monitoring.serviceMonitor.enabled=true \
-  --set monitoring.serviceMonitor.additionalLabels.release=prometheus
+  --set monitoring.serviceMonitor.labels.release=prometheus
 ```
 
 #### 3. Verify Metrics Collection
@@ -397,7 +397,7 @@ kubectl get svc -n hyperfleet-system -l app.kubernetes.io/name=sentinel
 | `monitoring.serviceMonitor.enabled` | `false` | Create ServiceMonitor resource |
 | `monitoring.serviceMonitor.interval` | `30s` | Scrape interval |
 | `monitoring.serviceMonitor.scrapeTimeout` | `10s` | Scrape timeout (must be less than interval) |
-| `monitoring.serviceMonitor.additionalLabels` | `{}` | Labels for Prometheus selector matching |
+| `monitoring.serviceMonitor.labels` | `{}` | Labels for Prometheus selector matching |
 | `monitoring.serviceMonitor.namespaceSelector` | `{}` | Target namespaces for cross-namespace monitoring |
 | `monitoring.serviceMonitor.honorLabels` | `true` | Honor labels from target to avoid overwriting |
 | `monitoring.serviceMonitor.metricRelabeling` | `[]` | Metric relabel configs |

@@ -241,7 +241,7 @@ monitoring:
     # -- Scrape timeout (must be less than interval)
     scrapeTimeout: 10s
     # -- Additional labels for ServiceMonitor discovery
-    additionalLabels: {}
+    labels: {}
     # -- Namespace selector for cross-namespace monitoring
     namespaceSelector: {}
     # -- Honor labels from the target to avoid overwriting
@@ -268,22 +268,27 @@ monitoring:
         # -- Duration before the alert fires
         for: 1m
 
-# -- Distributed tracing configuration (OpenTelemetry)
-tracing:
-  # -- Enable trace export
-  enabled: false
-  # -- Service name reported in traces
-  serviceName: "hyperfleet-sentinel"
-  # -- OTLP exporter endpoint (traces go to stdout when empty)
-  otlpEndpoint: ""
-  # -- OTLP protocol (`grpc` or `http/protobuf`)
-  otlpProtocol: "grpc"
-  # -- Sampler type
-  sampler: "parentbased_traceidratio"
-  # -- Sampling rate (`1.0` for dev, `0.01` for production)
-  samplerArg: "1.0"
-  # -- Context propagation formats
-  propagators: "tracecontext,baggage"
+  # -- Grafana dashboard provisioning via sidecar ConfigMap
+  dashboard:
+    # -- Create a ConfigMap with the Grafana dashboard JSON
+    enabled: false
+
+  # -- Distributed tracing configuration (OpenTelemetry)
+  tracing:
+    # -- Enable trace export
+    enabled: false
+    # -- Service name reported in traces
+    serviceName: "hyperfleet-sentinel"
+    # -- OTLP exporter endpoint (traces go to stdout when empty)
+    otlpEndpoint: ""
+    # -- OTLP protocol (`grpc` or `http/protobuf`)
+    otlpProtocol: "grpc"
+    # -- Sampler type
+    sampler: "parentbased_always_on"
+    # -- Sampling rate (only used with ratio-based samplers)
+    samplerArg: ""
+    # -- Context propagation formats
+    propagators: "tracecontext,baggage"
 
 # Existing secret name (optional)
 # If provided, the chart will not create a Secret and will use this existing one
