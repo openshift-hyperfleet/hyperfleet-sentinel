@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
 const (
@@ -90,7 +89,7 @@ func TestNewBuilder_EmptyExpressionReturnsError(t *testing.T) {
 	buildDef := map[string]interface{}{
 		"id": "",
 	}
-	_, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	_, err := NewBuilder(buildDef)
 	if err == nil {
 		t.Fatal("expected error for empty CEL expression, got nil")
 	}
@@ -101,7 +100,7 @@ func TestNewBuilder_NilValueReturnsError(t *testing.T) {
 	buildDef := map[string]interface{}{
 		"id": nil,
 	}
-	_, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	_, err := NewBuilder(buildDef)
 	if err == nil {
 		t.Fatal("expected error for nil value in build definition, got nil")
 	}
@@ -162,7 +161,7 @@ func TestBuildPayload_FlatFields(t *testing.T) {
 		"id":   "resource.id",
 		"kind": "resource.kind",
 	}
-	b, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	b, err := NewBuilder(buildDef)
 	if err != nil {
 		t.Fatalf("NewBuilder failed: %v", err)
 	}
@@ -185,7 +184,7 @@ func TestBuildPayload_NestedObject(t *testing.T) {
 			"kind": "resource.kind",
 		},
 	}
-	b, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	b, err := NewBuilder(buildDef)
 	if err != nil {
 		t.Fatalf("NewBuilder failed: %v", err)
 	}
@@ -205,7 +204,7 @@ func TestBuildPayload_CELConditional(t *testing.T) {
 	buildDef := map[string]interface{}{
 		"gen_check": `resource.generation > 2 ? "high" : "low"`,
 	}
-	b, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	b, err := NewBuilder(buildDef)
 	if err != nil {
 		t.Fatalf("NewBuilder failed: %v", err)
 	}
@@ -222,7 +221,7 @@ func TestBuildPayload_MissingFieldOmitted(t *testing.T) {
 		"id":      "resource.id",
 		"missing": "resource.nonexistent_field",
 	}
-	b, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	b, err := NewBuilder(buildDef)
 	if err != nil {
 		t.Fatalf("NewBuilder failed: %v", err)
 	}
@@ -241,7 +240,7 @@ func TestBuildPayload_CELStringLiteral(t *testing.T) {
 	buildDef := map[string]interface{}{
 		"origin": `"hyperfleet-sentinel"`,
 	}
-	b, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	b, err := NewBuilder(buildDef)
 	if err != nil {
 		t.Fatalf("NewBuilder failed: %v", err)
 	}
@@ -262,7 +261,7 @@ func TestBuildPayload_MixedTypes(t *testing.T) {
 			"kind": "resource.kind",
 		},
 	}
-	b, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	b, err := NewBuilder(buildDef)
 	if err != nil {
 		t.Fatalf("NewBuilder failed: %v", err)
 	}
@@ -292,7 +291,7 @@ func TestBuildPayload_ReasonVariable(t *testing.T) {
 		"id":     "resource.id",
 		"reason": "reason",
 	}
-	b, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	b, err := NewBuilder(buildDef)
 	if err != nil {
 		t.Fatalf("NewBuilder failed: %v", err)
 	}
@@ -314,7 +313,7 @@ func TestBuildPayload_NodePool_OwnerReferences(t *testing.T) {
 		"cluster_id":   "resource.owner_references.id",
 		"cluster_kind": "resource.owner_references.kind",
 	}
-	b, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	b, err := NewBuilder(buildDef)
 	if err != nil {
 		t.Fatalf("NewBuilder failed: %v", err)
 	}
@@ -346,7 +345,7 @@ func TestBuildPayload_NestedObjectOmittedWhenAllChildrenMissing(t *testing.T) {
 			"kind": "resource.owner_references.kind",
 		},
 	}
-	b, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	b, err := NewBuilder(buildDef)
 	if err != nil {
 		t.Fatalf("NewBuilder failed: %v", err)
 	}
@@ -367,7 +366,7 @@ func TestBuildPayload_WithNameSpecReferences(t *testing.T) {
 		"id":   "resource.id",
 		"name": "resource.name",
 	}
-	b, err := NewBuilder(buildDef, logger.NewHyperFleetLogger())
+	b, err := NewBuilder(buildDef)
 	if err != nil {
 		t.Fatalf("NewBuilder failed: %v", err)
 	}

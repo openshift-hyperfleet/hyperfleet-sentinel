@@ -3,12 +3,11 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
 // CheckFunc is a function that checks a specific dependency.
@@ -19,17 +18,15 @@ type CheckFunc func() error
 // evaluates registered health checks on each /readyz request.
 // It is goroutine-safe.
 type ReadinessChecker struct {
-	logger logger.HyperFleetLogger
 	checks map[string]CheckFunc
 	mu     sync.RWMutex
 	ready  atomic.Bool
 }
 
 // NewReadinessChecker creates a new ReadinessChecker with ready=false and no checks.
-func NewReadinessChecker(log logger.HyperFleetLogger) *ReadinessChecker {
+func NewReadinessChecker() *ReadinessChecker {
 	return &ReadinessChecker{
 		checks: make(map[string]CheckFunc),
-		logger: log,
 	}
 }
 
@@ -67,7 +64,7 @@ func (r *ReadinessChecker) writeJSON(w http.ResponseWriter, statusCode int, v in
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		r.logger.Errorf(context.Background(), "Failed to encode health JSON response: %v", err)
+		slog.ErrorContext(context.Background(), "Failed to encode health JSON response", "error", err)
 	}
 }
 
@@ -77,8 +74,8 @@ func (r *ReadinessChecker) writeJSON(w http.ResponseWriter, statusCode int, v in
 func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold time.Duration) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		if lastPollFn == nil || threshold <= 0 {
-			r.logger.Extra("lastPollFnSet", lastPollFn != nil).Extra("threshold", threshold.String()).
-				Errorf(req.Context(), "Healthz check called with invalid configuration")
+			slog.ErrorContext(req.Context(), "Healthz check called with invalid configuration",
+				"lastPollFnSet", lastPollFn != nil, "threshold", threshold.String())
 
 			r.writeJSON(w, http.StatusInternalServerError, healthResponse{Status: "invalid health configuration"})
 			return
@@ -93,8 +90,8 @@ func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold
 
 		staleness := time.Since(lastPoll)
 		if staleness > threshold {
-			r.logger.Extra("staleness", staleness.Round(time.Second).String()).Extra("threshold", threshold.String()).
-				Warnf(req.Context(), "Healthz check failed: poll stale")
+			slog.WarnContext(req.Context(), "Healthz check failed: poll stale",
+				"staleness", staleness.Round(time.Second).String(), "threshold", threshold.String())
 			r.writeJSON(w, http.StatusServiceUnavailable, healthResponse{Status: "poll stale"})
 			return
 		}
@@ -134,8 +131,7 @@ func (r *ReadinessChecker) ReadyzHandler() http.HandlerFunc {
 			return
 		}
 
-		r.logger.Extra("checks", checks).
-			Warnf(req.Context(), "Readyz check failed")
+		slog.WarnContext(req.Context(), "Readyz check failed", "checks", checks)
 		r.writeJSON(w, http.StatusServiceUnavailable, readyResponse{
 			Status: "error",
 			Checks: checks,

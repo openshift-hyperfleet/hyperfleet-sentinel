@@ -1,21 +1,24 @@
 package sentinel
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
+	hyperfleetlogger "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/logctx"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"go.opentelemetry.io/otel"
@@ -111,20 +114,6 @@ func (m *MockPublisher) Close() error                     { return nil }
 func (m *MockPublisher) Health(ctx context.Context) error { return nil }
 func (m *MockPublisher) BrokerType() string               { return m.brokerType }
 
-type MockPublisherWithLogger struct {
-	mockLogger *logger.MockLoggerWithContext
-	brokerType string
-}
-
-func (m *MockPublisherWithLogger) Publish(ctx context.Context, topic string, event *cloudevents.Event) error {
-	m.mockLogger.Info(ctx, fmt.Sprintf("broker publishing event to topic %s", topic))
-	return nil
-}
-
-func (m *MockPublisherWithLogger) Close() error                     { return nil }
-func (m *MockPublisherWithLogger) Health(ctx context.Context) error { return nil }
-func (m *MockPublisherWithLogger) BrokerType() string               { return m.brokerType }
-
 // newTestDecisionEngine creates a CEL-based decision engine with default config.
 func newTestDecisionEngine(t *testing.T) *engine.DecisionEngine {
 	t.Helper()
@@ -170,14 +159,12 @@ func TestTrigger_Success(t *testing.T) {
 	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := newTestSentinelConfig()
 
-	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -225,14 +212,12 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := newTestSentinelConfig()
 
-	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -266,14 +251,12 @@ func TestTrigger_FetchError(t *testing.T) {
 	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := newTestSentinelConfig()
 
-	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -307,7 +290,6 @@ func TestTrigger_AuthError(t *testing.T) {
 	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
-	log := logger.NewHyperFleetLogger()
 
 	metrics.ResetSentinelMetrics()
 	registry := prometheus.NewRegistry()
@@ -315,7 +297,7 @@ func TestTrigger_AuthError(t *testing.T) {
 
 	cfg := newTestSentinelConfig()
 
-	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -355,14 +337,12 @@ func TestTrigger_PublishError(t *testing.T) {
 	mockPublisher := &MockPublisher{
 		publishError: errors.New("broker connection failed"),
 	}
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := newTestSentinelConfig()
 
-	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -397,14 +377,12 @@ func TestTrigger_MixedResources(t *testing.T) {
 	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := newTestSentinelConfig()
 
-	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -446,8 +424,6 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
@@ -458,7 +434,7 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 		"origin": `"sentinel"`,
 	}
 
-	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -506,8 +482,6 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 	}
 	decisionEngine := newTestDecisionEngine(t)
 	mockPublisher := &MockPublisher{}
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
@@ -520,7 +494,7 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 		},
 	}
 
-	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -552,8 +526,7 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 // TestBuildEventData_WithBuilder tests buildEventData directly with a configured builder.
 func TestBuildEventData_WithBuilder(t *testing.T) {
 	cfg := newTestSentinelConfig()
-	log := logger.NewHyperFleetLogger()
-	s, err := NewSentinel(cfg, nil, nil, nil, log)
+	s, err := NewSentinel(cfg, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -565,7 +538,7 @@ func TestBuildEventData_WithBuilder(t *testing.T) {
 		Generation: 1,
 	}
 	decision := engine.Decision{ShouldPublish: true, Reason: "message decision matched"}
-	ctx := logger.WithDecisionReason(context.Background(), decision.Reason)
+	ctx := context.Background()
 
 	data := s.buildEventData(ctx, resource, decision)
 	if data["id"] != "cls-direct" {
@@ -573,61 +546,6 @@ func TestBuildEventData_WithBuilder(t *testing.T) {
 	}
 	if data["kind"] != testResourceKind {
 		t.Errorf("Expected kind 'Cluster', got %v", data["kind"])
-	}
-}
-
-func TestTrigger_ContextPropagationToBroker(t *testing.T) {
-	var capturedLogs []string
-	var capturedContexts []context.Context
-
-	mockLogger := &logger.MockLoggerWithContext{
-		CapturedLogs:     &capturedLogs,
-		CapturedContexts: &capturedContexts,
-	}
-
-	mockPublisherWithLogger := &MockPublisherWithLogger{
-		mockLogger: mockLogger,
-		brokerType: testBrokerType,
-	}
-
-	ctx := context.Background()
-	ctx = logger.WithDecisionReason(ctx, "message decision matched")
-	ctx = logger.WithTopic(ctx, testTopic)
-	ctx = logger.WithSubset(ctx, "clusters")
-	ctx = logger.WithTraceID(ctx, "trace-123")
-	ctx = logger.WithSpanID(ctx, "span-456")
-
-	event := cloudevents.NewEvent()
-	event.SetSpecVersion(cloudevents.VersionV1)
-	event.SetType("com.redhat.hyperfleet.cluster.reconcile")
-	event.SetSource("hyperfleet-sentinel")
-	event.SetID("test-id")
-
-	err := mockPublisherWithLogger.Publish(ctx, testTopic, &event)
-	if err != nil {
-		t.Fatalf("publish failed: %v", err)
-	}
-
-	if len(capturedContexts) == 0 {
-		t.Fatal("no context captured by broker logger")
-	}
-
-	brokerCtx := capturedContexts[0]
-
-	if reason, ok := brokerCtx.Value(logger.DecisionReasonCtxKey).(string); !ok || reason != "message decision matched" {
-		t.Errorf("decision_reason not propagated: got %v", reason)
-	}
-
-	if topic, ok := brokerCtx.Value(logger.TopicCtxKey).(string); !ok || topic != testTopic {
-		t.Errorf("topic not propagated: got %v", topic)
-	}
-
-	if traceID, ok := brokerCtx.Value(logger.TraceIDCtxKey).(string); !ok || traceID != "trace-123" {
-		t.Errorf("trace_id not propagated: got %v", traceID)
-	}
-
-	if spanID, ok := brokerCtx.Value(logger.SpanIDCtxKey).(string); !ok || spanID != "span-456" {
-		t.Errorf("span_id not propagated: got %v", spanID)
 	}
 }
 
@@ -661,15 +579,13 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 	decisionEngine := newTestDecisionEngine(t)
 
 	mockPublisher := &MockPublisher{brokerType: testBrokerType}
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := newTestSentinelConfig()
 	cfg.Clients.Broker.Topic = "hyperfleet-clusters"
 
-	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher, log)
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -767,4 +683,60 @@ func getSpanNames(spans []tracetest.SpanStub) []string {
 		names[i] = span.Name
 	}
 	return names
+}
+
+// TestTrigger_ContextFieldsPropagateToLogs verifies that resource_type, topic,
+// and decision_reason are present in log output via context-based enrichment.
+func TestTrigger_ContextFieldsPropagateToLogs(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	server := mockServerForResources(t, []map[string]interface{}{
+		createMockCluster("cluster-ctx", 2, 2, true, now.Add(-31*time.Minute)),
+	})
+	defer server.Close()
+
+	hyperfleetClient, err := client.NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
+	decisionEngine := newTestDecisionEngine(t)
+	mockPublisher := &MockPublisher{}
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry, "test")
+
+	cfg := newTestSentinelConfig()
+
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
+
+	var buf bytes.Buffer
+	handler := hyperfleetlogger.NewHandler("sentinel", "test",
+		hyperfleetlogger.WithLevel(slog.LevelDebug),
+		hyperfleetlogger.WithOutput(&buf),
+		hyperfleetlogger.WithContextFields(logctx.ContextFields()...),
+	)
+	prev := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	defer slog.SetDefault(prev)
+
+	if err := s.trigger(ctx); err != nil {
+		t.Fatalf("trigger failed: %v", err)
+	}
+
+	output := buf.String()
+
+	wantFields := []string{
+		`"resource_type":"clusters"`,
+		`"topic":"test-topic"`,
+		`"decision_reason"`,
+	}
+	for _, field := range wantFields {
+		if !strings.Contains(output, field) {
+			t.Errorf("Expected log output to contain %s, but it did not.\nLog output:\n%s", field, output)
+		}
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,12 +19,13 @@ import (
 	"testing"
 	"time"
 
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/logctx"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/sentinel"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
@@ -33,9 +35,8 @@ import (
 
 // TestMain provides centralized setup/teardown for integration tests
 func TestMain(m *testing.M) {
-	log := logger.NewHyperFleetLogger()
 	ctx := context.Background()
-	log.Infof(ctx, "Starting integration test using go version %s", runtime.Version())
+	slog.InfoContext(ctx, "Starting integration test", "go_version", runtime.Version())
 
 	// Initialize shared test helper (creates RabbitMQ container once)
 	helper := NewHelper()
@@ -46,7 +47,7 @@ func TestMain(m *testing.M) {
 	// Cleanup shared resources
 	helper.Teardown()
 
-	log.Infof(ctx, "Integration tests completed with exit code %d", exitCode)
+	slog.InfoContext(ctx, "Integration tests completed", "exit_code", exitCode)
 	os.Exit(exitCode)
 }
 
@@ -174,14 +175,12 @@ func TestIntegration_EndToEnd(t *testing.T) {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
 	decisionEngine := newTestDecisionEngine(t)
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
 	cfg := newTestSentinelConfig()
 
-	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher())
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -253,8 +252,6 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
 	decisionEngine := newTestDecisionEngine(t)
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
@@ -263,7 +260,7 @@ func TestIntegration_LabelSelectorFiltering(t *testing.T) {
 		{Label: "shard", Value: "1"},
 	}
 
-	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher())
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -343,8 +340,6 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
 	decisionEngine := newTestDecisionEngine(t)
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
@@ -354,7 +349,7 @@ func TestIntegration_TSLSyntaxMultipleLabels(t *testing.T) {
 		{Label: "env", Value: "production"},
 	}
 
-	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher())
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -423,22 +418,19 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	}
 	defer telemetry.Shutdown(context.Background(), tp)
 
-	globalConfig := logger.GetGlobalConfig()
-	multiWriter := io.MultiWriter(globalConfig.Output, &logBuffer)
+	multiWriter := io.MultiWriter(os.Stdout, &logBuffer)
+
+	handler := hfl.NewHandler(sentinelComponent, testVersion,
+		hfl.WithOutput(multiWriter),
+		hfl.WithHostname(testHost),
+		hfl.WithLevel(slog.LevelInfo),
+		hfl.WithContextFields(logctx.ContextFields()...),
+	)
+	prevDefault := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	defer slog.SetDefault(prevDefault)
 
 	helper := NewHelper()
-	logCfg := &logger.LogConfig{
-		Level:     logger.LevelInfo,
-		Format:    logger.FormatJSON,
-		Output:    multiWriter,
-		Component: sentinelComponent,
-		Version:   testVersion,
-		Hostname:  testHost,
-		OTel: logger.OTelConfig{
-			Enabled: true,
-		},
-	}
-	log := logger.NewHyperFleetLoggerWithConfig(logCfg)
 
 	// Single query mock - returns resources that trigger events
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -473,7 +465,7 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		{Label: "env", Value: "production"},
 	}
 
-	s, err := sentinel.NewSentinel(sentinelConfig, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher(), log)
+	s, err := sentinel.NewSentinel(sentinelConfig, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher())
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -532,8 +524,8 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 			if entry["topic"] == nil {
 				t.Errorf("Sentinel event log missing topic: %v", entry)
 			}
-			if entry["subset"] == nil {
-				t.Errorf("Sentinel event log missing subset: %v", entry)
+			if entry["resource_type"] == nil {
+				t.Errorf("Sentinel event log missing resource_type: %v", entry)
 			}
 			if entry["trace_id"] == nil {
 				t.Errorf("Sentinel event log missing trace_id: %v", entry)
@@ -542,8 +534,8 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 				t.Errorf("Sentinel event log missing span_id: %v", entry)
 			}
 
-			t.Logf("Found Sentinel event log with context: decision_reason=%v topic=%v subset=%v",
-				entry["decision_reason"], entry["topic"], entry["subset"])
+			t.Logf("Found Sentinel event log with context: decision_reason=%v topic=%v resource_type=%v",
+				entry["decision_reason"], entry["topic"], entry["resource_type"])
 		}
 
 		if hasMsg && hasComponent && component == sentinelComponent &&
@@ -632,8 +624,6 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 		t.Fatalf("failed to create HyperFleet client: %v", clientErr)
 	}
 	decisionEngine := newTestDecisionEngine(t)
-	log := logger.NewHyperFleetLogger()
-
 	registry := prometheus.NewRegistry()
 	metrics.NewSentinelMetrics(registry, "test")
 
@@ -641,7 +631,7 @@ func TestIntegration_EndToEndSpanHierarchy(t *testing.T) {
 	cfg.Clients.Broker.Topic = "test-spans-topic"
 
 	pub := helper.RabbitMQ.Publisher()
-	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, pub, log)
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, pub)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}

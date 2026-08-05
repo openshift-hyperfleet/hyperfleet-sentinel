@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 )
@@ -231,9 +231,8 @@ func LoadConfig(configFile string, flags *pflag.FlagSet) (*SentinelConfig, error
 		}
 	}
 
-	log := logger.NewHyperFleetLogger()
 	ctx := context.Background()
-	log.Infof(ctx, "Loading configuration from %s", configFile)
+	slog.InfoContext(ctx, "Loading configuration", "file", configFile)
 
 	// Use "::" as key delimiter to avoid conflicts with dots in YAML keys
 	v := viper.NewWithOptions(viper.KeyDelimiter("::"))
@@ -285,8 +284,8 @@ func LoadConfig(configFile string, flags *pflag.FlagSet) (*SentinelConfig, error
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
-	log.Infof(ctx, "Configuration loaded successfully: name=%s resource_type=%s",
-		cfg.Sentinel.Name, cfg.ResourceType)
+	slog.InfoContext(ctx, "Configuration loaded successfully",
+		"name", cfg.Sentinel.Name, "resource_type", cfg.ResourceType)
 
 	return cfg, nil
 }

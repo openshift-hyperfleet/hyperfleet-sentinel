@@ -114,11 +114,10 @@ Co-Authored-By trailer required on all Claude-assisted commits.
 - Log at boundaries (main service loop), not deep in call stack
 
 ### Logging
-- Custom structured logger in `pkg/logger/` — stdlib only, no external deps
-- Interface: `logger.HyperFleetLogger` with `Info()`, `Error()`, `Warn()`, `Debug()`, `V(level)` (verbosity), `Extra()`
-- Create via `logger.NewHyperFleetLogger()` — uses global config
-- Chaining: `logger.Extra("key", val).Extra("key2", val2).Info("msg")`
-- **IMPORTANT: always use `pkg/logger`, never `log/slog` directly**
+- Use stdlib `log/slog` directly. Handler is configured in `cmd/sentinel/main.go` via `slog.SetDefault()` using the shared `hyperfleet-logger` package.
+- Patterns: `slog.InfoContext(ctx, "msg", "key", val)`, `slog.With("key", val).InfoContext(ctx, "msg")`
+- For format strings: `slog.InfoContext(ctx, fmt.Sprintf("msg %s", val))`
+- **IMPORTANT: always use `log/slog`, never `pkg/logger` directly**
 
 ### CloudEvents Payloads
 `message_data` config uses CEL expressions, not static values:

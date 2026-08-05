@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -10,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	hyperfleetlogger "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -23,9 +25,9 @@ import (
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/health"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/logctx"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/sentinel"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
 var (
@@ -84,19 +86,18 @@ func newServeCommand() *cobra.Command {
 		SilenceErrors: true, // Don't print errors - we handle logging ourselves
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load configuration with CLI flags, env vars, and file
-			// Precedence: flags → environment variables → config file → defaults
+			// Precedence: flags -> environment variables -> config file -> defaults
 			cfg, err := config.LoadConfig(configFile, cmd.Flags())
 			if err != nil {
 				return err
 			}
 
 			// Initialize logging with merged configuration
-			logCfg, err := initLogging(&cfg.Log, cfg.TracingEnabled)
-			if err != nil {
+			if err := initLogging(&cfg.Log); err != nil {
 				return fmt.Errorf("failed to initialize logging: %w", err)
 			}
 
-			return runServe(cfg, logCfg, healthBindAddress, metricsBindAddress)
+			return runServe(cfg, healthBindAddress, metricsBindAddress)
 		},
 	}
 
@@ -167,48 +168,36 @@ func addConfigOverrideFlags(cmd *cobra.Command) {
 
 // initLogging initializes the logging configuration from the already-merged LogConfig.
 // Precedence (config file < env vars < CLI flags) is resolved by LoadConfig via viper.
-func initLogging(logCfg *config.LogConfig, tracingEnabled bool) (*logger.LogConfig, error) {
-	cfg := logger.DefaultConfig()
-	cfg.Version = version
-	cfg.Component = "sentinel"
-
-	if logCfg.Level != "" {
-		level, err := logger.ParseLogLevel(logCfg.Level)
-		if err != nil {
-			return nil, err
-		}
-		cfg.Level = level
+func initLogging(logCfg *config.LogConfig) error {
+	level, err := hyperfleetlogger.ParseLevel(logCfg.Level)
+	if err != nil {
+		return err
+	}
+	format, err := hyperfleetlogger.ParseFormat(logCfg.Format)
+	if err != nil {
+		return err
+	}
+	output, err := hyperfleetlogger.ParseOutput(logCfg.Output)
+	if err != nil {
+		return err
 	}
 
-	if logCfg.Format != "" {
-		format, err := logger.ParseLogFormat(logCfg.Format)
-		if err != nil {
-			return nil, err
-		}
-		cfg.Format = format
-	}
+	handler := hyperfleetlogger.NewHandler("sentinel", version,
+		hyperfleetlogger.WithLevel(level),
+		hyperfleetlogger.WithFormat(format),
+		hyperfleetlogger.WithOutput(output),
+		hyperfleetlogger.WithContextFields(logctx.ContextFields()...),
+	)
+	slog.SetDefault(slog.New(handler))
 
-	if logCfg.Output != "" {
-		output, err := logger.ParseLogOutput(logCfg.Output)
-		if err != nil {
-			return nil, err
-		}
-		cfg.Output = output
-	}
-
-	cfg.OTel.Enabled = tracingEnabled
-
-	logger.SetGlobalConfig(cfg)
-
-	return cfg, nil
+	return nil
 }
 
 func runServe(
-	cfg *config.SentinelConfig, logCfg *logger.LogConfig, healthBindAddress, metricsBindAddress string,
+	cfg *config.SentinelConfig, healthBindAddress, metricsBindAddress string,
 ) error {
-	// Initialize context and logger
+	// Initialize context
 	ctx := context.Background()
-	log := logger.NewHyperFleetLoggerWithConfig(logCfg)
 
 	serviceName := "hyperfleet-sentinel"
 	// Use OTEL_SERVICE_NAME if set, otherwise default
@@ -217,36 +206,37 @@ func runServe(
 	}
 
 	var tp *trace.TracerProvider
-	if logCfg.OTel.Enabled {
+	if cfg.TracingEnabled {
 		traceProvider, err := telemetry.InitTraceProvider(ctx, serviceName, version)
 		if err != nil {
-			log.Extra("error", err).Warn(ctx, "Failed to initialize OpenTelemetry")
+			slog.WarnContext(ctx, "Failed to initialize OpenTelemetry", "error", err)
 		} else {
 			tp = traceProvider
 			defer func() {
 				otelShutdownCtx, otelShutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer otelShutdownCancel()
 				if err := telemetry.Shutdown(otelShutdownCtx, tp); err != nil {
-					log.Extra("error", err).Error(otelShutdownCtx, "Failed to shutdown OpenTelemetry")
+					slog.ErrorContext(otelShutdownCtx, "Failed to shutdown OpenTelemetry", "error", err)
 				}
 			}()
 		}
 	} else {
-		log.Extra("tracing_enabled", false).Info(ctx, "OpenTelemetry disabled")
+		slog.InfoContext(ctx, "OpenTelemetry disabled", "tracing_enabled", false)
 	}
 
-	log.Extra("commit", commit).
-		Extra("log_level", logCfg.Level.String()).
-		Extra("log_format", logCfg.Format.String()).
-		Info(ctx, "Starting HyperFleet Sentinel")
+	slog.InfoContext(ctx, "Starting HyperFleet Sentinel",
+		"commit", commit,
+		"log_level", cfg.Log.Level,
+		"log_format", cfg.Log.Format,
+	)
 
 	// Log full merged configuration if debug_config is enabled; sensitive values are redacted
 	if cfg.DebugConfig {
 		data, err := yaml.Marshal(cfg.RedactedCopy())
 		if err != nil {
-			log.Warnf(ctx, "Failed to marshal config for debug logging: %v", err)
+			slog.WarnContext(ctx, "Failed to marshal config for debug logging", "error", err)
 		} else {
-			log.Infof(ctx, "Debug config enabled - merged configuration:\n%s", string(data))
+			slog.InfoContext(ctx, "Debug config enabled - merged configuration", "config", string(data))
 		}
 	}
 
@@ -268,20 +258,20 @@ func runServe(
 		tokenPath, tokenCacheTTL,
 	)
 	if err != nil {
-		log.Errorf(ctx, "Failed to initialize OpenAPI client: %v", err)
+		slog.ErrorContext(ctx, "Failed to initialize OpenAPI client", "error", err)
 		return fmt.Errorf("failed to initialize OpenAPI client: %w", err)
 	}
 
 	// verify HyperFleet client connectivity
 	if err = hyperfleetClient.VerifyConnectivity(ctx, cfg.ResourceType); err != nil {
-		log.Errorf(ctx, "Failed to verify HyperFleet client connectivity: %v", err)
+		slog.ErrorContext(ctx, "Failed to verify HyperFleet client connectivity", "error", err)
 		return fmt.Errorf("failed to verify HyperFleet client connectivity: %w", err)
 	}
-	log.Info(ctx, "Initialized HyperFleet client")
+	slog.InfoContext(ctx, "Initialized HyperFleet client")
 
 	decisionEngine, err := engine.NewDecisionEngine(cfg.MessageDecision)
 	if err != nil {
-		log.Errorf(ctx, "Failed to create decision engine: %v", err)
+		slog.ErrorContext(ctx, "Failed to create decision engine", "error", err)
 		return fmt.Errorf("failed to create decision engine: %w", err)
 	}
 
@@ -292,23 +282,23 @@ func runServe(
 
 	// Initialize publisher using hyperfleet-broker library
 	// Configuration is loaded from broker.yaml or BROKER_CONFIG_FILE env var
-	pub, err := broker.NewPublisher(log, brokerMetrics)
+	pub, err := broker.NewPublisher(slog.Default(), brokerMetrics)
 	if err != nil {
-		log.Errorf(ctx, "Failed to initialize broker publisher: %v", err)
+		slog.ErrorContext(ctx, "Failed to initialize broker publisher", "error", err)
 		return fmt.Errorf("failed to initialize broker publisher: %w", err)
 	}
 	if pub != nil {
 		defer func() {
 			if closeErr := pub.Close(); closeErr != nil {
-				log.Errorf(ctx, "Error closing publisher: %v", closeErr)
+				slog.ErrorContext(ctx, "Error closing publisher", "error", closeErr)
 			}
 		}()
 	}
-	log.Info(ctx, "Initialized broker publisher")
+	slog.InfoContext(ctx, "Initialized broker publisher")
 
 	// Initialize readiness checker with dependency checks.
 	// Checks are evaluated on each /readyz request.
-	readiness := health.NewReadinessChecker(log)
+	readiness := health.NewReadinessChecker()
 	readiness.AddCheck("broker", func() error {
 		if pub == nil {
 			return fmt.Errorf("broker publisher not initialized")
@@ -322,7 +312,7 @@ func runServe(
 	defer cancel()
 
 	// Initialize sentinel
-	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, pub, log)
+	s, err := sentinel.NewSentinel(cfg, hyperfleetClient, decisionEngine, pub)
 	if err != nil {
 		return fmt.Errorf("failed to initialize sentinel: %w", err)
 	}
@@ -361,16 +351,16 @@ func runServe(
 
 	// Start HTTP servers in background
 	go func() {
-		log.Infof(ctx, "Starting health server on %s", healthBindAddress)
+		slog.InfoContext(ctx, "Starting health server", "address", healthBindAddress)
 		if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Errorf(ctx, "Health server error: %v", err)
+			slog.ErrorContext(ctx, "Health server error", "error", err)
 		}
 	}()
 
 	go func() {
-		log.Infof(ctx, "Starting metrics server on %s", metricsBindAddress)
+		slog.InfoContext(ctx, "Starting metrics server", "address", metricsBindAddress)
 		if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Errorf(ctx, "Metrics server error: %v", err)
+			slog.ErrorContext(ctx, "Metrics server error", "error", err)
 		}
 	}()
 
@@ -379,7 +369,7 @@ func runServe(
 
 	go func() {
 		<-sigChan
-		log.Info(ctx, "Received shutdown signal")
+		slog.InfoContext(ctx, "Received shutdown signal")
 		// Set readiness to false so /readyz returns 503 during shutdown
 		readiness.SetReady(false)
 		cancel()
@@ -388,20 +378,20 @@ func runServe(
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer shutdownCancel()
 		if err := healthServer.Shutdown(shutdownCtx); err != nil {
-			log.Errorf(shutdownCtx, "Health server shutdown error: %v", err)
+			slog.ErrorContext(shutdownCtx, "Health server shutdown error", "error", err)
 		}
 		if err := metricsServer.Shutdown(shutdownCtx); err != nil {
-			log.Errorf(shutdownCtx, "Metrics server shutdown error: %v", err)
+			slog.ErrorContext(shutdownCtx, "Metrics server shutdown error", "error", err)
 		}
 	}()
 
 	// Start sentinel
-	log.Info(ctx, "Starting sentinel loop")
+	slog.InfoContext(ctx, "Starting sentinel loop")
 	if err := s.Start(ctx); err != nil && err != context.Canceled {
 		return fmt.Errorf("sentinel failed: %w", err)
 	}
 
-	log.Info(ctx, "Sentinel stopped gracefully")
+	slog.InfoContext(ctx, "Sentinel stopped gracefully")
 	return nil
 }
 
