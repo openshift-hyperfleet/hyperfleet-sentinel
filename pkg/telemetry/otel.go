@@ -102,7 +102,7 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 		sampler = trace.ParentBased(trace.AlwaysSample())
 	case parentBasedAlwaysOff:
 		sampler = trace.ParentBased(trace.NeverSample())
-	default:
+	default: // Intentional fallback to default sampler
 		slog.WarnContext(ctx, "Unrecognized sampler, using default", "sampler", samplerType)
 		sampler = trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx)))
 	}
@@ -173,7 +173,7 @@ func parseSamplingRate(ctx context.Context) float64 {
 	if arg := os.Getenv(envOtelTracesSamplerArg); arg != "" {
 		if parsedRate, err := strconv.ParseFloat(arg, 64); err == nil && parsedRate >= 0.0 && parsedRate <= 1.0 {
 			rate = parsedRate
-		} else {
+		} else { // Intentional fallback to default rate
 			slog.WarnContext(ctx, "Invalid sampler arg value, using default",
 				"env_var", envOtelTracesSamplerArg, "value", arg, "default_rate", rate)
 		}

@@ -1,10 +1,8 @@
 package config
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -231,9 +229,6 @@ func LoadConfig(configFile string, flags *pflag.FlagSet) (*SentinelConfig, error
 		}
 	}
 
-	ctx := context.Background()
-	slog.InfoContext(ctx, "Loading configuration", "file", configFile)
-
 	// Use "::" as key delimiter to avoid conflicts with dots in YAML keys
 	v := viper.NewWithOptions(viper.KeyDelimiter("::"))
 	v.SetConfigFile(configFile)
@@ -283,9 +278,6 @@ func LoadConfig(configFile string, flags *pflag.FlagSet) (*SentinelConfig, error
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
-
-	slog.InfoContext(ctx, "Configuration loaded successfully",
-		"name", cfg.Sentinel.Name, "resource_type", cfg.ResourceType)
 
 	return cfg, nil
 }

@@ -49,7 +49,7 @@ func NewRabbitMQTestContainer(ctx context.Context) (*RabbitMQTestContainer, erro
 		return nil, fmt.Errorf("failed to get AMQP URL: %w", err)
 	}
 
-	slog.InfoContext(ctx, "RabbitMQ testcontainer started", "amqp_url", amqpURL)
+	slog.InfoContext(ctx, "RabbitMQ testcontainer started")
 
 	// Create publisher using hyperfleet-broker library with configMap
 	// This allows us to pass configuration programmatically for testing
@@ -61,7 +61,9 @@ func NewRabbitMQTestContainer(ctx context.Context) (*RabbitMQTestContainer, erro
 	metricsRecorder := broker.NewMetricsRecorder("sentinel-test", "test", prometheus.NewRegistry())
 	publisher, err := broker.NewPublisher(slog.Default(), metricsRecorder, configMap)
 	if err != nil {
-		container.Terminate(ctx)
+		if termErr := container.Terminate(ctx); termErr != nil {
+			slog.ErrorContext(ctx, "Failed to terminate container after publisher error", "error", termErr)
+		}
 		return nil, fmt.Errorf("failed to create broker publisher: %w", err)
 	}
 

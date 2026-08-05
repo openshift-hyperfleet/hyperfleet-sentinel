@@ -430,6 +430,8 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	slog.SetDefault(slog.New(handler))
 	defer slog.SetDefault(prevDefault)
 
+	// NewHelper must run after slog.SetDefault so the broker publisher
+	// captures logs through the test handler.
 	helper := NewHelper()
 
 	// Single query mock - returns resources that trigger events

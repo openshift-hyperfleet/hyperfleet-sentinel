@@ -97,6 +97,9 @@ func newServeCommand() *cobra.Command {
 				return fmt.Errorf("failed to initialize logging: %w", err)
 			}
 
+			slog.InfoContext(context.Background(), "Configuration loaded successfully",
+				"name", cfg.Sentinel.Name, "resource_type", cfg.ResourceType)
+
 			return runServe(cfg, healthBindAddress, metricsBindAddress)
 		},
 	}
