@@ -1,6 +1,6 @@
 # hyperfleet-sentinel
 
-![Version: 1.0.0](https://img.shields.io/badge/Version-1.0.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.0-dev](https://img.shields.io/badge/AppVersion-0.0.0--dev-informational?style=flat-square)
+![Version: 1.1.0](https://img.shields.io/badge/Version-1.1.0-informational?style=flat-square) ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square) ![AppVersion: 0.0.0-dev](https://img.shields.io/badge/AppVersion-0.0.0--dev-informational?style=flat-square)
 
 HyperFleet Sentinel - Kubernetes service that polls HyperFleet API and publishes CloudEvents
 
@@ -90,17 +90,17 @@ helm install hyperfleet-sentinel oci://quay.io/redhat-services-prod/hyperfleet-t
 | broker.googlepubsub.maxOutstandingMessages | int | `1000` | Maximum outstanding messages |
 | broker.googlepubsub.numGoroutines | int | `10` | Number of subscriber goroutines |
 | broker.googlepubsub.createTopicIfMissing | bool | `false` | Auto-create topic if it does not exist (use `false` in production) |
-| monitoring | object | `{"podMonitoring":{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[]},"prometheusRule":{"additionalLabels":{},"alerts":{"sentinelPollStale":{"for":"1m","staleAfterSeconds":60}},"enabled":false,"namespace":""},"serviceMonitor":{"additionalLabels":{},"enabled":false,"honorLabels":true,"interval":"30s","metricRelabeling":[],"namespace":"","namespaceSelector":{},"scrapeTimeout":"10s"}}` | Monitoring and metrics configuration |
+| monitoring | object | `{"dashboard":{"enabled":false},"podMonitoring":{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[]},"prometheusRule":{"additionalLabels":{},"alerts":{"sentinelPollStale":{"for":"1m","staleAfterSeconds":60}},"enabled":false,"namespace":""},"serviceMonitor":{"enabled":false,"honorLabels":true,"interval":"30s","labels":{},"metricRelabeling":[],"namespace":"","namespaceSelector":{},"scrapeTimeout":"10s"},"tracing":{"enabled":false,"otlpEndpoint":"","otlpProtocol":"grpc","propagators":"tracecontext,baggage","sampler":"parentbased_always_on","samplerArg":"","serviceName":"hyperfleet-sentinel"}}` | Monitoring and metrics configuration |
 | monitoring.podMonitoring | object | `{"additionalLabels":{},"enabled":false,"interval":"30s","metricRelabeling":[]}` | PodMonitoring for Google Cloud Managed Prometheus (GMP) |
 | monitoring.podMonitoring.enabled | bool | `false` | Create a PodMonitoring resource |
 | monitoring.podMonitoring.interval | string | `"30s"` | Scrape interval |
 | monitoring.podMonitoring.additionalLabels | object | `{}` | Additional labels for PodMonitoring discovery |
 | monitoring.podMonitoring.metricRelabeling | list | `[]` | Metric relabel configs applied before ingestion |
-| monitoring.serviceMonitor | object | `{"additionalLabels":{},"enabled":false,"honorLabels":true,"interval":"30s","metricRelabeling":[],"namespace":"","namespaceSelector":{},"scrapeTimeout":"10s"}` | ServiceMonitor for Prometheus Operator environments |
+| monitoring.serviceMonitor | object | `{"enabled":false,"honorLabels":true,"interval":"30s","labels":{},"metricRelabeling":[],"namespace":"","namespaceSelector":{},"scrapeTimeout":"10s"}` | ServiceMonitor for Prometheus Operator environments |
 | monitoring.serviceMonitor.enabled | bool | `false` | Create a ServiceMonitor resource |
 | monitoring.serviceMonitor.interval | string | `"30s"` | Scrape interval |
 | monitoring.serviceMonitor.scrapeTimeout | string | `"10s"` | Scrape timeout (must be less than interval) |
-| monitoring.serviceMonitor.additionalLabels | object | `{}` | Additional labels for ServiceMonitor discovery |
+| monitoring.serviceMonitor.labels | object | `{}` | Additional labels for ServiceMonitor discovery |
 | monitoring.serviceMonitor.namespaceSelector | object | `{}` | Namespace selector for cross-namespace monitoring |
 | monitoring.serviceMonitor.honorLabels | bool | `true` | Honor labels from the target to avoid overwriting |
 | monitoring.serviceMonitor.metricRelabeling | list | `[]` | Metric relabel configs applied before ingestion |
@@ -113,14 +113,16 @@ helm install hyperfleet-sentinel oci://quay.io/redhat-services-prod/hyperfleet-t
 | monitoring.prometheusRule.alerts.sentinelPollStale | object | `{"for":"1m","staleAfterSeconds":60}` | Poll staleness alert |
 | monitoring.prometheusRule.alerts.sentinelPollStale.staleAfterSeconds | int | `60` | Seconds after which a poll is considered stale |
 | monitoring.prometheusRule.alerts.sentinelPollStale.for | string | `"1m"` | Duration before the alert fires |
-| tracing | object | `{"enabled":false,"otlpEndpoint":"","otlpProtocol":"grpc","propagators":"tracecontext,baggage","sampler":"parentbased_traceidratio","samplerArg":"1.0","serviceName":"hyperfleet-sentinel"}` | Distributed tracing configuration (OpenTelemetry) |
-| tracing.enabled | bool | `false` | Enable trace export |
-| tracing.serviceName | string | `"hyperfleet-sentinel"` | Service name reported in traces |
-| tracing.otlpEndpoint | string | `""` | OTLP exporter endpoint (traces go to stdout when empty) |
-| tracing.otlpProtocol | string | `"grpc"` | OTLP protocol (`grpc` or `http/protobuf`) |
-| tracing.sampler | string | `"parentbased_traceidratio"` | Sampler type |
-| tracing.samplerArg | string | `"1.0"` | Sampling rate (`1.0` for dev, `0.01` for production) |
-| tracing.propagators | string | `"tracecontext,baggage"` | Context propagation formats |
+| monitoring.dashboard | object | `{"enabled":false}` | Grafana dashboard provisioning via sidecar ConfigMap |
+| monitoring.dashboard.enabled | bool | `false` | Create a ConfigMap with the Grafana dashboard JSON |
+| monitoring.tracing | object | `{"enabled":false,"otlpEndpoint":"","otlpProtocol":"grpc","propagators":"tracecontext,baggage","sampler":"parentbased_always_on","samplerArg":"","serviceName":"hyperfleet-sentinel"}` | Distributed tracing configuration (OpenTelemetry) |
+| monitoring.tracing.enabled | bool | `false` | Enable trace export |
+| monitoring.tracing.serviceName | string | `"hyperfleet-sentinel"` | Service name reported in traces |
+| monitoring.tracing.otlpEndpoint | string | `""` | OTLP exporter endpoint (traces go to stdout when empty) |
+| monitoring.tracing.otlpProtocol | string | `"grpc"` | OTLP protocol (`grpc` or `http/protobuf`) |
+| monitoring.tracing.sampler | string | `"parentbased_always_on"` | Sampler type |
+| monitoring.tracing.samplerArg | string | `""` | Sampling rate (only used with ratio-based samplers) |
+| monitoring.tracing.propagators | string | `"tracecontext,baggage"` | Context propagation formats |
 
 ----------------------------------------------
 Autogenerated from chart metadata using [helm-docs](https://github.com/norwoodj/helm-docs)

@@ -480,9 +480,9 @@
               "type": "string",
               "description": "Scrape timeout, must be less than interval (e.g. 10s)"
             },
-            "additionalLabels": {
+            "labels": {
               "type": "object",
-              "description": "Additional labels for ServiceMonitor"
+              "description": "Additional labels for ServiceMonitor discovery"
             },
             "namespaceSelector": {
               "type": "object",
@@ -543,44 +543,54 @@
               }
             }
           }
-        }
-      }
-    },
-    "tracing": {
-      "type": "object",
-      "description": "OpenTelemetry tracing configuration",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "description": "Enable OpenTelemetry tracing"
         },
-        "serviceName": {
-          "type": "string",
-          "description": "OTEL_SERVICE_NAME value"
+        "dashboard": {
+          "type": "object",
+          "description": "Grafana dashboard provisioning via sidecar ConfigMap",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Create a ConfigMap with the Grafana dashboard JSON"
+            }
+          }
         },
-        "otlpEndpoint": {
-          "type": "string",
-          "description": "OTLP exporter endpoint (traces go to stdout if not set)"
-        },
-        "otlpProtocol": {
-          "type": "string",
-          "description": "OTLP protocol",
-          "enum": [
-            "grpc",
-            "http/protobuf"
-          ]
-        },
-        "sampler": {
-          "type": "string",
-          "description": "Sampler type"
-        },
-        "samplerArg": {
-          "type": "string",
-          "description": "Sampling rate (1.0 for dev, 0.01 for production)"
-        },
-        "propagators": {
-          "type": "string",
-          "description": "Trace context propagators (comma-separated)"
+        "tracing": {
+          "type": "object",
+          "description": "OpenTelemetry tracing configuration",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable OpenTelemetry tracing"
+            },
+            "serviceName": {
+              "type": "string",
+              "description": "OTEL_SERVICE_NAME value"
+            },
+            "otlpEndpoint": {
+              "type": "string",
+              "description": "OTLP exporter endpoint (traces go to stdout if not set)"
+            },
+            "otlpProtocol": {
+              "type": "string",
+              "description": "OTLP protocol",
+              "enum": [
+                "grpc",
+                "http/protobuf"
+              ]
+            },
+            "sampler": {
+              "type": "string",
+              "description": "Sampler type"
+            },
+            "samplerArg": {
+              "type": "string",
+              "description": "Sampling rate (only used with ratio-based samplers)"
+            },
+            "propagators": {
+              "type": "string",
+              "description": "Trace context propagators (comma-separated)"
+            }
+          }
         }
       }
     },

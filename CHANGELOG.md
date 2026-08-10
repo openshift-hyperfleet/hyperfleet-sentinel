@@ -9,8 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - CEL decision and payload contexts now expose `name`, `spec`, and `references` fields from generic resources
+- Grafana dashboard provisioning via sidecar ConfigMap, gated by `monitoring.dashboard.enabled`
+- Dashboard JSON moved from `deployments/dashboards/` to `charts/dashboards/`
 
 ### Changed
+- BREAKING CHANGE: `tracing` moved from top-level to `monitoring.tracing`
+- BREAKING CHANGE: `monitoring.serviceMonitor.additionalLabels` renamed to `monitoring.serviceMonitor.labels`
+- Default tracing sampler changed from `parentbased_traceidratio` to `parentbased_always_on`
 - OpenAPI schema is now sourced from the versioned `hyperfleet-api-spec` Go module instead of being downloaded from `hyperfleet-api` main branch
 - Documented single-instance deployment limitation — running multiple replicas with overlapping resource selectors causes duplicate events. Added recommended deployment configuration and scaling guidance
 - `resource_type` config accepts any registered entity type plural (e.g. `wifconfigs`), no longer limited to `clusters` and `nodepools`

@@ -75,7 +75,7 @@ spec:
                 name: {{ include "sentinel.secretName" . }}
                 key: BROKER_RABBITMQ_URL
           {{- end }}
-          {{- with .Values.tracing }}
+          {{- with .Values.monitoring.tracing }}
           - name: HYPERFLEET_TRACING_ENABLED
             value: {{ .enabled | quote }}
           {{- if .enabled }}

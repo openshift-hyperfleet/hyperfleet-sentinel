@@ -1,0 +1,12 @@
+{{- if .Values.monitoring.dashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "sentinel.fullname" . }}-grafana-dashboard
+  labels:
+    {{- include "sentinel.labels" . | nindent 4 }}
+    grafana_dashboard: "1"
+data:
+  sentinel-metrics.json: |-
+    {{- .Files.Get "dashboards/sentinel-metrics.json" | nindent 4 }}
+{{- end }}
