@@ -7,7 +7,7 @@ require (
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.6.0
-	github.com/openshift-hyperfleet/hyperfleet-api-spec v1.0.26
+	github.com/openshift-hyperfleet/hyperfleet-api-spec v1.0.27
 	github.com/openshift-hyperfleet/hyperfleet-broker v1.1.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/spf13/cobra v1.10.2
@@ -69,7 +69,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
-	github.com/google/cel-go v0.30.0
+	github.com/google/cel-go v0.31.0
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.18 // indirect
 	github.com/googleapis/gax-go/v2 v2.22.0 // indirect
