@@ -367,34 +367,41 @@ func withLogCapture(t *testing.T) (*bytes.Buffer, func()) {
 	return &buf, func() { slog.SetDefault(prev) }
 }
 
-func TestHealthzHandler_LogsOnInvalidConfig(t *testing.T) {
-	buf, restore := withLogCapture(t)
-	defer restore()
-
-	rc := NewReadinessChecker()
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	w := httptest.NewRecorder()
-
-	rc.HealthzHandler(nil, 15*time.Second).ServeHTTP(w, req)
-
-	if !strings.Contains(buf.String(), "invalid configuration") {
-		t.Errorf("Expected log to contain 'invalid configuration', got: %s", buf.String())
+func TestHealthzHandler_Logs(t *testing.T) {
+	tests := []struct {
+		lastPollFn func() time.Time
+		name       string
+		wantLog    string
+		threshold  time.Duration
+	}{
+		{
+			name:       "invalid config",
+			lastPollFn: nil,
+			threshold:  15 * time.Second,
+			wantLog:    "invalid configuration",
+		},
+		{
+			name:       "stale poll",
+			lastPollFn: func() time.Time { return time.Now().Add(-20 * time.Second) },
+			threshold:  15 * time.Second,
+			wantLog:    "poll stale",
+		},
 	}
-}
 
-func TestHealthzHandler_LogsOnStalePoll(t *testing.T) {
-	buf, restore := withLogCapture(t)
-	defer restore()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf, restore := withLogCapture(t)
+			defer restore()
 
-	rc := NewReadinessChecker()
-	lastPollFn := func() time.Time { return time.Now().Add(-20 * time.Second) }
-	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	w := httptest.NewRecorder()
+			rc := NewReadinessChecker()
+			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			w := httptest.NewRecorder()
+			rc.HealthzHandler(tt.lastPollFn, tt.threshold).ServeHTTP(w, req)
 
-	rc.HealthzHandler(lastPollFn, 15*time.Second).ServeHTTP(w, req)
-
-	if !strings.Contains(buf.String(), "poll stale") {
-		t.Errorf("Expected log to contain 'poll stale', got: %s", buf.String())
+			if !strings.Contains(buf.String(), tt.wantLog) {
+				t.Errorf("Expected log to contain %q, got: %s", tt.wantLog, buf.String())
+			}
+		})
 	}
 }
 

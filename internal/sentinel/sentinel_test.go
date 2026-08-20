@@ -13,7 +13,7 @@ import (
 	"time"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	hyperfleetlogger "github.com/openshift-hyperfleet/hyperfleet-logger"
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
@@ -685,8 +685,8 @@ func getSpanNames(spans []tracetest.SpanStub) []string {
 	return names
 }
 
-// TestTrigger_ContextFieldsPropagateToLogs verifies that resource_type, topic,
-// and decision_reason are present in log output via context-based enrichment.
+// TestTrigger_ContextFieldsPropagateToLogs verifies that resource_type, subset,
+// topic, and decision_reason are present in log output via context-based enrichment.
 func TestTrigger_ContextFieldsPropagateToLogs(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
@@ -714,10 +714,10 @@ func TestTrigger_ContextFieldsPropagateToLogs(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	handler := hyperfleetlogger.NewHandler("sentinel", "test",
-		hyperfleetlogger.WithLevel(slog.LevelDebug),
-		hyperfleetlogger.WithOutput(&buf),
-		hyperfleetlogger.WithContextFields(logctx.ContextFields()...),
+	handler := hfl.NewHandler("sentinel", "test",
+		hfl.WithLevel(slog.LevelDebug),
+		hfl.WithOutput(&buf),
+		hfl.WithContextFields(logctx.ContextFields()...),
 	)
 	prev := slog.Default()
 	slog.SetDefault(slog.New(handler))
@@ -731,6 +731,7 @@ func TestTrigger_ContextFieldsPropagateToLogs(t *testing.T) {
 
 	wantFields := []string{
 		`"resource_type":"clusters"`,
+		`"subset":"clusters"`,
 		`"topic":"test-topic"`,
 		`"decision_reason"`,
 	}

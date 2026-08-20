@@ -1,7 +1,6 @@
 package health
 
 import (
-	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -64,7 +63,7 @@ func (r *ReadinessChecker) writeJSON(w http.ResponseWriter, statusCode int, v in
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		slog.ErrorContext(context.Background(), "Failed to encode health JSON response", "error", err)
+		slog.Error("Failed to encode health JSON response", "error", err)
 	}
 }
 
@@ -75,7 +74,7 @@ func (r *ReadinessChecker) HealthzHandler(lastPollFn func() time.Time, threshold
 	return func(w http.ResponseWriter, req *http.Request) {
 		if lastPollFn == nil || threshold <= 0 {
 			slog.ErrorContext(req.Context(), "Healthz check called with invalid configuration",
-				"lastPollFnSet", lastPollFn != nil, "threshold", threshold.String())
+				"last_poll_fn_set", lastPollFn != nil, "threshold", threshold.String())
 
 			r.writeJSON(w, http.StatusInternalServerError, healthResponse{Status: "invalid health configuration"})
 			return

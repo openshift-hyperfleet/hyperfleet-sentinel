@@ -117,7 +117,7 @@ Co-Authored-By trailer required on all Claude-assisted commits.
 - Use stdlib `log/slog` directly. Handler is configured in `cmd/sentinel/main.go` via `slog.SetDefault()` using the shared `hyperfleet-logger` package.
 - Patterns: `slog.InfoContext(ctx, "msg", "key", val)`, `slog.With("key", val).InfoContext(ctx, "msg")`
 - For format strings: `slog.InfoContext(ctx, fmt.Sprintf("msg %s", val))`
-- **IMPORTANT: always use `log/slog`, never `pkg/logger` directly**
+- **IMPORTANT: always use `log/slog` for logging**
 
 ### CloudEvents Payloads
 `message_data` config uses CEL expressions, not static values:

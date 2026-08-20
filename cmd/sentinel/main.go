@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	hyperfleetlogger "github.com/openshift-hyperfleet/hyperfleet-logger"
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -97,10 +97,10 @@ func newServeCommand() *cobra.Command {
 				return fmt.Errorf("failed to initialize logging: %w", err)
 			}
 
-			slog.InfoContext(context.Background(), "Configuration loaded successfully",
-				"name", cfg.Sentinel.Name, "resource_type", cfg.ResourceType)
+			ctx := hfl.Set(context.Background(), hfl.ResourceTypeKey, cfg.ResourceType)
+			slog.InfoContext(ctx, "Configuration loaded successfully", "name", cfg.Sentinel.Name)
 
-			return runServe(cfg, healthBindAddress, metricsBindAddress)
+			return runServe(ctx, cfg, healthBindAddress, metricsBindAddress)
 		},
 	}
 
@@ -172,26 +172,26 @@ func addConfigOverrideFlags(cmd *cobra.Command) {
 // initLogging initializes the logging configuration from the already-merged LogConfig.
 // Precedence (config file < env vars < CLI flags) is resolved by LoadConfig via viper.
 func initLogging(logCfg *config.LogConfig) error {
-	level, err := hyperfleetlogger.ParseLevel(logCfg.Level)
+	level, err := hfl.ParseLevel(logCfg.Level)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid log level: %w", err)
 	}
-	format, err := hyperfleetlogger.ParseFormat(logCfg.Format)
+	format, err := hfl.ParseFormat(logCfg.Format)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid log format: %w", err)
 	}
-	output, err := hyperfleetlogger.ParseOutput(logCfg.Output)
+	output, err := hfl.ParseOutput(logCfg.Output)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid log output: %w", err)
 	}
 
-	handler := hyperfleetlogger.NewHandler("sentinel", version,
-		hyperfleetlogger.WithLevel(level),
-		hyperfleetlogger.WithFormat(format),
-		hyperfleetlogger.WithOutput(output),
-		hyperfleetlogger.WithContextFields(logctx.ContextFields()...),
+	handler := hfl.NewHandler("sentinel", version,
+		hfl.WithLevel(level),
+		hfl.WithFormat(format),
+		hfl.WithOutput(output),
+		hfl.WithContextFields(logctx.ContextFields()...),
 		// Capture stack traces on every ERROR log, matching the prior pkg/logger behavior.
-		hyperfleetlogger.WithStackTrace(func(_ context.Context, r slog.Record) bool { return r.Level >= slog.LevelError }),
+		hfl.WithStackTrace(func(_ context.Context, r slog.Record) bool { return r.Level >= slog.LevelError }),
 	)
 	slog.SetDefault(slog.New(handler))
 
@@ -199,11 +199,8 @@ func initLogging(logCfg *config.LogConfig) error {
 }
 
 func runServe(
-	cfg *config.SentinelConfig, healthBindAddress, metricsBindAddress string,
+	ctx context.Context, cfg *config.SentinelConfig, healthBindAddress, metricsBindAddress string,
 ) error {
-	// Initialize context
-	ctx := context.Background()
-
 	serviceName := "hyperfleet-sentinel"
 	// Use OTEL_SERVICE_NAME if set, otherwise default
 	if envServiceName := os.Getenv("OTEL_SERVICE_NAME"); envServiceName != "" {

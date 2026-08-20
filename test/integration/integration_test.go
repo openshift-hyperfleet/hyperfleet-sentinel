@@ -431,9 +431,20 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 	slog.SetDefault(slog.New(handler))
 	defer slog.SetDefault(prevDefault)
 
-	// NewHelper must run after slog.SetDefault so the broker publisher
-	// captures logs through the test handler.
 	helper := NewHelper()
+
+	// helper.RabbitMQ.Publisher() is bound to the slog default from TestMain
+	// (once.Do already ran) and would never emit through this test's handler.
+	// Build a test-local publisher against the same container instead.
+	pub, err := helper.RabbitMQ.newPublisher(ctx)
+	if err != nil {
+		t.Fatalf("failed to create test-local publisher: %v", err)
+	}
+	defer func() {
+		if err := pub.Close(); err != nil {
+			t.Errorf("failed to close test-local publisher: %v", err)
+		}
+	}()
 
 	// Single query mock - returns resources that trigger events
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -468,7 +479,7 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		{Label: "env", Value: "production"},
 	}
 
-	s, err := sentinel.NewSentinel(sentinelConfig, hyperfleetClient, decisionEngine, helper.RabbitMQ.Publisher())
+	s, err := sentinel.NewSentinel(sentinelConfig, hyperfleetClient, decisionEngine, pub)
 	if err != nil {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
@@ -521,19 +532,19 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 			strings.Contains(msg, "Published event") {
 			foundSentinelEventLog = true
 
-			if entry["decision_reason"] == nil {
+			if decisionReason, _ := entry["decision_reason"].(string); decisionReason == "" {
 				t.Errorf("Sentinel event log missing decision_reason: %v", entry)
 			}
-			if entry["topic"] == nil {
-				t.Errorf("Sentinel event log missing topic: %v", entry)
+			if topic := entry["topic"]; topic != testTopic {
+				t.Errorf("Sentinel event log has unexpected topic, want %q: %v", testTopic, entry)
 			}
-			if entry["resource_type"] == nil {
-				t.Errorf("Sentinel event log missing resource_type: %v", entry)
+			if resourceType := entry["resource_type"]; resourceType != "clusters" {
+				t.Errorf("Sentinel event log has unexpected resource_type, want %q: %v", "clusters", entry)
 			}
-			if entry["trace_id"] == nil {
+			if traceID, _ := entry["trace_id"].(string); traceID == "" {
 				t.Errorf("Sentinel event log missing trace_id: %v", entry)
 			}
-			if entry["span_id"] == nil {
+			if spanID, _ := entry["span_id"].(string); spanID == "" {
 				t.Errorf("Sentinel event log missing span_id: %v", entry)
 			}
 

@@ -75,9 +75,32 @@ func NewRabbitMQTestContainer(ctx context.Context) (*RabbitMQTestContainer, erro
 	}, nil
 }
 
-// Publisher returns the broker publisher connected to the testcontainer
+// Publisher returns the broker publisher connected to the testcontainer.
 func (tc *RabbitMQTestContainer) Publisher() broker.Publisher {
 	return tc.publisher
+}
+
+// newPublisher creates a fresh broker.Publisher against this container's
+// RabbitMQ instance, bound to the current slog.Default(). Unlike Publisher(),
+// which returns the container-lifetime publisher captured once in TestMain,
+// this lets a test observe the broker's own logging by calling it after
+// installing a test-local slog handler. The container itself (expensive to
+// start) is reused; only the cheap publisher is reconstructed.
+func (tc *RabbitMQTestContainer) newPublisher(ctx context.Context) (broker.Publisher, error) {
+	amqpURL, err := tc.container.AmqpURL(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get AMQP URL: %w", err)
+	}
+	configMap := map[string]string{
+		"broker.type":         "rabbitmq",
+		"broker.rabbitmq.url": amqpURL,
+	}
+	metricsRecorder := broker.NewMetricsRecorder("sentinel-test", "test", prometheus.NewRegistry())
+	publisher, err := broker.NewPublisher(slog.Default(), metricsRecorder, configMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create test-local publisher: %w", err)
+	}
+	return publisher, nil
 }
 
 // Close stops the RabbitMQ testcontainer and closes the publisher

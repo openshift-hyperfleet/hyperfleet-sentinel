@@ -273,12 +273,10 @@ func (c *HyperFleetClient) FetchResources(
 		resources, err := c.fetchResourcesOnce(ctx, resourceType, labelSelector, additionalFilters)
 		if err != nil {
 			if isRetriable(err) {
-				slog.DebugContext(ctx, "Retriable error, will retry",
-					"resource_type", resourceType, "error", err)
+				slog.DebugContext(ctx, "Retriable error, will retry", "error", err)
 				return nil, err
 			}
-			slog.DebugContext(ctx, "Non-retriable error, will not retry",
-				"resource_type", resourceType, "error", err)
+			slog.DebugContext(ctx, "Non-retriable error, will not retry", "error", err)
 			return nil, backoff.Permanent(err)
 		}
 		return resources, nil
@@ -403,7 +401,7 @@ func (c *HyperFleetClient) fetchResources(ctx context.Context, resourceType, sea
 		func(ctx context.Context, page, pageSize int32, search string) ([]openapi.Resource, int64, error) {
 			return c.fetchResourcesPage(ctx, resourceType, page, pageSize, search)
 		},
-		convertResource, resourceType)
+		convertResource)
 }
 
 // fetchPaginated iterates through all pages of an API endpoint, collecting
@@ -414,7 +412,6 @@ func fetchPaginated[T any](
 	searchParam string,
 	fetchPage func(ctx context.Context, page, pageSize int32, searchParam string) ([]T, int64, error),
 	convert func(T) Resource,
-	resourceLabel string,
 ) ([]Resource, error) {
 	var allResources []Resource
 	page := int32(1)
@@ -434,7 +431,7 @@ func fetchPaginated[T any](
 		}
 
 		slog.DebugContext(ctx, "Fetched resources page",
-			"resource_type", resourceLabel, "page", page, "size", len(items), "total", total)
+			"page", page, "size", len(items), "total", total)
 
 		if int64(len(allResources)) >= total || len(items) == 0 {
 			break

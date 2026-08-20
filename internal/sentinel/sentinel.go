@@ -79,8 +79,8 @@ func (s *Sentinel) LastSuccessfulPoll() time.Time {
 
 // Start starts the polling loop
 func (s *Sentinel) Start(ctx context.Context) error {
-	slog.InfoContext(ctx, "Starting sentinel",
-		"resource_type", s.config.ResourceType, "poll_interval", s.config.PollInterval)
+	ctx = hfl.Set(ctx, hfl.ResourceTypeKey, s.config.ResourceType)
+	slog.InfoContext(ctx, "Starting sentinel", "poll_interval", s.config.PollInterval)
 
 	ticker := time.NewTicker(s.config.PollInterval)
 	defer ticker.Stop()
@@ -121,6 +121,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	}
 
 	ctx = hfl.Set(ctx, hfl.ResourceTypeKey, resourceType)
+	ctx = hfl.Set(ctx, logctx.SubsetKey, resourceType)
 	ctx = hfl.Set(ctx, logctx.TopicKey, topic)
 
 	slog.DebugContext(ctx, "Starting trigger cycle")
@@ -275,7 +276,7 @@ func (s *Sentinel) buildEventData(
 	decision engine.Decision,
 ) map[string]any {
 	if s.payloadBuilder == nil {
-		slog.ErrorContext(ctx, "payload builder not initialized", "resource_id", resource.ID)
+		slog.ErrorContext(ctx, "payload builder not initialized")
 		return map[string]any{}
 	}
 	return s.payloadBuilder.BuildPayload(ctx, resource, decision.Reason)
