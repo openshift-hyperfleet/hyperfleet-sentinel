@@ -190,6 +190,8 @@ func initLogging(logCfg *config.LogConfig) error {
 		hyperfleetlogger.WithFormat(format),
 		hyperfleetlogger.WithOutput(output),
 		hyperfleetlogger.WithContextFields(logctx.ContextFields()...),
+		// Capture stack traces on every ERROR log, matching the prior pkg/logger behavior.
+		hyperfleetlogger.WithStackTrace(func(_ context.Context, r slog.Record) bool { return r.Level >= slog.LevelError }),
 	)
 	slog.SetDefault(slog.New(handler))
 

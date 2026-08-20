@@ -425,6 +425,7 @@ func TestIntegration_BrokerLoggerContext(t *testing.T) {
 		hfl.WithHostname(testHost),
 		hfl.WithLevel(slog.LevelInfo),
 		hfl.WithContextFields(logctx.ContextFields()...),
+		hfl.WithStackTrace(func(_ context.Context, r slog.Record) bool { return r.Level >= slog.LevelError }),
 	)
 	prevDefault := slog.Default()
 	slog.SetDefault(slog.New(handler))
