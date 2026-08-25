@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"sort"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/cenkalti/backoff/v5"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/api/openapi"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -40,7 +40,6 @@ const (
 // HyperFleetClient wraps the HTTP client for the HyperFleet API
 type HyperFleetClient struct {
 	httpClient  *http.Client
-	log         logger.HyperFleetLogger
 	tokenSource *fileTokenSource
 	baseURL     string
 	userAgent   string
@@ -84,7 +83,6 @@ func NewHyperFleetClient(
 		httpClient:  httpClient,
 		baseURL:     strings.TrimRight(endpoint, "/"),
 		userAgent:   fmt.Sprintf("hyperfleet-sentinel/%s (%s)", version, sentinelName),
-		log:         logger.NewHyperFleetLogger(),
 		pageSize:    pageSize,
 		tokenSource: ts,
 	}, nil
@@ -275,10 +273,10 @@ func (c *HyperFleetClient) FetchResources(
 		resources, err := c.fetchResourcesOnce(ctx, resourceType, labelSelector, additionalFilters)
 		if err != nil {
 			if isRetriable(err) {
-				c.log.Debugf(ctx, "Retriable error fetching %s: %v (will retry)", resourceType, err)
+				slog.DebugContext(ctx, "Retriable error, will retry", "error", err)
 				return nil, err
 			}
-			c.log.Debugf(ctx, "Non-retriable error fetching %s: %v (will not retry)", resourceType, err)
+			slog.DebugContext(ctx, "Non-retriable error, will not retry", "error", err)
 			return nil, backoff.Permanent(err)
 		}
 		return resources, nil
@@ -338,7 +336,7 @@ func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context, resourceType 
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			c.log.Debugf(ctx, "failed to close response body: %v", closeErr)
+			slog.DebugContext(ctx, "Failed to close response body", "error", closeErr)
 		}
 	}()
 
@@ -403,7 +401,7 @@ func (c *HyperFleetClient) fetchResources(ctx context.Context, resourceType, sea
 		func(ctx context.Context, page, pageSize int32, search string) ([]openapi.Resource, int64, error) {
 			return c.fetchResourcesPage(ctx, resourceType, page, pageSize, search)
 		},
-		convertResource, resourceType)
+		convertResource)
 }
 
 // fetchPaginated iterates through all pages of an API endpoint, collecting
@@ -414,7 +412,6 @@ func fetchPaginated[T any](
 	searchParam string,
 	fetchPage func(ctx context.Context, page, pageSize int32, searchParam string) ([]T, int64, error),
 	convert func(T) Resource,
-	resourceLabel string,
 ) ([]Resource, error) {
 	var allResources []Resource
 	page := int32(1)
@@ -433,7 +430,8 @@ func fetchPaginated[T any](
 			allResources = append(allResources, convert(item))
 		}
 
-		c.log.Debugf(ctx, "Fetched %s page=%d size=%d total=%d", resourceLabel, page, len(items), total)
+		slog.DebugContext(ctx, "Fetched resources page",
+			"page", page, "size", len(items), "total", total)
 
 		if int64(len(allResources)) >= total || len(items) == 0 {
 			break
@@ -468,7 +466,7 @@ func (c *HyperFleetClient) fetchResourcesPage(
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
-			c.log.Debugf(ctx, "failed to close response body: %v", closeErr)
+			slog.DebugContext(ctx, "Failed to close response body", "error", closeErr)
 		}
 	}()
 

@@ -8,7 +8,8 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/openshift-hyperfleet/hyperfleet-api-spec v1.0.27
-	github.com/openshift-hyperfleet/hyperfleet-broker v1.1.1
+	github.com/openshift-hyperfleet/hyperfleet-broker v1.1.2-0.20260805201321-4ebbef72d0d2
+	github.com/openshift-hyperfleet/hyperfleet-logger v0.0.0-20260811173525-c9f9e282d029
 	github.com/prometheus/client_golang v1.24.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0

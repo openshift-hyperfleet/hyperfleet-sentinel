@@ -3,6 +3,7 @@ package sentinel
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -10,12 +11,13 @@ import (
 	cloudevents "github.com/cloudevents/sdk-go/v2"
 	"github.com/google/uuid"
 	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/config"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/engine"
+	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/logctx"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/metrics"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/payload"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/telemetry"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -37,7 +39,6 @@ func brokerTypeToOTel(brokerType string) string {
 type Sentinel struct {
 	lastSuccessfulPoll time.Time
 	publisher          broker.Publisher
-	logger             logger.HyperFleetLogger
 	config             *config.SentinelConfig
 	client             *client.HyperFleetClient
 	decisionEngine     *engine.DecisionEngine
@@ -51,18 +52,16 @@ func NewSentinel(
 	client *client.HyperFleetClient,
 	decisionEngine *engine.DecisionEngine,
 	pub broker.Publisher,
-	log logger.HyperFleetLogger,
 ) (*Sentinel, error) {
 	s := &Sentinel{
 		config:         cfg,
 		client:         client,
 		decisionEngine: decisionEngine,
 		publisher:      pub,
-		logger:         log,
 	}
 
 	if cfg.MessageData != nil {
-		builder, err := payload.NewBuilder(cfg.MessageData, log)
+		builder, err := payload.NewBuilder(cfg.MessageData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create payload builder: %w", err)
 		}
@@ -80,25 +79,25 @@ func (s *Sentinel) LastSuccessfulPoll() time.Time {
 
 // Start starts the polling loop
 func (s *Sentinel) Start(ctx context.Context) error {
-	s.logger.Infof(ctx, "Starting sentinel resource_type=%s poll_interval=%s",
-		s.config.ResourceType, s.config.PollInterval)
+	ctx = hfl.Set(ctx, hfl.ResourceTypeKey, s.config.ResourceType)
+	slog.InfoContext(ctx, "Starting sentinel", "poll_interval", s.config.PollInterval)
 
 	ticker := time.NewTicker(s.config.PollInterval)
 	defer ticker.Stop()
 
 	// Run immediately on start
 	if err := s.trigger(ctx); err != nil {
-		s.logger.Errorf(ctx, "Initial trigger failed: %v", err)
+		slog.ErrorContext(ctx, "Initial trigger failed", "error", err)
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
-			s.logger.Info(ctx, "Stopping sentinel due to context cancellation")
+			slog.InfoContext(ctx, "Stopping sentinel due to context cancellation")
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.trigger(ctx); err != nil {
-				s.logger.Errorf(ctx, "Trigger failed: %v", err)
+				slog.ErrorContext(ctx, "Trigger failed", "error", err)
 			}
 		}
 	}
@@ -121,11 +120,11 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 		topic = s.config.Clients.Broker.Topic
 	}
 
-	// Add subset to context for structured logging
-	ctx = logger.WithSubset(ctx, resourceType)
-	ctx = logger.WithTopic(ctx, topic)
+	ctx = hfl.Set(ctx, hfl.ResourceTypeKey, resourceType)
+	ctx = hfl.Set(ctx, logctx.SubsetKey, resourceType)
+	ctx = hfl.Set(ctx, logctx.TopicKey, topic)
 
-	s.logger.Debug(ctx, "Starting trigger cycle")
+	slog.DebugContext(ctx, "Starting trigger cycle")
 
 	// Convert label selectors to map for filtering
 	labelSelector := s.config.ResourceSelector.ToMap()
@@ -148,12 +147,15 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 		return fmt.Errorf("failed to fetch resources: %w", err)
 	}
 
-	s.logger.Infof(ctx, "Fetched resources count=%d label_selectors=%d", len(resources), len(s.config.ResourceSelector))
+	slog.InfoContext(ctx, "Fetched resources",
+		"count", len(resources), "label_selectors", len(s.config.ResourceSelector))
 
 	now := time.Now()
 	published := 0
 	skipped := 0
 	pending := 0
+
+	publishSpanName := topic + " publish"
 
 	// Evaluate each resource
 	for i := range resources {
@@ -163,23 +165,22 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			attribute.String("hyperfleet.resource_type", s.config.ResourceType),
 			attribute.String("hyperfleet.resource_id", resource.ID),
 		)
+		evalCtx = hfl.Set(evalCtx, hfl.ResourceIDKey, resource.ID)
 
 		if resource.ID == "" {
-			s.logger.Warnf(ctx, "Skipping resource with empty ID kind=%s", resource.Kind)
+			slog.WarnContext(evalCtx, "Skipping resource with empty ID", "kind", resource.Kind)
 			evalSpan.End()
 			continue
 		}
 
 		decision := s.decisionEngine.Evaluate(resource, now)
 		evalSpan.SetAttributes(attribute.String("hyperfleet.decision_reason", decision.Reason))
+		evalCtx = hfl.Set(evalCtx, logctx.DecisionReasonKey, decision.Reason)
 
 		if decision.ShouldPublish {
 			pending++
 
-			// Add decision reason to context for structured logging
-			eventCtx := logger.WithDecisionReason(evalCtx, decision.Reason)
-
-			eventData := s.buildEventData(eventCtx, resource, decision)
+			eventData := s.buildEventData(evalCtx, resource, decision)
 
 			// Create CloudEvent
 			event := cloudevents.NewEvent()
@@ -190,7 +191,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Generate UUID v7 for event ID
 			eventID, err := uuid.NewV7()
 			if err != nil {
-				s.logger.Errorf(eventCtx, "Failed to generate UUID v7 for event ID resource_id=%s error=%v", resource.ID, err)
+				slog.ErrorContext(evalCtx, "Failed to generate UUID v7 for event ID", "error", err)
 				evalSpan.RecordError(err)
 				evalSpan.SetStatus(codes.Error, "generate event ID failed")
 				evalSpan.End()
@@ -199,7 +200,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			event.SetID(eventID.String())
 
 			if err := event.SetData(cloudevents.ApplicationJSON, eventData); err != nil {
-				s.logger.Errorf(eventCtx, "Failed to set event data resource_id=%s error=%v", resource.ID, err)
+				slog.ErrorContext(evalCtx, "Failed to set event data", "error", err)
 				evalSpan.RecordError(err)
 				evalSpan.SetStatus(codes.Error, "set event data failed")
 				evalSpan.End()
@@ -207,7 +208,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			}
 
 			// span: publish (child of sentinel.evaluate)
-			publishCtx, publishSpan := telemetry.StartSpan(eventCtx, fmt.Sprintf("%s publish", topic),
+			publishCtx, publishSpan := telemetry.StartSpan(evalCtx, publishSpanName,
 				attribute.String("messaging.system", brokerTypeToOTel(s.publisher.BrokerType())),
 				attribute.String("messaging.operation.type", "publish"),
 				attribute.String("messaging.destination.name", topic),
@@ -224,7 +225,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 				publishSpan.SetStatus(codes.Error, "publish failed")
 				// Record broker error
 				metrics.UpdateBrokerErrorsMetric(resourceType, resourceSelector, "publish_error")
-				s.logger.Errorf(publishCtx, "Failed to publish event resource_id=%s error=%v", resource.ID, err)
+				slog.ErrorContext(publishCtx, "Failed to publish event", "error", err)
 				publishSpan.End()
 				evalSpan.End()
 				continue
@@ -235,18 +236,13 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 			// Record successful event publication
 			metrics.UpdateEventsPublishedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.Infof(eventCtx, "Published event resource_id=%s",
-				resource.ID)
+			slog.InfoContext(evalCtx, "Published event")
 			published++
 		} else {
-			// Add decision reason to context for structured logging
-			skipCtx := logger.WithDecisionReason(evalCtx, decision.Reason)
-
 			// Record skipped resource
 			metrics.UpdateResourcesSkippedMetric(resourceType, resourceSelector, decision.Reason)
 
-			s.logger.Debugf(skipCtx, "Skipped resource resource_id=%s",
-				resource.ID)
+			slog.DebugContext(evalCtx, "Skipped resource")
 			skipped++
 		}
 
@@ -260,8 +256,9 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 	duration := time.Since(startTime).Seconds()
 	metrics.UpdatePollDurationMetric(resourceType, resourceSelector, duration)
 
-	s.logger.Infof(ctx, "Trigger cycle completed total=%d published=%d skipped=%d duration=%.3fs",
-		len(resources), published, skipped, duration)
+	slog.InfoContext(ctx, "Trigger cycle completed",
+		"total", len(resources), "published", published,
+		"skipped", skipped, "duration", duration)
 
 	s.mu.Lock()
 	s.lastSuccessfulPoll = time.Now()
@@ -277,10 +274,10 @@ func (s *Sentinel) buildEventData(
 	ctx context.Context,
 	resource *client.Resource,
 	decision engine.Decision,
-) map[string]interface{} {
+) map[string]any {
 	if s.payloadBuilder == nil {
-		s.logger.Errorf(ctx, "payload builder not initialized for resource_id=%s", resource.ID)
-		return map[string]interface{}{}
+		slog.ErrorContext(ctx, "payload builder not initialized")
+		return map[string]any{}
 	}
 	return s.payloadBuilder.BuildPayload(ctx, resource, decision.Reason)
 }

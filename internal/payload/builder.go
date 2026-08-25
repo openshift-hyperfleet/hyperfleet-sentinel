@@ -3,10 +3,10 @@ package payload
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/cel-go/cel"
 	"github.com/openshift-hyperfleet/hyperfleet-sentinel/internal/client"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
 // ValueDef is the result of parsing a raw YAML node into a typed definition.
@@ -51,7 +51,6 @@ type compiledNode struct {
 // Builder builds event payloads from a resource using a pre-compiled build definition.
 type Builder struct {
 	compiled map[string]*compiledNode
-	log      logger.HyperFleetLogger
 }
 
 // newCELEnv creates a CEL environment with the standard variable declarations.
@@ -63,7 +62,7 @@ func newCELEnv() (*cel.Env, error) {
 }
 
 // NewBuilder creates a new Builder. All CEL expressions are compiled once here.
-func NewBuilder(buildDef interface{}, log logger.HyperFleetLogger) (*Builder, error) {
+func NewBuilder(buildDef interface{}) (*Builder, error) {
 	defMap, ok := buildDef.(map[string]interface{})
 	if !ok {
 		return nil, fmt.Errorf("build definition must be a map, got %T", buildDef)
@@ -76,7 +75,7 @@ func NewBuilder(buildDef interface{}, log logger.HyperFleetLogger) (*Builder, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile build definition: %w", err)
 	}
-	return &Builder{compiled: compiled, log: log}, nil
+	return &Builder{compiled: compiled}, nil
 }
 
 // compileMap recursively compiles a definition map into compiled nodes.
@@ -171,11 +170,11 @@ func (b *Builder) evalCompiledNode(
 			"reason":   reason,
 		})
 		if err != nil {
-			b.log.Warnf(ctx, "CEL expression evaluation failed: %v", err)
+			slog.WarnContext(ctx, "CEL expression evaluation failed", "error", err)
 			return nil
 		}
 		if out == nil {
-			b.log.Warn(ctx, "CEL expression evaluated to nil")
+			slog.WarnContext(ctx, "CEL expression evaluated to nil")
 			return nil
 		}
 		return out.Value()

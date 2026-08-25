@@ -1,17 +1,16 @@
 package health
 
 import (
-	"context"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
 const (
@@ -19,28 +18,15 @@ const (
 	testStatusError = "error"
 )
 
-func assertLogContains(t *testing.T, mock *logger.MockLoggerWithContext, substr string, ctx context.Context) {
-	t.Helper()
-	if len(*mock.CapturedLogs) == 0 {
-		t.Fatal("Expected a log entry but none was captured")
-	}
-	if !strings.Contains((*mock.CapturedLogs)[0], substr) {
-		t.Errorf("Expected log to contain %q, got %q", substr, (*mock.CapturedLogs)[0])
-	}
-	if (*mock.CapturedContexts)[0] != ctx {
-		t.Error("Expected log to use request context")
-	}
-}
-
 func TestNewReadinessChecker_DefaultNotReady(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	rc := NewReadinessChecker()
 	if rc.IsReady() {
 		t.Error("Expected new ReadinessChecker to be not ready")
 	}
 }
 
 func TestReadinessChecker_SetReady(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	rc := NewReadinessChecker()
 
 	rc.SetReady(true)
 	if !rc.IsReady() {
@@ -54,7 +40,7 @@ func TestReadinessChecker_SetReady(t *testing.T) {
 }
 
 func TestReadinessChecker_ConcurrentAccess(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	rc := NewReadinessChecker()
 	var wg sync.WaitGroup
 
 	for i := 0; i < 100; i++ {
@@ -97,8 +83,7 @@ func TestHealthzHandler_InvalidParameters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock := logger.NewMockLogger()
-			rc := NewReadinessChecker(mock)
+			rc := NewReadinessChecker()
 			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 			w := httptest.NewRecorder()
 
@@ -115,7 +100,6 @@ func TestHealthzHandler_InvalidParameters(t *testing.T) {
 			if resp.Status != tt.expectedBody {
 				t.Fatalf("expected status %q, got %q", tt.expectedBody, resp.Status)
 			}
-			assertLogContains(t, mock, "invalid configuration", req.Context())
 		})
 	}
 }
@@ -126,7 +110,6 @@ func TestHealthzHandler_PollStates(t *testing.T) {
 		name           string
 		expectedStatus string
 		expectedCode   int
-		expectLog      bool
 	}{
 		{
 			name:           "healthy poll",
@@ -139,7 +122,6 @@ func TestHealthzHandler_PollStates(t *testing.T) {
 			lastPoll:       time.Now().Add(-20 * time.Second),
 			expectedCode:   http.StatusServiceUnavailable,
 			expectedStatus: "poll stale",
-			expectLog:      true,
 		},
 		{
 			name:           "pre-first poll",
@@ -154,8 +136,7 @@ func TestHealthzHandler_PollStates(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mock := logger.NewMockLogger()
-			rc := NewReadinessChecker(mock)
+			rc := NewReadinessChecker()
 			lastPollFn := func() time.Time { return tt.lastPoll }
 
 			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -178,19 +159,12 @@ func TestHealthzHandler_PollStates(t *testing.T) {
 			if resp.Status != tt.expectedStatus {
 				t.Errorf("Expected status %s, got '%s'", tt.expectedStatus, resp.Status)
 			}
-			if tt.expectLog {
-				assertLogContains(t, mock, "Healthz check failed", req.Context())
-			}
-			if !tt.expectLog && len(*mock.CapturedLogs) > 0 {
-				t.Errorf("Expected no logs, got %v", *mock.CapturedLogs)
-			}
 		})
 	}
 }
 
 func TestReadyzHandler_PreFirstPollNotReady(t *testing.T) {
-	mock := logger.NewMockLogger()
-	rc := NewReadinessChecker(mock)
+	rc := NewReadinessChecker()
 	rc.AddCheck("broker", func() error { return nil })
 	rc.AddCheck("sentinel_poll", func() error {
 		return fmt.Errorf("no successful poll completed yet")
@@ -224,11 +198,10 @@ func TestReadyzHandler_PreFirstPollNotReady(t *testing.T) {
 	if resp.Checks["broker"] != "ok" {
 		t.Errorf("Expected broker 'ok', got %s", resp.Checks["broker"])
 	}
-	assertLogContains(t, mock, "Readyz check failed", req.Context())
 }
 
 func TestReadyzHandler_WhenNotReady(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	rc := NewReadinessChecker()
 	rc.AddCheck("broker", func() error { return nil })
 
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
@@ -257,7 +230,7 @@ func TestReadyzHandler_WhenNotReady(t *testing.T) {
 }
 
 func TestReadyzHandler_WhenReady(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	rc := NewReadinessChecker()
 	rc.AddCheck("broker", func() error { return nil })
 	rc.SetReady(true)
 
@@ -287,7 +260,7 @@ func TestReadyzHandler_WhenReady(t *testing.T) {
 }
 
 func TestReadyzHandler_TransitionOnShutdown(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	rc := NewReadinessChecker()
 	rc.AddCheck("broker", func() error { return nil })
 	rc.SetReady(true)
 
@@ -311,8 +284,7 @@ func TestReadyzHandler_TransitionOnShutdown(t *testing.T) {
 }
 
 func TestReadyzHandler_CheckFails(t *testing.T) {
-	mock := logger.NewMockLogger()
-	rc := NewReadinessChecker(mock)
+	rc := NewReadinessChecker()
 	rc.AddCheck("broker", func() error { return fmt.Errorf("connection refused") })
 	rc.AddCheck("config", func() error { return nil })
 	rc.SetReady(true)
@@ -339,11 +311,10 @@ func TestReadyzHandler_CheckFails(t *testing.T) {
 	if resp.Checks["config"] != "ok" {
 		t.Errorf("Expected config check 'ok', got '%s'", resp.Checks["config"])
 	}
-	assertLogContains(t, mock, "Readyz check failed", req.Context())
 }
 
 func TestReadyzHandler_NoChecksRegistered(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	rc := NewReadinessChecker()
 	rc.SetReady(true)
 
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
@@ -366,7 +337,7 @@ func TestReadyzHandler_NoChecksRegistered(t *testing.T) {
 
 func TestReadyzHandler_ShutdownSkipsChecks(t *testing.T) {
 	checkCalled := false
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	rc := NewReadinessChecker()
 	rc.AddCheck("broker", func() error {
 		checkCalled = true
 		return nil
@@ -387,8 +358,73 @@ func TestReadyzHandler_ShutdownSkipsChecks(t *testing.T) {
 	}
 }
 
+func withLogCapture(t *testing.T) (*bytes.Buffer, func()) {
+	t.Helper()
+	var buf bytes.Buffer
+	handler := slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug})
+	prev := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	return &buf, func() { slog.SetDefault(prev) }
+}
+
+func TestHealthzHandler_Logs(t *testing.T) {
+	tests := []struct {
+		lastPollFn func() time.Time
+		name       string
+		wantLog    string
+		threshold  time.Duration
+	}{
+		{
+			name:       "invalid config",
+			lastPollFn: nil,
+			threshold:  15 * time.Second,
+			wantLog:    "invalid configuration",
+		},
+		{
+			name:       "stale poll",
+			lastPollFn: func() time.Time { return time.Now().Add(-20 * time.Second) },
+			threshold:  15 * time.Second,
+			wantLog:    "poll stale",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			buf, restore := withLogCapture(t)
+			defer restore()
+
+			rc := NewReadinessChecker()
+			req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+			w := httptest.NewRecorder()
+			rc.HealthzHandler(tt.lastPollFn, tt.threshold).ServeHTTP(w, req)
+
+			if !strings.Contains(buf.String(), tt.wantLog) {
+				t.Errorf("Expected log to contain %q, got: %s", tt.wantLog, buf.String())
+			}
+		})
+	}
+}
+
+func TestReadyzHandler_LogsOnCheckFailure(t *testing.T) {
+	buf, restore := withLogCapture(t)
+	defer restore()
+
+	rc := NewReadinessChecker()
+	rc.AddCheck("broker", func() error { return fmt.Errorf("connection refused") })
+	rc.SetReady(true)
+
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	w := httptest.NewRecorder()
+
+	rc.ReadyzHandler().ServeHTTP(w, req)
+
+	if !strings.Contains(buf.String(), "Readyz check failed") {
+		t.Errorf("Expected log to contain 'Readyz check failed', got: %s", buf.String())
+	}
+}
+
 func TestReadyzHandler_MultipleChecksAllPass(t *testing.T) {
-	rc := NewReadinessChecker(logger.NewHyperFleetLogger())
+	rc := NewReadinessChecker()
 	rc.AddCheck("broker", func() error { return nil })
 	rc.AddCheck("config", func() error { return nil })
 	rc.AddCheck("hyperfleet_api", func() error { return nil })

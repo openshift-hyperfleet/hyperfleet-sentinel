@@ -3,12 +3,13 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"go.opentelemetry.io/contrib/propagators/autoprop"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -41,8 +42,6 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 	var exporter trace.SpanExporter
 	var err error
 
-	log := logger.NewHyperFleetLogger()
-
 	if otlpEndpoint := os.Getenv(envOtelExporterOtlpEndpoint); otlpEndpoint != "" {
 		protocol := os.Getenv(envOtelExporterOtlpProtocol)
 		switch strings.ToLower(protocol) {
@@ -53,18 +52,18 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 		// Uses gRPC exporter (port 4317) following OpenTelemetry standards
 		// This is compatible with standard OTEL Collector configurations
 		default:
-			log.Warnf(ctx, "Unrecognized OTEL_EXPORTER_OTLP_PROTOCOL %q, using default grpc", protocol)
+			slog.WarnContext(ctx, "Unrecognized OTEL_EXPORTER_OTLP_PROTOCOL, using default grpc", "protocol", protocol)
 			exporter, err = otlptracegrpc.New(ctx)
 		}
 		if err != nil {
-			log.Errorf(ctx, "Failed to create OTLP exporter (protocol=%s): %v", protocol, err)
+			slog.ErrorContext(ctx, "Failed to create OTLP exporter", "protocol", protocol, "error", err)
 			return nil, fmt.Errorf("failed to create OTLP exporter (protocol=%s): %w", protocol, err)
 		}
 	} else {
 		// Create stdout exporter
 		exporter, err = stdouttrace.New()
 		if err != nil {
-			log.Errorf(ctx, "Failed to create OpenTelemetry stdout exporter: %v", err)
+			slog.ErrorContext(ctx, "Failed to create OpenTelemetry stdout exporter", "error", err)
 			return nil, fmt.Errorf("failed to create OpenTelemetry stdout exporter: %w", err)
 		}
 	}
@@ -79,10 +78,10 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 	)
 	if err != nil {
 		if shutdownErr := exporter.Shutdown(ctx); shutdownErr != nil {
-			log.Warnf(ctx, "Failed to shutdown exporter: %v", shutdownErr)
+			slog.WarnContext(ctx, "Failed to shutdown exporter", "error", shutdownErr)
 		}
-		log.Extra("service_name", serviceName).Extra("service_version", serviceVersion).
-			Errorf(ctx, "Failed to create OpenTelemetry resource: %v", err)
+		slog.ErrorContext(ctx, "Failed to create OpenTelemetry resource",
+			"error", err, "service_name", serviceName, "service_version", serviceVersion)
 		return nil, fmt.Errorf("failed to create OTel resource: %w", err)
 	}
 
@@ -95,17 +94,17 @@ func InitTraceProvider(ctx context.Context, serviceName, serviceVersion string) 
 	case samplerAlwaysOff:
 		sampler = trace.NeverSample()
 	case samplerTraceIDRatio:
-		sampler = trace.TraceIDRatioBased(parseSamplingRate(ctx, log))
+		sampler = trace.TraceIDRatioBased(parseSamplingRate(ctx))
 	case parentBasedTraceIDRatio, "":
 		// Default per tracing standard
-		sampler = trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx, log)))
+		sampler = trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx)))
 	case parentBasedAlwaysOn:
 		sampler = trace.ParentBased(trace.AlwaysSample())
 	case parentBasedAlwaysOff:
 		sampler = trace.ParentBased(trace.NeverSample())
-	default:
-		log.Warnf(ctx, "Unrecognized sampler %q, using default", samplerType)
-		sampler = trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx, log)))
+	default: // Intentional fallback to default sampler
+		slog.WarnContext(ctx, "Unrecognized sampler, using default", "sampler", samplerType)
+		sampler = trace.ParentBased(trace.TraceIDRatioBased(parseSamplingRate(ctx)))
 	}
 
 	// Create trace provider
@@ -147,8 +146,8 @@ func StartSpan(ctx context.Context, spanName string, attrs ...attribute.KeyValue
 	if span.SpanContext().IsValid() {
 		traceID := span.SpanContext().TraceID().String()
 		spanID := span.SpanContext().SpanID().String()
-		ctx = logger.WithTraceID(ctx, traceID)
-		ctx = logger.WithSpanID(ctx, spanID)
+		ctx = hfl.Set(ctx, hfl.TraceIDKey, traceID)
+		ctx = hfl.Set(ctx, hfl.SpanIDKey, spanID)
 	}
 
 	return ctx, span
@@ -169,13 +168,14 @@ func SetTraceContext(event *cloudevents.Event, span oteltrace.Span) {
 }
 
 // Helper to parse sampling rate from env
-func parseSamplingRate(ctx context.Context, log logger.HyperFleetLogger) float64 {
+func parseSamplingRate(ctx context.Context) float64 {
 	rate := defaultSamplingRate
 	if arg := os.Getenv(envOtelTracesSamplerArg); arg != "" {
 		if parsedRate, err := strconv.ParseFloat(arg, 64); err == nil && parsedRate >= 0.0 && parsedRate <= 1.0 {
 			rate = parsedRate
-		} else {
-			log.Warnf(ctx, "Invalid %s value=%q, using default: %v", envOtelTracesSamplerArg, arg, rate)
+		} else { // Intentional fallback to default rate
+			slog.WarnContext(ctx, "Invalid sampler arg value, using default",
+				"env_var", envOtelTracesSamplerArg, "value", arg, "default_rate", rate)
 		}
 	}
 	return rate

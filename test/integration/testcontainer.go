@@ -5,6 +5,7 @@ package integration
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -15,7 +16,6 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/openshift-hyperfleet/hyperfleet-broker/broker"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
 )
 
 // RabbitMQTestContainer manages a RabbitMQ testcontainer for integration testing
@@ -26,8 +26,7 @@ type RabbitMQTestContainer struct {
 
 // NewRabbitMQTestContainer creates and starts a RabbitMQ testcontainer
 func NewRabbitMQTestContainer(ctx context.Context) (*RabbitMQTestContainer, error) {
-	log := logger.NewHyperFleetLogger()
-	log.Info(ctx, "Starting RabbitMQ testcontainer...")
+	slog.InfoContext(ctx, "Starting RabbitMQ testcontainer...")
 
 	// Start RabbitMQ container
 	container, err := rabbitmq.Run(ctx,
@@ -50,7 +49,7 @@ func NewRabbitMQTestContainer(ctx context.Context) (*RabbitMQTestContainer, erro
 		return nil, fmt.Errorf("failed to get AMQP URL: %w", err)
 	}
 
-	log.Extra("amqp_url", amqpURL).Info(ctx, "RabbitMQ testcontainer started")
+	slog.InfoContext(ctx, "RabbitMQ testcontainer started")
 
 	// Create publisher using hyperfleet-broker library with configMap
 	// This allows us to pass configuration programmatically for testing
@@ -60,13 +59,15 @@ func NewRabbitMQTestContainer(ctx context.Context) (*RabbitMQTestContainer, erro
 	}
 
 	metricsRecorder := broker.NewMetricsRecorder("sentinel-test", "test", prometheus.NewRegistry())
-	publisher, err := broker.NewPublisher(log, metricsRecorder, configMap)
+	publisher, err := broker.NewPublisher(slog.Default(), metricsRecorder, configMap)
 	if err != nil {
-		container.Terminate(ctx)
+		if termErr := container.Terminate(ctx); termErr != nil {
+			slog.ErrorContext(ctx, "Failed to terminate container after publisher error", "error", termErr)
+		}
 		return nil, fmt.Errorf("failed to create broker publisher: %w", err)
 	}
 
-	log.Info(ctx, "RabbitMQ publisher initialized successfully")
+	slog.InfoContext(ctx, "RabbitMQ publisher initialized successfully")
 
 	return &RabbitMQTestContainer{
 		container: container,
@@ -74,36 +75,58 @@ func NewRabbitMQTestContainer(ctx context.Context) (*RabbitMQTestContainer, erro
 	}, nil
 }
 
-// Publisher returns the broker publisher connected to the testcontainer
+// Publisher returns the broker publisher connected to the testcontainer.
 func (tc *RabbitMQTestContainer) Publisher() broker.Publisher {
 	return tc.publisher
 }
 
+// newPublisher creates a fresh broker.Publisher against this container's
+// RabbitMQ instance, bound to the current slog.Default(). Unlike Publisher(),
+// which returns the container-lifetime publisher captured once in TestMain,
+// this lets a test observe the broker's own logging by calling it after
+// installing a test-local slog handler. The container itself (expensive to
+// start) is reused; only the cheap publisher is reconstructed.
+func (tc *RabbitMQTestContainer) newPublisher(ctx context.Context) (broker.Publisher, error) {
+	amqpURL, err := tc.container.AmqpURL(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get AMQP URL: %w", err)
+	}
+	configMap := map[string]string{
+		"broker.type":         "rabbitmq",
+		"broker.rabbitmq.url": amqpURL,
+	}
+	metricsRecorder := broker.NewMetricsRecorder("sentinel-test", "test", prometheus.NewRegistry())
+	publisher, err := broker.NewPublisher(slog.Default(), metricsRecorder, configMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create test-local publisher: %w", err)
+	}
+	return publisher, nil
+}
+
 // Close stops the RabbitMQ testcontainer and closes the publisher
 func (tc *RabbitMQTestContainer) Close(ctx context.Context) error {
-	log := logger.NewHyperFleetLogger()
 	var errs []error
 
 	// Close publisher
 	if tc.publisher != nil {
 		if err := tc.publisher.Close(); err != nil {
-			log.Errorf(ctx, "Error closing publisher: %v", err)
+			slog.ErrorContext(ctx, "Error closing publisher", "error", err)
 			errs = append(errs, err)
 		}
 	}
 
 	// Terminate container with background context (test context may be canceled)
 	if tc.container != nil {
-		log.Info(ctx, "Stopping RabbitMQ testcontainer...")
+		slog.InfoContext(ctx, "Stopping RabbitMQ testcontainer...")
 		// Use background context with timeout for cleanup, as test context may be canceled
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
 		if err := tc.container.Terminate(cleanupCtx); err != nil {
-			log.Errorf(cleanupCtx, "Error terminating testcontainer: %v", err)
+			slog.ErrorContext(cleanupCtx, "Error terminating testcontainer", "error", err)
 			errs = append(errs, err)
 		}
-		log.Info(cleanupCtx, "RabbitMQ testcontainer stopped")
+		slog.InfoContext(cleanupCtx, "RabbitMQ testcontainer stopped")
 	}
 
 	if len(errs) > 0 {
@@ -126,14 +149,13 @@ type IntegrationHelper struct {
 // NewHelper creates or returns the singleton integration test helper
 func NewHelper() *IntegrationHelper {
 	once.Do(func() {
-		log := logger.NewHyperFleetLogger()
 		ctx := context.Background()
-		log.Info(ctx, "Initializing integration test helper...")
+		slog.InfoContext(ctx, "Initializing integration test helper...")
 
 		// Start shared RabbitMQ testcontainer
 		rabbitMQ, err := NewRabbitMQTestContainer(ctx)
 		if err != nil {
-			log.Errorf(ctx, "Failed to start shared RabbitMQ testcontainer: %v", err)
+			slog.ErrorContext(ctx, "Failed to start shared RabbitMQ testcontainer", "error", err)
 			os.Exit(1)
 		}
 
@@ -141,7 +163,7 @@ func NewHelper() *IntegrationHelper {
 			RabbitMQ: rabbitMQ,
 		}
 
-		log.Info(ctx, "Integration test helper initialized successfully")
+		slog.InfoContext(ctx, "Integration test helper initialized successfully")
 	})
 
 	return testHelper
@@ -149,12 +171,11 @@ func NewHelper() *IntegrationHelper {
 
 // Teardown cleans up shared resources
 func (h *IntegrationHelper) Teardown() {
-	log := logger.NewHyperFleetLogger()
 	ctx := context.Background()
 	if h.RabbitMQ != nil {
-		log.Info(ctx, "Cleaning up shared RabbitMQ testcontainer...")
+		slog.InfoContext(ctx, "Cleaning up shared RabbitMQ testcontainer...")
 		if err := h.RabbitMQ.Close(ctx); err != nil {
-			log.Errorf(ctx, "Error cleaning up RabbitMQ: %v", err)
+			slog.ErrorContext(ctx, "Error cleaning up RabbitMQ", "error", err)
 		}
 	}
 }

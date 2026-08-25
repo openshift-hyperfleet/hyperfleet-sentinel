@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	cloudevents "github.com/cloudevents/sdk-go/v2"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/logger"
+	hfl "github.com/openshift-hyperfleet/hyperfleet-logger"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/trace"
@@ -227,8 +227,8 @@ func TestStartSpan(t *testing.T) {
 	}
 
 	// Verify context enrichment (trace/span IDs should be in context)
-	traceID, hasTraceID := newCtx.Value(logger.TraceIDCtxKey).(string)
-	spanID, hasSpanID := newCtx.Value(logger.SpanIDCtxKey).(string)
+	traceID, hasTraceID := hfl.TraceIDFromContext(newCtx)
+	spanID, hasSpanID := hfl.SpanIDFromContext(newCtx)
 
 	if !hasTraceID || traceID == "" {
 		t.Error("Expected context to contain trace ID")
