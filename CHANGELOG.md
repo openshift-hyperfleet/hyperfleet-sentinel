@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Sentinel now paginates API responses, fetching all resources instead of only the first page (default size 20). Environments with more than 20 clusters/nodepools were missing reconciliation events.
+- Migrated CEL dependency from `github.com/google/cel-go` to its renamed module path `cel.dev/cel-go` (v0.32.0), unblocking Renovate dependency-update PRs that were failing `go get -t ./...`
 
 ### Security
 
