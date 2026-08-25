@@ -3,6 +3,7 @@ module github.com/openshift-hyperfleet/hyperfleet-sentinel
 go 1.26.0
 
 require (
+	cel.dev/cel-go v0.32.0
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/google/uuid v1.6.0
@@ -70,7 +71,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
-	github.com/google/cel-go v0.31.0
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.18 // indirect
 	github.com/googleapis/gax-go/v2 v2.22.0 // indirect
