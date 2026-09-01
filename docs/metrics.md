@@ -142,12 +142,16 @@ rate(hyperfleet_sentinel_poll_duration_seconds_sum[5m]) /
 **Labels:**
 - `resource_type`: Type of resource
 - `resource_selector`: Label selector
-- `error_type`: Type of error (e.g., `fetch_error`, `timeout`, `auth_error`)
+- `error_type`: Type of error:
+  - `fetch_error`: Generic API failure (HTTP 5xx, timeout, DNS, malformed response)
+  - `auth_error`: Bearer token could not be read from disk (no HTTP request sent)
+  - `auth_rejected`: API or gateway returned HTTP 401 (Unauthorized) or 403 (Forbidden)
 
 **Use Cases:**
 - Alert on API availability issues
 - Track error rates by type
 - Monitor API health
+- Detect auth misconfiguration via `auth_rejected` (see [SentinelAuthRejectedRate](alerts.md#sentinelauthrejectedrate) alert)
 
 **Example Query:**
 ```promql

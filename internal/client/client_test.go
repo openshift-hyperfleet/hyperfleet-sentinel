@@ -876,6 +876,40 @@ func TestVerifyConnectivity_NonOKStatus(t *testing.T) {
 	}
 }
 
+func TestVerifyConnectivity_AuthRejected(t *testing.T) {
+	ctx := context.Background()
+	testCases := []struct {
+		name       string
+		statusCode int
+	}{
+		{name: "Unauthorized", statusCode: http.StatusUnauthorized},
+		{name: "Forbidden", statusCode: http.StatusForbidden},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.statusCode)
+			}))
+			defer server.Close()
+
+			client := newTestClient(t, server.URL, 10*time.Second)
+
+			err := client.VerifyConnectivity(ctx, "clusters")
+
+			if err == nil {
+				t.Fatalf("Expected error for status %d, got nil", tc.statusCode)
+			}
+			if !strings.Contains(err.Error(), "gateway rejected Sentinel's identity") {
+				t.Errorf("Expected auth-specific message, got: %v", err)
+			}
+			if !strings.Contains(err.Error(), strconv.Itoa(tc.statusCode)) {
+				t.Errorf("Expected error to mention status %d, got: %v", tc.statusCode, err)
+			}
+		})
+	}
+}
+
 func TestVerifyConnectivity_MissingTokenFile(t *testing.T) {
 	requestReceived := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1372,6 +1406,36 @@ func TestFetchResources_PaginationSendsSize(t *testing.T) {
 			expected := strconv.Itoa(int(DefaultPageSize))
 			if receivedSize != expected {
 				t.Errorf("Expected size=%s, got %q", expected, receivedSize)
+			}
+		})
+	}
+}
+
+func TestIsAuthRejected(t *testing.T) {
+	unauthorized := &APIError{StatusCode: http.StatusUnauthorized, Message: "unauthorized"}
+	forbidden := &APIError{StatusCode: http.StatusForbidden, Message: "forbidden"}
+	serverErr := &APIError{StatusCode: http.StatusInternalServerError, Message: "server error"}
+	tokenErr := &TokenError{cause: fmt.Errorf("underlying cause")}
+
+	tests := []struct {
+		err  error
+		name string
+		want bool
+	}{
+		{err: unauthorized, name: "direct 401 APIError", want: true},
+		{err: forbidden, name: "direct 403 APIError", want: true},
+		{err: fmt.Errorf("failed to fetch clusters after retries: %w", unauthorized), name: "401 wrapped by retry logic", want: true},
+		{err: fmt.Errorf("outer: %w", forbidden), name: "403 wrapped with fmt.Errorf", want: true},
+		{err: serverErr, name: "500 APIError", want: false},
+		{err: tokenErr, name: "TokenError", want: false},
+		{err: fmt.Errorf("something else"), name: "plain error", want: false},
+		{err: nil, name: "nil", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsAuthRejected(tt.err); got != tt.want {
+				t.Errorf("IsAuthRejected(%v) = %v, want %v", tt.err, got, tt.want)
 			}
 		})
 	}

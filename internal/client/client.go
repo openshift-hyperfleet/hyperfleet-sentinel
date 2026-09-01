@@ -343,6 +343,12 @@ func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context, resourceType 
 	if resp.StatusCode == http.StatusOK {
 		return nil
 	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf(
+			"could not verify connectivity: gateway rejected Sentinel's identity (HTTP %d)",
+			resp.StatusCode,
+		)
+	}
 	return fmt.Errorf("could not verify connectivity: response status code %d", resp.StatusCode)
 }
 
@@ -603,6 +609,19 @@ func (e *APIError) Error() string {
 }
 
 func (e *APIError) Unwrap() error { return e.cause }
+
+// IsAuthRejected reports whether any error in err's chain is an APIError with
+// an HTTP 401 (Unauthorized) or 403 (Forbidden) status code. This indicates
+// the API (or a gateway in front of it) rejected the caller's credentials or
+// permissions, as distinct from IsTokenError (a local failure reading the
+// token from disk before any request is sent).
+func IsAuthRejected(err error) bool {
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.StatusCode == http.StatusUnauthorized || apiErr.StatusCode == http.StatusForbidden
+}
 
 func isRetriable(err error) bool {
 	var apiErr *APIError

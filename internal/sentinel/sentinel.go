@@ -2,6 +2,7 @@ package sentinel
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -77,6 +78,42 @@ func (s *Sentinel) LastSuccessfulPoll() time.Time {
 	return s.lastSuccessfulPoll
 }
 
+// classifyPollError determines the api_errors_total error_type label for a
+// poll failure and, when the error originated from an HTTP response, the
+// status code that caused it. Shared between trigger (metrics) and Start
+// (structured logging at the boundary) so the classification lives in one
+// place.
+func classifyPollError(err error) (errorType string, statusCode int) {
+	errorType = "fetch_error"
+	switch {
+	case client.IsTokenError(err):
+		errorType = "auth_error"
+	case client.IsAuthRejected(err):
+		errorType = "auth_rejected"
+	}
+
+	var apiErr *client.APIError
+	if errors.As(err, &apiErr) {
+		statusCode = apiErr.StatusCode
+	}
+	return errorType, statusCode
+}
+
+// logTriggerError logs a poll failure at the service boundary with the
+// status code, error classification, and resource context needed to
+// diagnose auth rejections without digging through error strings. Does not
+// log the bearer token.
+func (s *Sentinel) logTriggerError(ctx context.Context, msg string, err error) {
+	errorType, statusCode := classifyPollError(err)
+	resourceSelector := metrics.GetResourceSelectorLabel(s.config.ResourceSelector)
+	slog.ErrorContext(ctx, msg,
+		"error", err,
+		"error_type", errorType,
+		"status_code", statusCode,
+		"resource_selector", resourceSelector,
+	)
+}
+
 // Start starts the polling loop
 func (s *Sentinel) Start(ctx context.Context) error {
 	ctx = hfl.Set(ctx, hfl.ResourceTypeKey, s.config.ResourceType)
@@ -87,7 +124,7 @@ func (s *Sentinel) Start(ctx context.Context) error {
 
 	// Run immediately on start
 	if err := s.trigger(ctx); err != nil {
-		slog.ErrorContext(ctx, "Initial trigger failed", "error", err)
+		s.logTriggerError(ctx, "Initial trigger failed", err)
 	}
 
 	for {
@@ -97,7 +134,7 @@ func (s *Sentinel) Start(ctx context.Context) error {
 			return ctx.Err()
 		case <-ticker.C:
 			if err := s.trigger(ctx); err != nil {
-				slog.ErrorContext(ctx, "Trigger failed", "error", err)
+				s.logTriggerError(ctx, "Trigger failed", err)
 			}
 		}
 	}
@@ -139,10 +176,7 @@ func (s *Sentinel) trigger(ctx context.Context) error {
 		// Record API error
 		pollSpan.RecordError(err)
 		pollSpan.SetStatus(codes.Error, "fetch resources failed")
-		errorType := "fetch_error"
-		if client.IsTokenError(err) {
-			errorType = "auth_error"
-		}
+		errorType, _ := classifyPollError(err)
 		metrics.UpdateAPIErrorsMetric(resourceType, resourceSelector, errorType)
 		return fmt.Errorf("failed to fetch resources: %w", err)
 	}
