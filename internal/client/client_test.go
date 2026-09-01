@@ -906,6 +906,9 @@ func TestVerifyConnectivity_AuthRejected(t *testing.T) {
 			if !strings.Contains(err.Error(), strconv.Itoa(tc.statusCode)) {
 				t.Errorf("Expected error to mention status %d, got: %v", tc.statusCode, err)
 			}
+			if !IsAuthRejected(err) {
+				t.Errorf("Expected IsAuthRejected to be true for status %d, got false", tc.statusCode)
+			}
 		})
 	}
 }
@@ -1424,7 +1427,11 @@ func TestIsAuthRejected(t *testing.T) {
 	}{
 		{err: unauthorized, name: "direct 401 APIError", want: true},
 		{err: forbidden, name: "direct 403 APIError", want: true},
-		{err: fmt.Errorf("failed to fetch clusters after retries: %w", unauthorized), name: "401 wrapped by retry logic", want: true},
+		{
+			err:  fmt.Errorf("failed to fetch clusters after retries: %w", unauthorized),
+			name: "401 wrapped by retry logic",
+			want: true,
+		},
 		{err: fmt.Errorf("outer: %w", forbidden), name: "403 wrapped with fmt.Errorf", want: true},
 		{err: serverErr, name: "500 APIError", want: false},
 		{err: tokenErr, name: "TokenError", want: false},

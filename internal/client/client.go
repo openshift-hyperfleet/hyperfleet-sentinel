@@ -345,8 +345,12 @@ func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context, resourceType 
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		return fmt.Errorf(
-			"could not verify connectivity: gateway rejected Sentinel's identity (HTTP %d)",
-			resp.StatusCode,
+			"could not verify connectivity: %w",
+			&APIError{
+				StatusCode: resp.StatusCode,
+				Message:    fmt.Sprintf("gateway rejected Sentinel's identity (HTTP %d)", resp.StatusCode),
+				Retriable:  false,
+			},
 		)
 	}
 	return fmt.Errorf("could not verify connectivity: response status code %d", resp.StatusCode)
