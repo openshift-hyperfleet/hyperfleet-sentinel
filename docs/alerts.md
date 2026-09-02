@@ -12,7 +12,7 @@ This document provides ready alert rules that integrate with Prometheus to ensur
 
 ## Alert Rules Reference
 
-The following 8 alert rules provide comprehensive monitoring for production Sentinel deployments.
+The following alert rules provide comprehensive monitoring for production Sentinel deployments.
 
 ### Critical Alerts
 
@@ -47,6 +47,22 @@ annotations:
 **Impact**: Unable to fetch resource status, reconciliation decisions based on stale data.
 
 **Response**: Check HyperFleet API service health and network connectivity.
+
+#### SentinelAuthRejectedRate
+```yaml
+alert: SentinelAuthRejectedRate
+expr: rate(hyperfleet_sentinel_api_errors_total{error_type="auth_rejected"}[5m]) > 0
+for: 5m
+labels:
+  severity: critical
+  component: sentinel
+annotations:
+  summary: "Sentinel receiving auth rejections from API"
+  description: "Sentinel is receiving HTTP 401/403 responses at {{ $value }} errors/sec for resource_type {{ $labels.resource_type }}. The API or gateway is rejecting Sentinel's identity."
+```
+**Impact**: All reconciliation decisions blocked for the affected resource type. Resources will not be reconciled until auth is fixed.
+
+**Response**: Check Sentinel's service account token, gateway configuration (Authorino/Envoy), and RBAC policies. Distinct from `auth_error` (token file unreadable on disk), this means the token was sent but the server rejected it.
 
 #### SentinelBrokerErrorRateHigh
 ```yaml
@@ -198,6 +214,17 @@ spec:
       annotations:
         summary: "High API error rate detected"
         description: "API error rate is {{ $value | humanize }} errors/sec for resource_type {{ $labels.resource_type }}."
+
+    - alert: SentinelAuthRejectedRate
+      expr: |
+        rate(hyperfleet_sentinel_api_errors_total{error_type="auth_rejected"}[5m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+        component: sentinel
+      annotations:
+        summary: "Sentinel receiving auth rejections from API"
+        description: "HTTP 401/403 responses at {{ $value | humanize }} errors/sec for resource_type {{ $labels.resource_type }}."
 
     - alert: SentinelBrokerErrorRateHigh
       expr: |

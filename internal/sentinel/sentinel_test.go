@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -315,6 +317,62 @@ func TestTrigger_AuthError(t *testing.T) {
 	}
 	if got := testutil.ToFloat64(m.APIErrors.With(labels)); got != 1 {
 		t.Errorf("Expected api_errors_total{error_type=auth_error} == 1, got %v", got)
+	}
+}
+
+// TestTrigger_AuthRejectedMetric tests that HTTP 401/403 responses from the API
+// increment the auth_rejected metric (distinct from auth_error, which is a local
+// token-file failure). 401/403 are non-retriable, so this runs without backoff delay.
+func TestTrigger_AuthRejectedMetric(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+	}{
+		{name: "401 Unauthorized", statusCode: http.StatusUnauthorized},
+		{name: "403 Forbidden", statusCode: http.StatusForbidden},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+			}))
+			defer server.Close()
+
+			hyperfleetClient, err := client.NewHyperFleetClient(
+				server.URL, 1*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+			if err != nil {
+				t.Fatalf("failed to create HyperFleet client: %v", err)
+			}
+			decisionEngine := newTestDecisionEngine(t)
+			mockPublisher := &MockPublisher{}
+
+			metrics.ResetSentinelMetrics()
+			registry := prometheus.NewRegistry()
+			m := metrics.NewSentinelMetrics(registry, "test")
+
+			cfg := newTestSentinelConfig()
+
+			s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
+			if err != nil {
+				t.Fatalf("NewSentinel failed: %v", err)
+			}
+
+			if err := s.trigger(ctx); err == nil {
+				t.Error("Expected error, got nil")
+			}
+
+			labels := prometheus.Labels{
+				"resource_type":     "clusters",
+				"resource_selector": "all",
+				"error_type":        "auth_rejected",
+			}
+			if got := testutil.ToFloat64(m.APIErrors.With(labels)); got != 1 {
+				t.Errorf("Expected api_errors_total{error_type=auth_rejected} == 1, got %v", got)
+			}
+		})
 	}
 }
 
@@ -685,6 +743,162 @@ func getSpanNames(spans []tracetest.SpanStub) []string {
 	return names
 }
 
+// withLogCapture redirects the default slog logger to a buffer, using the
+// same hfl handler configuration as production (context-field extraction
+// via logctx.ContextFields()) so tests observe log output the way it's
+// actually emitted. Mirrors internal/health/health_test.go's withLogCapture.
+func withLogCapture(t *testing.T) (*bytes.Buffer, func()) {
+	t.Helper()
+	var buf bytes.Buffer
+	handler := hfl.NewHandler("sentinel", "test",
+		hfl.WithLevel(slog.LevelDebug),
+		hfl.WithOutput(&buf),
+		hfl.WithContextFields(logctx.ContextFields()...),
+	)
+	prev := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	return &buf, func() { slog.SetDefault(prev) }
+}
+
+// TestClassifyPollError verifies the error_type/status_code classification shared
+// between the poll-loop metric (trigger) and the boundary log (Start).
+func TestClassifyPollError(t *testing.T) {
+	tests := []struct {
+		err            error
+		name           string
+		wantErrorType  string
+		wantStatusCode int
+	}{
+		{
+			name:           "401 APIError maps to auth_rejected",
+			err:            &client.APIError{StatusCode: http.StatusUnauthorized, Message: "unauthorized"},
+			wantErrorType:  "auth_rejected",
+			wantStatusCode: http.StatusUnauthorized,
+		},
+		{
+			name:           "403 APIError maps to auth_rejected",
+			err:            &client.APIError{StatusCode: http.StatusForbidden, Message: "forbidden"},
+			wantErrorType:  "auth_rejected",
+			wantStatusCode: http.StatusForbidden,
+		},
+		{
+			name:           "500 APIError maps to fetch_error",
+			err:            &client.APIError{StatusCode: http.StatusInternalServerError, Message: "server error"},
+			wantErrorType:  "fetch_error",
+			wantStatusCode: http.StatusInternalServerError,
+		},
+		{
+			name:           "TokenError maps to auth_error with status 0",
+			err:            &client.TokenError{},
+			wantErrorType:  "auth_error",
+			wantStatusCode: 0,
+		},
+		{
+			name: "classification survives retry-loop wrapping",
+			err: fmt.Errorf("failed to fetch clusters after retries: %w",
+				&client.APIError{StatusCode: http.StatusForbidden, Message: "forbidden"}),
+			wantErrorType:  "auth_rejected",
+			wantStatusCode: http.StatusForbidden,
+		},
+		{
+			name:           "plain error maps to fetch_error with status 0",
+			err:            errors.New("boom"),
+			wantErrorType:  "fetch_error",
+			wantStatusCode: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotType, gotCode := classifyPollError(tt.err)
+			if gotType != tt.wantErrorType {
+				t.Errorf("classifyPollError() errorType = %q, want %q", gotType, tt.wantErrorType)
+			}
+			if gotCode != tt.wantStatusCode {
+				t.Errorf("classifyPollError() statusCode = %d, want %d", gotCode, tt.wantStatusCode)
+			}
+		})
+	}
+}
+
+// TestLogTriggerError_Fields verifies that the Start() boundary log for a poll
+// failure includes status_code, error_type, and resource_selector, and that
+// resource_type is present via context (set once in Start(), not per-call).
+func TestLogTriggerError_Fields(t *testing.T) {
+	cfg := newTestSentinelConfig()
+	s, err := NewSentinel(cfg, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
+
+	buf, restore := withLogCapture(t)
+	defer restore()
+
+	ctx := hfl.Set(context.Background(), hfl.ResourceTypeKey, s.config.ResourceType)
+	apiErr := &client.APIError{StatusCode: http.StatusForbidden, Message: "forbidden"}
+	s.logTriggerError(ctx, "Trigger failed", apiErr)
+
+	output := buf.String()
+	wantFields := []string{
+		`"resource_type":"clusters"`,
+		`"resource_selector":"all"`,
+		`"error_type":"auth_rejected"`,
+		`"status_code":403`,
+	}
+	for _, field := range wantFields {
+		if !strings.Contains(output, field) {
+			t.Errorf("Expected log output to contain %s, but it did not.\nLog output:\n%s", field, output)
+		}
+	}
+}
+
+// TestLogTriggerError_DoesNotLogToken verifies the boundary log for an auth
+// failure never leaks the bearer token value, even though the request that
+// produced the error carried it in the Authorization header.
+func TestLogTriggerError_DoesNotLogToken(t *testing.T) {
+	const secretToken = "super-secret-test-token-xyz"
+	ctx := context.Background()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	tokenFile := t.TempDir() + "/token"
+	if err := os.WriteFile(tokenFile, []byte(secretToken), 0600); err != nil {
+		t.Fatalf("failed to write token file: %v", err)
+	}
+
+	hyperfleetClient, err := client.NewHyperFleetClient(
+		server.URL, 1*time.Second, "test-sentinel", "test", client.DefaultPageSize, tokenFile, 0)
+	if err != nil {
+		t.Fatalf("failed to create HyperFleet client: %v", err)
+	}
+	decisionEngine := newTestDecisionEngine(t)
+	mockPublisher := &MockPublisher{}
+	registry := prometheus.NewRegistry()
+	metrics.NewSentinelMetrics(registry, "test")
+
+	cfg := newTestSentinelConfig()
+	s, err := NewSentinel(cfg, hyperfleetClient, decisionEngine, mockPublisher)
+	if err != nil {
+		t.Fatalf("NewSentinel failed: %v", err)
+	}
+
+	buf, restore := withLogCapture(t)
+	defer restore()
+
+	triggerErr := s.trigger(ctx)
+	if triggerErr == nil {
+		t.Fatal("Expected trigger error, got nil")
+	}
+	s.logTriggerError(ctx, "Trigger failed", triggerErr)
+
+	if strings.Contains(buf.String(), secretToken) {
+		t.Errorf("Expected log output to NOT contain the bearer token, but it did:\n%s", buf.String())
+	}
+}
+
 // TestTrigger_ContextFieldsPropagateToLogs verifies that resource_type, subset,
 // topic, and decision_reason are present in log output via context-based enrichment.
 func TestTrigger_ContextFieldsPropagateToLogs(t *testing.T) {
@@ -713,15 +927,8 @@ func TestTrigger_ContextFieldsPropagateToLogs(t *testing.T) {
 		t.Fatalf("NewSentinel failed: %v", err)
 	}
 
-	var buf bytes.Buffer
-	handler := hfl.NewHandler("sentinel", "test",
-		hfl.WithLevel(slog.LevelDebug),
-		hfl.WithOutput(&buf),
-		hfl.WithContextFields(logctx.ContextFields()...),
-	)
-	prev := slog.Default()
-	slog.SetDefault(slog.New(handler))
-	defer slog.SetDefault(prev)
+	buf, restore := withLogCapture(t)
+	defer restore()
 
 	if err := s.trigger(ctx); err != nil {
 		t.Fatalf("trigger failed: %v", err)
