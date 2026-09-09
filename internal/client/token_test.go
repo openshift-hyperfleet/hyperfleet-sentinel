@@ -185,7 +185,7 @@ func TestTokenError_Unwrap(t *testing.T) {
 	}
 }
 
-func TestNewHyperFleetClient_BearerToken(t *testing.T) {
+func TestNewHyperFleetClient_DefaultBearerScheme(t *testing.T) {
 	dir := t.TempDir()
 	tokenFile := filepath.Join(dir, "token")
 	if err := os.WriteFile(tokenFile, []byte("test-jwt-token"), 0600); err != nil {
@@ -209,7 +209,7 @@ func TestNewHyperFleetClient_BearerToken(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, tokenFile, 0)
+	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, tokenFile, "", 0)
 	if err != nil {
 		t.Fatalf("NewHyperFleetClient: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestNewHyperFleetClient_NoAuthHeader_WhenNoTokenPath(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
+	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("NewHyperFleetClient: %v", err)
 	}
@@ -253,5 +253,46 @@ func TestNewHyperFleetClient_NoAuthHeader_WhenNoTokenPath(t *testing.T) {
 
 	if receivedAuth != "" {
 		t.Errorf("expected no Authorization header, got %q", receivedAuth)
+	}
+}
+
+func TestNewHyperFleetClient_ConfiguredServiceAccountScheme(t *testing.T) {
+	dir := t.TempDir()
+	tokenFile := filepath.Join(dir, "token")
+	if err := os.WriteFile(tokenFile, []byte("test-jwt-token"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	var receivedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		response := map[string]interface{}{
+			"kind":  "ClusterList",
+			"page":  1,
+			"size":  0,
+			"total": 0,
+			"items": []interface{}{},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			t.Errorf("failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	c, err := NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, tokenFile, "ServiceAccount", 0,
+	)
+	if err != nil {
+		t.Fatalf("NewHyperFleetClient: %v", err)
+	}
+
+	if _, err := c.FetchResources(context.Background(), "clusters", nil); err != nil {
+		t.Fatalf("FetchResources: %v", err)
+	}
+
+	want := "ServiceAccount test-jwt-token"
+	if receivedAuth != want {
+		t.Errorf("Authorization = %q, want %q", receivedAuth, want)
 	}
 }

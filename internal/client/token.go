@@ -9,14 +9,16 @@ import (
 	"time"
 )
 
-// TokenError is returned when a bearer token cannot be read from disk. It is
+// TokenError is returned when the token cannot be read from disk. It is
 // never retriable — the file path is wrong or the file is unreadable, which
 // requires operator intervention rather than a retry.
 type TokenError struct {
 	cause error
 }
 
-func (e *TokenError) Error() string { return fmt.Sprintf("bearer token unavailable: %v", e.cause) }
+func (e *TokenError) Error() string {
+	return fmt.Sprintf("token unavailable: %v", e.cause)
+}
 func (e *TokenError) Unwrap() error { return e.cause }
 
 // IsTokenError reports whether any error in err's chain is a TokenError.
@@ -25,7 +27,7 @@ func IsTokenError(err error) bool {
 	return errors.As(err, &t)
 }
 
-// fileTokenSource reads a bearer token from disk on every call, or caches it
+// fileTokenSource reads a token from disk on every call, or caches it
 // for cacheTTL when cacheTTL > 0. A zero cacheTTL disables caching and causes
 // the file to be re-read on every request. It is safe for concurrent use.
 type fileTokenSource struct {

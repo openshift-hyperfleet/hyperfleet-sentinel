@@ -102,7 +102,7 @@ func classifyPollError(err error) (errorType string, statusCode int) {
 // logTriggerError logs a poll failure at the service boundary with the
 // status code, error classification, and resource context needed to
 // diagnose auth rejections without digging through error strings. Does not
-// log the bearer token.
+// log the token.
 func (s *Sentinel) logTriggerError(ctx context.Context, msg string, err error) {
 	errorType, statusCode := classifyPollError(err)
 	resourceSelector := metrics.GetResourceSelectorLabel(s.config.ResourceSelector)

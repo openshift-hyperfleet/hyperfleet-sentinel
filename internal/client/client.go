@@ -37,23 +37,29 @@ const (
 	DefaultPageSize int32 = 20
 )
 
+// DefaultAuthScheme is the Authorization header scheme used when authScheme is not set,
+// matching the "Bearer"-only validation in hyperfleet-api's JWT handler.
+const DefaultAuthScheme = "Bearer"
+
 // HyperFleetClient wraps the HTTP client for the HyperFleet API
 type HyperFleetClient struct {
 	httpClient  *http.Client
 	tokenSource *fileTokenSource
 	baseURL     string
 	userAgent   string
+	authScheme  string
 	pageSize    int32
 }
 
 // NewHyperFleetClient creates a new HyperFleet API client.
 // sentinelName and version are used to build the User-Agent header sent with every request.
-// tokenPath is optional; when non-empty the client reads a bearer token from that file and
-// injects it as an Authorization header on every request. tokenCacheTTL controls how long
-// the token is cached before the file is re-read; 0 disables caching and re-reads the file on every request.
+// tokenPath is optional; when non-empty the client reads a service account token
+// from that file and injects it using authScheme (defaults to "Bearer" when empty) on
+// every request. tokenCacheTTL controls how long the token is cached before the
+// file is re-read; 0 disables caching and re-reads the file on every request.
 func NewHyperFleetClient(
 	endpoint string, timeout time.Duration, sentinelName, version string, pageSize int32,
-	tokenPath string, tokenCacheTTL time.Duration,
+	tokenPath, authScheme string, tokenCacheTTL time.Duration,
 ) (*HyperFleetClient, error) {
 	u, err := url.ParseRequestURI(endpoint)
 	if err != nil {
@@ -79,12 +85,17 @@ func NewHyperFleetClient(
 		ts = newFileTokenSource(tokenPath, tokenCacheTTL)
 	}
 
+	if authScheme == "" {
+		authScheme = DefaultAuthScheme
+	}
+
 	return &HyperFleetClient{
 		httpClient:  httpClient,
 		baseURL:     strings.TrimRight(endpoint, "/"),
 		userAgent:   fmt.Sprintf("hyperfleet-sentinel/%s (%s)", version, sentinelName),
 		pageSize:    pageSize,
 		tokenSource: ts,
+		authScheme:  authScheme,
 	}, nil
 }
 
@@ -305,7 +316,7 @@ func (c *HyperFleetClient) setAuthHeader(req *http.Request) error {
 	if err != nil {
 		return &TokenError{cause: err}
 	}
-	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Authorization", c.authScheme+" "+tok)
 	return nil
 }
 
@@ -327,7 +338,7 @@ func (c *HyperFleetClient) VerifyConnectivity(ctx context.Context, resourceType 
 	}
 	req.Header.Set("User-Agent", c.userAgent)
 	if authErr := c.setAuthHeader(req); authErr != nil {
-		return fmt.Errorf("bearer token unavailable: %w", authErr)
+		return fmt.Errorf("token unavailable: %w", authErr)
 	}
 
 	resp, err := c.httpClient.Do(req)

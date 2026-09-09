@@ -29,6 +29,7 @@ data:
         {{- if .Values.config.clients.hyperfleetApi.auth.enabled }}
         auth:
           token_path: {{ .Values.config.clients.hyperfleetApi.auth.tokenPath | quote }}
+          scheme: {{ .Values.config.clients.hyperfleetApi.auth.scheme | quote }}
           token_cache_ttl: {{ .Values.config.clients.hyperfleetApi.auth.tokenCacheTtl | quote }}
         {{- end }}
 

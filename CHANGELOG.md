@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CEL decision and payload contexts now expose `name`, `spec`, and `references` fields from generic resources
 - Grafana dashboard provisioning via sidecar ConfigMap, gated by `monitoring.dashboard.enabled`
 - Dashboard JSON moved from `deployments/dashboards/` to `charts/dashboards/`
+- `clients.hyperfleet_api.auth.scheme` (Helm: `config.clients.hyperfleetApi.auth.scheme`) configures the Authorization header scheme sent with the service account token; defaults to `Bearer` for backwards compatibility, set to `ServiceAccount` when fronted by a gateway that differentiates human-jwt callers from machine callers
 
 ### Changed
 - BREAKING CHANGE: `tracing` moved from top-level to `monitoring.tracing`

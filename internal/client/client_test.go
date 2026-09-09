@@ -585,7 +585,7 @@ func TestFetchResources_MissingTokenFile(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "/nonexistent/token", 0,
+		server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "/nonexistent/token", "", 0,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
@@ -756,7 +756,7 @@ func TestNewHyperFleetClient_UserAgent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "my-sentinel", "v1.2.3", DefaultPageSize, "", 0)
+	c, err := NewHyperFleetClient(server.URL, 10*time.Second, "my-sentinel", "v1.2.3", DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("NewHyperFleetClient: %v", err)
 	}
@@ -922,7 +922,7 @@ func TestVerifyConnectivity_MissingTokenFile(t *testing.T) {
 	defer server.Close()
 
 	client, err := NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "/nonexistent/token", 0,
+		server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "/nonexistent/token", "", 0,
 	)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
@@ -980,7 +980,9 @@ func TestVerifyConnectivity_SendsAuthHeader(t *testing.T) {
 		t.Fatalf("Failed to write token file: %v", err)
 	}
 
-	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, tokenFile, 0)
+	client, err := NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, tokenFile, "", 0,
+	)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -990,6 +992,38 @@ func TestVerifyConnectivity_SendsAuthHeader(t *testing.T) {
 	}
 	if receivedAuth != "Bearer test-token" {
 		t.Errorf("Expected Authorization header %q, got %q", "Bearer test-token", receivedAuth)
+	}
+}
+
+func TestVerifyConnectivity_SendsConfiguredAuthScheme(t *testing.T) {
+	var receivedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(map[string]string{keyStatus: "ok"}); err != nil {
+			t.Errorf("Failed to encode response: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	tokenFile := t.TempDir() + "/token"
+	if err := os.WriteFile(tokenFile, []byte("test-token"), 0600); err != nil {
+		t.Fatalf("Failed to write token file: %v", err)
+	}
+
+	client, err := NewHyperFleetClient(
+		server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, tokenFile, "ServiceAccount", 0,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	if err := client.VerifyConnectivity(context.Background(), "clusters"); err != nil {
+		t.Fatalf("VerifyConnectivity returned unexpected error: %v", err)
+	}
+	if receivedAuth != "ServiceAccount test-token" {
+		t.Errorf("Expected Authorization header %q, got %q", "ServiceAccount test-token", receivedAuth)
 	}
 }
 
@@ -1033,7 +1067,7 @@ func TestBuildSearchString(t *testing.T) {
 
 func newTestClient(t *testing.T, url string, timeout time.Duration) *HyperFleetClient {
 	t.Helper()
-	client, err := NewHyperFleetClient(url, timeout, "test-sentinel", "test", DefaultPageSize, "", 0)
+	client, err := NewHyperFleetClient(url, timeout, "test-sentinel", "test", DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1075,7 +1109,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1177,7 +1211,7 @@ func TestNewHyperFleetClient_HTTPInstrumentation_ErrorCase(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
+	client, err := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
@@ -1214,7 +1248,7 @@ func TestFetchResources_WithAdditionalFilters(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", "", 0)
 	labelSelector := map[string]string{testLabelShard: "1"}
 
 	_, err := client.FetchResources(
@@ -1245,7 +1279,7 @@ func TestFetchResources_WithConditionFilterOnly(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", 0)
+	client, _ := NewHyperFleetClient(server.URL, 10*time.Second, "test-sentinel", "test", DefaultPageSize, "", "", 0)
 
 	_, err := client.FetchResources(
 		context.Background(), "clusters", nil,

@@ -155,7 +155,7 @@ func TestTrigger_Success(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestTrigger_NoEventsPublished(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestTrigger_FetchError(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 1*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+		server.URL, 1*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -286,7 +286,7 @@ func TestTrigger_AuthError(t *testing.T) {
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
 		server.URL, 1*time.Second, "test-sentinel", "test", client.DefaultPageSize,
-		"/nonexistent/path/to/token", 0)
+		"/nonexistent/path/to/token", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -342,7 +342,7 @@ func TestTrigger_AuthRejectedMetric(t *testing.T) {
 			defer server.Close()
 
 			hyperfleetClient, err := client.NewHyperFleetClient(
-				server.URL, 1*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+				server.URL, 1*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", "", 0)
 			if err != nil {
 				t.Fatalf("failed to create HyperFleet client: %v", err)
 			}
@@ -387,7 +387,7 @@ func TestTrigger_PublishError(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -429,7 +429,7 @@ func TestTrigger_MixedResources(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -476,7 +476,7 @@ func TestTrigger_WithMessageDataConfig(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -534,7 +534,7 @@ func TestTrigger_WithNestedMessageData(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -630,7 +630,7 @@ func TestTrigger_CreatesRequiredSpans(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -853,7 +853,7 @@ func TestLogTriggerError_Fields(t *testing.T) {
 }
 
 // TestLogTriggerError_DoesNotLogToken verifies the boundary log for an auth
-// failure never leaks the bearer token value, even though the request that
+// failure never leaks the token value, even though the request that
 // produced the error carried it in the Authorization header.
 func TestLogTriggerError_DoesNotLogToken(t *testing.T) {
 	const secretToken = "super-secret-test-token-xyz"
@@ -870,7 +870,7 @@ func TestLogTriggerError_DoesNotLogToken(t *testing.T) {
 	}
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 1*time.Second, "test-sentinel", "test", client.DefaultPageSize, tokenFile, 0)
+		server.URL, 1*time.Second, "test-sentinel", "test", client.DefaultPageSize, tokenFile, "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}
@@ -895,7 +895,7 @@ func TestLogTriggerError_DoesNotLogToken(t *testing.T) {
 	s.logTriggerError(ctx, "Trigger failed", triggerErr)
 
 	if strings.Contains(buf.String(), secretToken) {
-		t.Errorf("Expected log output to NOT contain the bearer token, but it did:\n%s", buf.String())
+		t.Errorf("Expected log output to NOT contain the token, but it did:\n%s", buf.String())
 	}
 }
 
@@ -911,7 +911,7 @@ func TestTrigger_ContextFieldsPropagateToLogs(t *testing.T) {
 	defer server.Close()
 
 	hyperfleetClient, err := client.NewHyperFleetClient(
-		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", 0)
+		server.URL, 10*time.Second, "test-sentinel", "test", client.DefaultPageSize, "", "", 0)
 	if err != nil {
 		t.Fatalf("failed to create HyperFleet client: %v", err)
 	}

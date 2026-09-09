@@ -79,10 +79,11 @@ type ClientsConfig struct {
 }
 
 // HyperFleetAPIAuthConfig defines optional JWT authentication via a Kubernetes
-// projected service account token. When set, the bearer token is read from
-// TokenPath and injected into every API request.
+// projected service account token. When set, the token is read from TokenPath
+// and injected using the configured Scheme (defaults to "Bearer") in every API request.
 type HyperFleetAPIAuthConfig struct {
 	TokenPath     string        `yaml:"token_path" mapstructure:"token_path"`
+	Scheme        string        `yaml:"scheme,omitempty" mapstructure:"scheme"`
 	TokenCacheTTL time.Duration `yaml:"token_cache_ttl" mapstructure:"token_cache_ttl"`
 }
 
@@ -191,6 +192,7 @@ var viperKeyMappings = map[string]string{
 	"clients::hyperfleet_api::timeout":               "API_TIMEOUT",
 	"clients::hyperfleet_api::page_size":             "API_PAGE_SIZE",
 	"clients::hyperfleet_api::auth::token_path":      "API_AUTH_TOKEN_PATH",
+	"clients::hyperfleet_api::auth::scheme":          "API_AUTH_SCHEME",
 	"clients::hyperfleet_api::auth::token_cache_ttl": "API_AUTH_TOKEN_CACHE_TTL",
 	"clients::broker::topic":                         "BROKER_TOPIC",
 	"resource_type":                                  "RESOURCE_TYPE",
