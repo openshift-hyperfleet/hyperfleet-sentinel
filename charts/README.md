@@ -63,15 +63,16 @@ helm install hyperfleet-sentinel oci://quay.io/redhat-services-prod/hyperfleet-t
 | config.log.level | string | `"info"` | Log level (`debug`, `info`, `warn`, `error`) |
 | config.log.format | string | `"json"` | Log format (`json` or `text`) |
 | config.log.output | string | `"stdout"` | Log output destination |
-| config.clients | object | `{"hyperfleetApi":{"auth":{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"},"baseUrl":"http://hyperfleet-api:8000","timeout":"10s","version":"v1"}}` | Client configuration |
-| config.clients.hyperfleetApi | object | `{"auth":{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"},"baseUrl":"http://hyperfleet-api:8000","timeout":"10s","version":"v1"}` | HyperFleet API client settings |
+| config.clients | object | `{"hyperfleetApi":{"auth":{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"scheme":"Bearer","tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"},"baseUrl":"http://hyperfleet-api:8000","timeout":"10s","version":"v1"}}` | Client configuration |
+| config.clients.hyperfleetApi | object | `{"auth":{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"scheme":"Bearer","tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"},"baseUrl":"http://hyperfleet-api:8000","timeout":"10s","version":"v1"}` | HyperFleet API client settings |
 | config.clients.hyperfleetApi.baseUrl | string | `"http://hyperfleet-api:8000"` | API base URL (use in-cluster service name) |
 | config.clients.hyperfleetApi.version | string | `"v1"` | API version |
 | config.clients.hyperfleetApi.timeout | string | `"10s"` | HTTP client timeout |
-| config.clients.hyperfleetApi.auth | object | `{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"}` | Optional JWT authentication via a Kubernetes projected service account token. When enabled, a projected volume is mounted and the token is sent as a Bearer Authorization header on every API request. |
+| config.clients.hyperfleetApi.auth | object | `{"audience":"hyperfleet-api","enabled":false,"expirationSeconds":3600,"scheme":"Bearer","tokenCacheTtl":"30s","tokenPath":"/var/run/secrets/hyperfleet/token"}` | Optional JWT authentication via a Kubernetes projected service account token. When enabled, a projected volume is mounted and the token is sent using the configured Authorization scheme on every API request. |
 | config.clients.hyperfleetApi.auth.enabled | bool | `false` | Enable JWT authentication |
 | config.clients.hyperfleetApi.auth.audience | string | `"hyperfleet-api"` | Audience for the projected service account token |
 | config.clients.hyperfleetApi.auth.tokenPath | string | `"/var/run/secrets/hyperfleet/token"` | Full path where the token file is mounted in the container |
+| config.clients.hyperfleetApi.auth.scheme | string | `"Bearer"` | Authorization header scheme used when sending the token (e.g. `Bearer` for in-app JWT validation, `ServiceAccount` when a gateway differentiates machine callers from human-jwt callers) |
 | config.clients.hyperfleetApi.auth.expirationSeconds | int | `3600` | Token lifetime in seconds; Kubernetes rotates the token before it expires |
 | config.clients.hyperfleetApi.auth.tokenCacheTtl | string | `"30s"` | How long the token is cached in memory before the file is re-read; 0 disables caching |
 | config.resourceType | string | `"clusters"` | Resource type plural to watch (any registered entity type, e.g. `clusters`, `nodepools`, `wifconfigs`) |

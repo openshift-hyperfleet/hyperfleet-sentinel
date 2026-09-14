@@ -249,15 +249,17 @@ func runServe(
 
 	// Initialize components
 	tokenPath := ""
+	authScheme := ""
 	var tokenCacheTTL time.Duration
 	if cfg.Clients.HyperFleetAPI.Auth != nil {
 		tokenPath = cfg.Clients.HyperFleetAPI.Auth.TokenPath
+		authScheme = cfg.Clients.HyperFleetAPI.Auth.Scheme
 		tokenCacheTTL = cfg.Clients.HyperFleetAPI.Auth.TokenCacheTTL
 	}
 	hyperfleetClient, err := client.NewHyperFleetClient(
 		cfg.Clients.HyperFleetAPI.BaseURL, cfg.Clients.HyperFleetAPI.Timeout,
 		cfg.Sentinel.Name, version, cfg.Clients.HyperFleetAPI.PageSize,
-		tokenPath, tokenCacheTTL,
+		tokenPath, authScheme, tokenCacheTTL,
 	)
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to initialize OpenAPI client", "error", err)

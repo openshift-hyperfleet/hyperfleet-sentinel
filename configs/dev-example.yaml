@@ -42,6 +42,7 @@ clients:
     # Not typically needed for local development.
     # auth:
     #   token_path: /var/run/secrets/hyperfleet/token
+    #   scheme: Bearer  # defaults to Bearer; use ServiceAccount behind a gateway that expects it
     #   token_cache_ttl: 30s  # 0 disables caching
 
   # Broker configuration
