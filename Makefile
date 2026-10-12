@@ -1,5 +1,11 @@
 .DEFAULT_GOAL := help
 
+# CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
+# Use ?= so callers can override on the command line, e.g. CGO_ENABLED=0 make build for a non-FIPS static binary
+CGO_ENABLED ?= 1
+GOEXPERIMENT ?= boringcrypto
+GOFIPS140 ?= off
+
 GO ?= go
 GOFMT ?= gofmt
 
@@ -66,11 +72,11 @@ generate: download ## Generate OpenAPI types using oapi-codegen
 .PHONY: build
 build: generate ## Build the sentinel binary
 	@mkdir -p $(BIN_DIR)
-	$(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/sentinel
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/sentinel
 
 .PHONY: install
 install: ## Build and install binary to GOPATH/bin
-	$(GO) install $(GOFLAGS) -ldflags "$(LDFLAGS)" ./cmd/sentinel
+	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) install $(GOFLAGS) -ldflags "$(LDFLAGS)" ./cmd/sentinel
 
 .PHONY: install-hooks
 install-hooks: ## Install pre-commit hooks
