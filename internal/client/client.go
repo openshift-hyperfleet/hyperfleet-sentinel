@@ -15,7 +15,6 @@ import (
 	"unicode"
 
 	"github.com/cenkalti/backoff/v5"
-	"github.com/openshift-hyperfleet/hyperfleet-sentinel/pkg/api/openapi"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
@@ -220,6 +219,53 @@ func (r *Resource) ToMap() map[string]interface{} {
 	return m
 }
 
+// apiObjectReference is the wire format of owner_references/references entries
+type apiObjectReference struct {
+	ID   string `json:"id"`
+	Href string `json:"href"`
+	Kind string `json:"kind"`
+}
+
+// apiCondition is the wire format of a status condition
+type apiCondition struct {
+	LastTransitionTime time.Time `json:"last_transition_time"`
+	LastUpdatedTime    time.Time `json:"last_updated_time"`
+	Type               string    `json:"type"`
+	Status             string    `json:"status"`
+	Reason             string    `json:"reason,omitempty"`
+	Message            string    `json:"message,omitempty"`
+	ObservedGeneration int32     `json:"observed_generation"`
+}
+
+// apiResourceStatus is the wire format of a resource's status
+type apiResourceStatus struct {
+	Conditions []apiCondition `json:"conditions"`
+}
+
+// apiResource is the subset of the API resource envelope Sentinel reads
+type apiResource struct {
+	CreatedTime     time.Time                       `json:"created_time"`
+	UpdatedTime     time.Time                       `json:"updated_time"`
+	Labels          map[string]string               `json:"labels,omitempty"`
+	OwnerReferences *apiObjectReference             `json:"owner_references,omitempty"`
+	References      map[string][]apiObjectReference `json:"references,omitempty"`
+	Spec            map[string]interface{}          `json:"spec,omitempty"`
+	ID              string                          `json:"id"`
+	Href            string                          `json:"href"`
+	Kind            string                          `json:"kind"`
+	Name            string                          `json:"name"`
+	Status          apiResourceStatus               `json:"status"`
+	Generation      int32                           `json:"generation"`
+}
+
+// apiResourceList is the wire format of a paginated resource list response
+type apiResourceList struct {
+	Items []apiResource `json:"items"`
+	Page  int32         `json:"page"`
+	Size  int32         `json:"size"`
+	Total int64         `json:"total"`
+}
+
 // validateResourceType ensures resourceType is a safe, single URL path segment.
 func validateResourceType(resourceType string) error {
 	if resourceType == "" {
@@ -419,7 +465,7 @@ func (c *HyperFleetClient) fetchResourcesOnce(
 
 func (c *HyperFleetClient) fetchResources(ctx context.Context, resourceType, searchParam string) ([]Resource, error) {
 	return fetchPaginated(ctx, c, searchParam,
-		func(ctx context.Context, page, pageSize int32, search string) ([]openapi.Resource, int64, error) {
+		func(ctx context.Context, page, pageSize int32, search string) ([]apiResource, int64, error) {
 			return c.fetchResourcesPage(ctx, resourceType, page, pageSize, search)
 		},
 		convertResource)
@@ -465,7 +511,7 @@ func fetchPaginated[T any](
 
 func (c *HyperFleetClient) fetchResourcesPage(
 	ctx context.Context, resourceType string, page, pageSize int32, searchParam string,
-) ([]openapi.Resource, int64, error) {
+) ([]apiResource, int64, error) {
 	reqURL := fmt.Sprintf("%s/api/hyperfleet/v1/%s?page=%d&size=%d",
 		c.baseURL, resourceType, page, pageSize)
 	if searchParam != "" {
@@ -501,7 +547,7 @@ func (c *HyperFleetClient) fetchResourcesPage(
 		return nil, 0, &APIError{StatusCode: 0, Message: msg, Retriable: false}
 	}
 
-	var resourceList openapi.ResourceList
+	var resourceList apiResourceList
 	if err := json.Unmarshal(body, &resourceList); err != nil {
 		msg := fmt.Sprintf("failed to decode response: %v", err)
 		return nil, 0, &APIError{StatusCode: 0, Message: msg, Retriable: false}
@@ -510,54 +556,32 @@ func (c *HyperFleetClient) fetchResourcesPage(
 	return resourceList.Items, resourceList.Total, nil
 }
 
-func convertResource(item openapi.Resource) Resource {
-	href := ""
-	if item.Href != nil {
-		href = *item.Href
-	}
-
+func convertResource(item apiResource) Resource {
 	resource := Resource{
-		ID:          item.Id,
-		Href:        href,
+		ID:          item.ID,
+		Href:        item.Href,
 		Kind:        item.Kind,
 		Name:        item.Name,
 		Generation:  item.Generation,
 		CreatedTime: item.CreatedTime,
 		UpdatedTime: item.UpdatedTime,
+		Labels:      item.Labels,
 		Spec:        item.Spec,
-		Status:      ResourceStatus{},
-	}
-
-	if item.Labels != nil {
-		resource.Labels = *item.Labels
 	}
 
 	if item.OwnerReferences != nil {
-		ref := &ObjectReference{Kind: item.OwnerReferences.Kind}
-		if item.OwnerReferences.Id != nil {
-			ref.ID = *item.OwnerReferences.Id
-		}
-		if item.OwnerReferences.Href != nil {
-			ref.Href = *item.OwnerReferences.Href
-		}
+		ref := ObjectReference(*item.OwnerReferences)
 		if ref.ID != "" || ref.Href != "" || ref.Kind != "" {
-			resource.OwnerReferences = ref
+			resource.OwnerReferences = &ref
 		}
 	}
 
-	if item.References != nil {
-		resource.References = make(map[string][]ObjectReference, len(*item.References))
-		for key, refs := range *item.References {
+	if len(item.References) > 0 {
+		resource.References = make(map[string][]ObjectReference, len(item.References))
+		for key, refs := range item.References {
 			converted := make([]ObjectReference, len(refs))
 			for i, r := range refs {
-				ref := ObjectReference{Kind: r.Kind}
-				if r.Id != nil {
-					ref.ID = *r.Id
-				}
-				if r.Href != nil {
-					ref.Href = *r.Href
-				}
-				converted[i] = ref
+				converted[i] = ObjectReference(r)
 			}
 			resource.References[key] = converted
 		}
@@ -566,20 +590,7 @@ func convertResource(item openapi.Resource) Resource {
 	if len(item.Status.Conditions) > 0 {
 		resource.Status.Conditions = make([]Condition, 0, len(item.Status.Conditions))
 		for _, cond := range item.Status.Conditions {
-			condition := Condition{
-				Type:               cond.Type,
-				Status:             string(cond.Status),
-				LastTransitionTime: cond.LastTransitionTime,
-				LastUpdatedTime:    cond.LastUpdatedTime,
-				ObservedGeneration: cond.ObservedGeneration,
-			}
-			if cond.Reason != nil {
-				condition.Reason = *cond.Reason
-			}
-			if cond.Message != nil {
-				condition.Message = *cond.Message
-			}
-			resource.Status.Conditions = append(resource.Status.Conditions, condition)
+			resource.Status.Conditions = append(resource.Status.Conditions, Condition(cond))
 		}
 	}
 

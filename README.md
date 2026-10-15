@@ -30,7 +30,7 @@ See [hyperfleet-infra](https://github.com/openshift-hyperfleet/hyperfleet-infra)
 ### Try Locally
 
 ```bash
-make generate && make build
+make build
 export BROKER_RABBITMQ_URL="amqp://guest:guest@localhost:5672/"
 export HYPERFLEET_BROKER_TOPIC=hyperfleet-dev-clusters
 ./bin/sentinel serve --config=configs/dev-example.yaml

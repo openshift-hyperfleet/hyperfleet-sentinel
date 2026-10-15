@@ -14,9 +14,6 @@ GOFMT ?= gofmt
 TOOL_MOD := tools/go.mod
 gotool = "$(GO)" tool -modfile="$(TOOL_MOD)" $(1)
 
-# Schema variant for OpenAPI generation (core, gcp)
-VARIANT ?= core
-
 # Binary output directory and name
 BIN_DIR := bin
 BINARY_NAME := $(BIN_DIR)/sentinel
@@ -56,21 +53,10 @@ DEV_TAG ?= dev-$(GIT_SHA)
 help: ## Display this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
-##@ Code Generation
-
-.PHONY: generate
-generate: download ## Generate OpenAPI types using oapi-codegen
-	@rm -rf pkg/api/openapi
-	@mkdir -p pkg/api/openapi openapi
-	@rm -f openapi/openapi.yaml
-	@cp "$$($(GO) list -m -f '{{.Dir}}' github.com/openshift-hyperfleet/hyperfleet-api-spec)/schemas/$(VARIANT)/openapi.yaml" openapi/openapi.yaml
-	$(call gotool,oapi-codegen) --config openapi/oapi-codegen.yaml openapi/openapi.yaml
-	@printf 'package openapi\n\nimport _ "github.com/oapi-codegen/runtime"\n' > pkg/api/openapi/stub.go
-
 ##@ Development
 
 .PHONY: build
-build: generate ## Build the sentinel binary
+build: ## Build the sentinel binary
 	@mkdir -p $(BIN_DIR)
 	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/sentinel
 
@@ -89,17 +75,16 @@ run: build ## Run the sentinel service
 .PHONY: clean
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)
-	rm -rf pkg/api/openapi
 	rm -f coverage.out
 
 ##@ Testing
 
 .PHONY: test
-test: generate ## Run unit tests (default)
+test: ## Run unit tests (default)
 	$(GO) test -v -race -coverprofile=coverage.out ./...
 
 .PHONY: test-unit
-test-unit: generate ## Run unit tests only
+test-unit: ## Run unit tests only
 	$(GO) test -v -race -cover ./internal/config/
 	$(GO) test -v -race -cover ./internal/client/
 	$(GO) test -v -race -cover ./internal/engine/
@@ -109,7 +94,7 @@ test-unit: generate ## Run unit tests only
 	$(GO) test -v -race -cover ./pkg/...
 
 .PHONY: test-integration
-test-integration: generate ## Run integration tests only
+test-integration: ## Run integration tests only
 	@echo "Running integration tests..."
 	TESTCONTAINERS_RYUK_DISABLED=true $(GO) test -v -race -tags=integration ./test/integration/... -timeout 30m
 

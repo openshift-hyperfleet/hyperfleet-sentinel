@@ -66,13 +66,8 @@ linters:
           - errcheck
           - unparam
         path: _test\.go
-      # Exclude generated code (backup pattern if exclusion paths don't catch all)
-      - linters:
-          - all
-        path: pkg/api/openapi/
     # Add repository-specific generated code directories here
     paths:
-      - pkg/api/openapi
       - data/generated
       - third_party(/|$)
       - builtin(/|$)

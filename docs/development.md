@@ -14,20 +14,16 @@
 ```bash
 git clone https://github.com/openshift-hyperfleet/hyperfleet-sentinel.git
 cd hyperfleet-sentinel
-make generate       # generate OpenAPI client (required before build/test)
 make download        # fetch Go dependencies
 make build           # build bin/sentinel
 make test            # run unit tests
 make install-hooks   # install pre-commit hooks
 ```
 
-> The OpenAPI client in `pkg/api/openapi/` is **not committed to git** — `make generate` must run before any build or test. See [openapi/README.md](../openapi/README.md) for spec version upgrades and generator details.
-
 ## Make Targets
 
 | Target | Description |
 |--------|-------------|
-| `make generate` | Generate OpenAPI client from spec (Docker/Podman) |
 | `make build` | Build `bin/sentinel` binary |
 | `make test` | Unit tests with coverage |
 | `make test-unit` | Unit tests only (specific packages) |

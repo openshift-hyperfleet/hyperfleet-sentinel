@@ -262,8 +262,8 @@ func runServe(
 		tokenPath, authScheme, tokenCacheTTL,
 	)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to initialize OpenAPI client", "error", err)
-		return fmt.Errorf("failed to initialize OpenAPI client: %w", err)
+		slog.ErrorContext(ctx, "Failed to initialize HyperFleet client", "error", err)
+		return fmt.Errorf("failed to initialize HyperFleet client: %w", err)
 	}
 
 	// verify HyperFleet client connectivity

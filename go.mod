@@ -7,8 +7,6 @@ require (
 	github.com/cenkalti/backoff/v5 v5.0.3
 	github.com/cloudevents/sdk-go/v2 v2.16.2
 	github.com/google/uuid v1.6.0
-	github.com/oapi-codegen/runtime v1.7.0
-	github.com/openshift-hyperfleet/hyperfleet-api-spec v1.0.27
 	github.com/openshift-hyperfleet/hyperfleet-broker v1.1.2-0.20260805201321-4ebbef72d0d2
 	github.com/openshift-hyperfleet/hyperfleet-logger v0.0.0-20260811173525-c9f9e282d029
 	github.com/prometheus/client_golang v1.25.0
@@ -51,7 +49,6 @@ require (
 	github.com/ThreeDotsLabs/watermill v1.5.2 // indirect
 	github.com/ThreeDotsLabs/watermill-amqp/v3 v3.1.0 // indirect
 	github.com/ThreeDotsLabs/watermill-googlecloud/v2 v2.0.1 // indirect
-	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cenkalti/backoff/v3 v3.2.2 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
