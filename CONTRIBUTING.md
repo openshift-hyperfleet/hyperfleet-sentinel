@@ -15,25 +15,20 @@ cd hyperfleet-sentinel
 # - Make
 # - pre-commit
 
-# 3. Generate OpenAPI client (required before any other commands)
-make generate
-
-# 4. Install dependencies
+# 3. Install dependencies
 make download
 
-# 5. Build the project
+# 4. Build the project
 make build
 
-# 6. Run tests to verify setup
+# 5. Run tests to verify setup
 make test
 
-# 7. Install git hooks
+# 6. Install git hooks
 make install-hooks
 ```
 
 **First-time setup notes:**
-- The OpenAPI client code is **not committed** to git and must be generated locally via `make generate`
-- Generated code appears in `pkg/api/openapi/` and must be regenerated after any spec updates
 - Integration tests require Docker/Podman for testcontainers (RabbitMQ, GCP Pub/Sub emulators)
 - `make install-hooks` installs pre-commit hooks configured in `.pre-commit-config.yaml` for commit message and code quality validation on every commit
 - See [docs/testcontainers.md](docs/testcontainers.md) for Docker/Podman configuration
@@ -58,14 +53,12 @@ hyperfleet-sentinel/
 │   ├── publisher/         # CloudEvents publishing logic
 │   └── sentinel/          # Main service orchestration
 ├── pkg/                   # Public library code
-│   ├── api/openapi/       # Generated OpenAPI client (not committed)
 │   └── metrics/           # Prometheus metrics definitions
 ├── test/
 │   └── integration/       # Integration tests with testcontainers
 ├── charts/                # Helm chart for deployment
 ├── configs/               # Example configuration files
 ├── deployments/           # Kubernetes manifests and Grafana dashboards
-├── openapi/               # OpenAPI client generation config
 ├── docs/                  # Additional documentation
 ├── Makefile               # Build automation and development tasks
 ├── README.md              # Getting started guide
@@ -176,20 +169,6 @@ BROKER_CONFIG_FILE=broker.yaml ./bin/sentinel serve --config configs/dev-example
 
 # For detailed local deployment instructions, see docs/development.md
 # For detailed GKE deployment instructions, see docs/sentinel-for-gke-dev.md
-```
-
-### Code Generation
-```bash
-# Generate OpenAPI client from the pinned hyperfleet-api-spec module
-make generate
-
-# To upgrade the spec version, bump the module in go.mod first:
-go get github.com/openshift-hyperfleet/hyperfleet-api-spec@vX.Y.Z
-go mod tidy
-make generate
-
-# Clean generated code
-make clean
 ```
 
 ## Commit Standards

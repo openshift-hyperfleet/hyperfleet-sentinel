@@ -1,7 +1,3 @@
-# Ignore generated OpenAPI client - it's regenerated fresh during build
-# from the hyperfleet-api repository
-pkg/api/openapi/
-
 # Build artifacts
 bin/
 *.exe

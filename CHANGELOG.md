@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Removed
 - BREAKING CHANGE: `messaging_system` config field and `MESSAGING_SYSTEM` env var removed, `messaging.system` OTel span attribute is now derived from `publisher.BrokerType()`. Remove `messaging_system` from configs before upgrading.
+- The oapi-codegen generation pipeline (`make generate`, `openapi/`, `pkg/api/openapi/`, the `VARIANT` variable) and the `oapi-codegen` and `hyperfleet-api-spec` module dependencies. `internal/client` now decodes API list responses directly into local, unexported structs, so builds and tests no longer require a code generation step.
 
 ### Fixed
 - Sentinel now paginates API responses, fetching all resources instead of only the first page (default size 20). Environments with more than 20 clusters/nodepools were missing reconciliation events.

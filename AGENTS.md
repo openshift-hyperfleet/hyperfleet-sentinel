@@ -6,7 +6,7 @@ HyperFleet Sentinel is a **Kubernetes resource watcher** that polls the HyperFle
 
 - **Language**: Go 1.26 (see `go.mod`)
 - **Messaging**: Broker abstraction (RabbitMQ, GCP Pub/Sub, Stub)
-- **API Client**: Generated from [hyperfleet-api-spec](https://github.com/openshift-hyperfleet/hyperfleet-api-spec) — see [openapi/README.md](openapi/README.md)
+- **API Client**: HTTP client in `internal/client/` that decodes the generic resource envelope (`GET /api/hyperfleet/v1/:resource_type`) into local structs — no code generation
 - **Deployment**: Helm chart in `charts/`
 
 Sentinel is one component in the HyperFleet control plane:
@@ -17,18 +17,11 @@ Sentinel is one component in the HyperFleet control plane:
 
 ## Critical First Steps
 
-**Generated OpenAPI client is NOT committed to git.** Before any build, test, or development task:
-
-```bash
-make generate    # Extracts OpenAPI spec from hyperfleet-api-spec module and generates Go client
-```
-
 Setup sequence for a fresh clone:
-1. `make generate` — generate OpenAPI client in `pkg/api/openapi/`
-2. `make download` — fetch Go dependencies
-3. `make install-hooks` — install pre-commit hooks (secret scanning, linting, etc.)
-4. `make build` — build `bin/sentinel` binary
-5. `make test` — verify unit tests pass
+1. `make download` — fetch Go dependencies
+2. `make install-hooks` — install pre-commit hooks (secret scanning, linting, etc.)
+3. `make build` — build `bin/sentinel` binary
+4. `make test` — verify unit tests pass
 
 ## Verification
 
@@ -46,13 +39,12 @@ Setup sequence for a fresh clone:
 Quick feedback: `make verify && make test-unit`. Full pre-push: `make test-all`.
 
 **PR pre-flight order:**
-1. `make generate`
-2. `make fmt`
-3. `make lint`
-4. `make test-unit`
-5. `make test-integration` — if broker/API changes
-6. `make test-helm` — if chart changes
-7. Update CHANGELOG.md if the change is user-visible
+1. `make fmt`
+2. `make lint`
+3. `make test-unit`
+4. `make test-integration` — if broker/API changes
+5. `make test-helm` — if chart changes
+6. Update CHANGELOG.md if the change is user-visible
 
 ## Source of Truth
 
@@ -67,7 +59,6 @@ Quick feedback: `make verify && make test-unit`. Full pre-push: `make test-all`.
 | Alerts and runbooks | [docs/alerts.md](docs/alerts.md), [docs/runbook.md](docs/runbook.md) |
 | Helm values | [charts/values.yaml](charts/values.yaml) |
 | Contributing and setup | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| OpenAPI client generation | [openapi/README.md](openapi/README.md) |
 | Example configs | `configs/dev-example.yaml`, `configs/rabbitmq-example.yaml`, `configs/gcp-pubsub-example.yaml` |
 | Broker configuration | `broker.yaml` (loaded by hyperfleet-broker; override path via `BROKER_CONFIG_FILE` env var) |
 | CloudEvents / CEL payloads | `internal/payload/` |
@@ -167,7 +158,6 @@ Hooks:
 - Hardcode the resource polling interval — always use `poll_interval` from config for the main sentinel loop; adding a second resource polling loop bypasses the single-ticker backpressure model
 
 **DO**:
-- Update `hyperfleet-api-spec` version in `go.mod` and run `make generate` when API spec changes
 - New exported functions require unit tests; new broker/API interactions require integration tests
 - Add metrics when adding observable behavior — see [docs/metrics.md](docs/metrics.md) for conventions
 - Convention: `message_data` should include `id`, `kind`, `href` fields (not enforced by validation, but expected by downstream adapters) — see `configs/dev-example.yaml`
@@ -175,8 +165,6 @@ Hooks:
 
 ## Gotchas
 
-- **`make generate` is mandatory** — build and tests fail without it; generated code is gitignored
-- **`pkg/api/openapi/` is read-only** — never hand-edit, always regenerate
 - **Broker config comes from `broker.yaml`** (or `BROKER_CONFIG_FILE` env var), not sentinel YAML config — handled by hyperfleet-broker library
 - **CEL expressions in `message_data` are compiled at startup** — syntax errors fail fast, but semantic errors (wrong field names on resource) surface at evaluation time
 - **Metrics labels must include `resource_type` and `resource_selector`** — see [docs/metrics.md](docs/metrics.md) for naming conventions

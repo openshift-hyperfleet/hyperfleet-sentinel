@@ -339,16 +339,3 @@ podman build --platform linux/amd64 -t gcr.io/${GCP_PROJECT}/sentinel:${IMAGE_TA
      hyperfleet_api:
        base_url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
    ```
-
-### OpenAPI Client Not Generated
-
-**Problem**: Build fails with missing package errors
-
-**Cause**: OpenAPI client was not generated
-
-**Solution**: Run the generate target before building:
-
-```bash
-make generate
-make build
-```
