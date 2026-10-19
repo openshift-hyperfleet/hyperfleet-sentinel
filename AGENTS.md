@@ -59,7 +59,7 @@ Quick feedback: `make verify && make test-unit`. Full pre-push: `make test-all`.
 | Alerts and runbooks | [docs/alerts.md](docs/alerts.md), [docs/runbook.md](docs/runbook.md) |
 | Helm values | [charts/values.yaml](charts/values.yaml) |
 | Contributing and setup | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Example configs | `configs/dev-example.yaml`, `configs/rabbitmq-example.yaml`, `configs/gcp-pubsub-example.yaml` |
+| Example configs | `configs/dev-example.yaml`, `configs/rabbitmq-example.yaml`, `configs/gcp-pubsub-example.yaml`, `configs/wifconfigs-example.yaml` |
 | Broker configuration | `broker.yaml` (loaded by hyperfleet-broker; override path via `BROKER_CONFIG_FILE` env var) |
 | CloudEvents / CEL payloads | `internal/payload/` |
 | Resource profiling | [docs/resource-profiling.md](docs/resource-profiling.md) |

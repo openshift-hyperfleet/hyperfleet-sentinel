@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Grafana dashboard provisioning via sidecar ConfigMap, gated by `monitoring.dashboard.enabled`
 - Dashboard JSON moved from `deployments/dashboards/` to `charts/dashboards/`
 - `clients.hyperfleet_api.auth.scheme` (Helm: `config.clients.hyperfleetApi.auth.scheme`) configures the Authorization header scheme sent with the service account token; defaults to `Bearer` for backwards compatibility, set to `ServiceAccount` when fronted by a gateway that differentiates human-jwt callers from machine callers
+- Example config for a non-cluster resource type: `configs/wifconfigs-example.yaml`
 
 ### Changed
 - BREAKING CHANGE: `tracing` moved from top-level to `monitoring.tracing`
@@ -22,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `resource_type` config accepts any registered entity type plural (e.g. `wifconfigs`), no longer limited to `clusters` and `nodepools`
 - Helm chart `values.schema.json` no longer restricts `config.resourceType` to an enum of `clusters`/`nodepools`; it now accepts any generic, non-empty, whitespace-free resource type string, matching the Go-side validation
 - API client replaced typed per-entity endpoints with generic `GET /api/hyperfleet/v1/{plural}` resource list endpoint (`hyperfleet-api-spec` v1.0.25)
+- Owner-reference comments in example configs and chart values now describe child kinds generically (any kind with an owner) instead of nodepools only
+- `--resource-type` flag help and metrics doc comments now describe any registered entity type plural (e.g. `wifconfigs`) instead of suggesting only `clusters`/`nodepools` are valid
 
 ### Deprecated
 

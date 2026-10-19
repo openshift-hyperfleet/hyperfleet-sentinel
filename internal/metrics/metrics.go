@@ -263,7 +263,7 @@ func ResetSentinelMetrics() {
 // snapshot of pending resources.
 //
 // Parameters:
-//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools", "wifconfigs")
 //   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
 //   - count: Number of pending resources (negative values are clamped to 0)
 //
@@ -296,7 +296,7 @@ func UpdatePendingResourcesMetric(resourceType, resourceSelector string, count i
 // Common reasons include "max_age_exceeded" and "generation_mismatch".
 //
 // Parameters:
-//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools", "wifconfigs")
 //   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
 //   - reason: Reason for publishing (e.g., "max_age_exceeded", "generation_mismatch")
 //
@@ -329,7 +329,7 @@ func UpdateEventsPublishedMetric(resourceType, resourceSelector, reason string) 
 // Common reasons include "within_max_age" and "generation_match".
 //
 // Parameters:
-//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools", "wifconfigs")
 //   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
 //   - reason: Reason for skipping (e.g., "within_max_age", "generation_match")
 //
@@ -362,7 +362,7 @@ func UpdateResourcesSkippedMetric(resourceType, resourceSelector, reason string)
 // and API latency.
 //
 // Parameters:
-//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools", "wifconfigs")
 //   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
 //   - durationSeconds: Duration in seconds (negative values trigger a warning and are ignored)
 //
@@ -398,7 +398,7 @@ func UpdatePollDurationMetric(resourceType, resourceSelector string, durationSec
 // Common error types include "fetch_error", "timeout", "auth_error".
 //
 // Parameters:
-//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools", "wifconfigs")
 //   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
 //   - errorType: Type of error (e.g., "fetch_error", "timeout", "auth_error")
 //
@@ -430,7 +430,7 @@ func UpdateAPIErrorsMetric(resourceType, resourceSelector, errorType string) {
 // Common error types include "publish_error", "connection_error", "timeout".
 //
 // Parameters:
-//   - resourceType: Type of resource (e.g., "clusters", "nodepools")
+//   - resourceType: Type of resource (e.g., "clusters", "nodepools", "wifconfigs")
 //   - resourceSelector: Label selector string (e.g., "shard:1" or "all")
 //   - errorType: Type of error (e.g., "publish_error", "connection_error")
 //
