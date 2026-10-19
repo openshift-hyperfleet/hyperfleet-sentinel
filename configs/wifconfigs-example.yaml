@@ -33,7 +33,7 @@ clients:
   # HyperFleet API client configuration
   hyperfleet_api:
     # API base URL (required)
-    base_url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8080
+    base_url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
     version: "v1"
     timeout: 10s
     # page_size: 20
