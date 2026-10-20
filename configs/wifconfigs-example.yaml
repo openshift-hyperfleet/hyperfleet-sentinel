@@ -4,6 +4,11 @@
 # Sentinel can watch any registered entity type — set resource_type to the
 # plural of the kind you want to watch (e.g. wifconfigs, nodepools).
 #
+# Note: Cluster and NodePool are the only kinds covered by the formal
+# HyperFleet event contract — events for other kinds are published but have
+# no adapter consumer yet. See the AsyncAPI spec in the architecture repo:
+# https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/broker/asyncapi.yaml
+#
 # Configure the broker using either:
 #   1. broker.yaml file (see broker.yaml in project root)
 #   2. BROKER_CONFIG_FILE environment variable pointing to your broker config
