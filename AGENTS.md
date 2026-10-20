@@ -118,12 +118,11 @@ message_data:
   kind: resource.kind
   href: resource.href
 ```
-CEL context:
+CEL context (message_data):
 - `resource` — cluster/nodepool object from API (id, kind, href, generation, status, labels, etc.)
 - `reason` — decision reason string from engine (e.g., `"message decision matched"`, `"message decision result is false"`)
-- `condition("Type")` — custom function to look up resource status condition by type name
-- `now` — current timestamp
 - `timestamp()`, `duration()` — standard CEL time functions
+- `condition("Type")`, `now` — available only in `message_decision`; the `message_data` payload builder declares only `resource` and `reason`, so these fail at startup there
 
 ### Testing
 - Table-driven tests with plain `if` assertions — no testify

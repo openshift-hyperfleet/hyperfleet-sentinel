@@ -90,7 +90,7 @@ message_decision:
 #
 # Examples:
 #   field: "resource.id"                                    — field access
-#   field: 'condition("Reconciled").status == "True" ? "Reconciled" : "NotReconciled"'  — conditional
+#   field: 'resource.generation > 1 ? "Updated" : "New"'  — conditional
 #   field: '"constant"'                                     — CEL string literal
 #   field: "reason"                                         — decision reason
 #
