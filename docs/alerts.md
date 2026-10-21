@@ -261,7 +261,7 @@ spec:
       annotations:
         summary: "No events published despite pending resources"
         description: "Sentinel has pending resources but hasn't published events in 15 minutes."
-    
+
     - alert: SentinelPollStale
       expr: |
         hyperfleet_sentinel_last_successful_poll_timestamp_seconds > 0
