@@ -69,13 +69,19 @@ poll_interval: 5s
 # resource.generation > 0 matches on every poll.
 #
 # Without a server-side marker to dedupe against, a stateless Sentinel can
-# only publish while a resource looks recently changed. Keep the window
-# larger than poll_interval so updates are not missed between polls, and
-# expect roughly window / poll_interval messages per change (10s / 5s = 2).
+# only publish while a resource looks recently changed. Size the window to
+# cover more than poll_interval: an update that lands just after a poll's
+# list snapshot is only seen by the next poll, and a slow poll burns more
+# of the window before the decision runs. The comparison also crosses
+# clocks — `now` is the Sentinel pod's time while the API writes
+# updated_time — so clock skew between the pods shifts the effective window
+# in either direction. A few minutes absorbs all of this with room to
+# spare, at the cost of roughly window / poll_interval duplicate messages
+# per change (5m / 5s = 60).
 message_decision:
   params:
     - name: recently_updated
-      expr: 'now - timestamp(resource.updated_time) < duration("10s")'
+      expr: 'now - timestamp(resource.updated_time) < duration("5m")'
   result: "recently_updated"
 
 # Resource selector (optional) - filter resources by labels.
