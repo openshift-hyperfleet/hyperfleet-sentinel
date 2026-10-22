@@ -25,6 +25,7 @@ Example configurations are in the `configs/` directory:
 - **`configs/dev-example.yaml`** — minimal development configuration
 - **`configs/rabbitmq-example.yaml`** — RabbitMQ broker configuration
 - **`configs/gcp-pubsub-example.yaml`** — GCP Pub/Sub broker configuration
+- **`configs/wifconfigs-example.yaml`** — watching a non-cluster resource type
 
 ## YAML Schema
 

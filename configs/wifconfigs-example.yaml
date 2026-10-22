@@ -1,0 +1,132 @@
+# Sentinel Configuration Example - WifConfigs (non-cluster resource type)
+#
+# This example demonstrates watching a resource type other than clusters.
+# Sentinel can watch any registered entity type — set resource_type to the
+# plural of the kind you want to watch (e.g. wifconfigs, nodepools).
+#
+# Note: Cluster and NodePool are the only kinds covered by the formal
+# HyperFleet event contract — events for other kinds are published but have
+# no adapter consumer yet. See the AsyncAPI spec in the architecture repo:
+# https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/components/broker/asyncapi.yaml
+#
+# Configure the broker using either:
+#   1. broker.yaml file (see broker.yaml in project root)
+#   2. BROKER_CONFIG_FILE environment variable pointing to your broker config
+#   3. Direct environment variables:
+#      BROKER_RABBITMQ_URL=amqp://user:pass@rabbitmq.example.com:5672/vhost
+#
+# For more details, see: https://github.com/openshift-hyperfleet/hyperfleet-broker
+
+# Sentinel information
+sentinel:
+  name: hyperfleet-sentinel-wifconfigs
+
+# Debug configuration - log merged config on startup
+debug_config: false
+
+# Enable or disable distributed tracing
+tracing_enabled: false
+
+# Logging configuration (can be overridden by HYPERFLEET_LOG_* env vars or --log-* flags)
+log:
+  level: "info"
+  format: "json"  # Use JSON format for production
+  output: "stdout"
+
+# Client configurations
+clients:
+  # HyperFleet API client configuration
+  hyperfleet_api:
+    # API base URL (required)
+    base_url: http://hyperfleet-api.hyperfleet-system.svc.cluster.local:8000
+    version: "v1"
+    timeout: 10s
+    # page_size: 20
+    # Optional: JWT authentication via Kubernetes projected service account token.
+    # Requires auth.enabled=true in the Helm chart to mount the projected volume.
+    # auth:
+    #   token_path: /var/run/secrets/hyperfleet/token
+    #   token_cache_ttl: 30s  # 0 disables caching
+
+  # Broker configuration
+  # Note: broker implementation details (RabbitMQ URL, etc.) are in broker.yaml
+  broker:
+    topic: ""  # Can be overridden by HYPERFLEET_BROKER_TOPIC
+
+# Resource type plural to watch (any registered entity type, e.g. clusters, nodepools, wifconfigs)
+resource_type: wifconfigs
+
+# How often to poll the HyperFleet API for resource updates.
+# Accepts Go duration format: ns, us/µs, ms, s, m, h.
+poll_interval: 5s
+
+# Decision logic for publishing events (CEL expressions).
+#
+# WifConfigs have no required adapters in the API, so they never get a
+# Reconciled condition — they carry no conditions at all. The condition-based
+# logic used by the cluster examples does not work here: with no Reconciled
+# condition, condition("Reconciled").observed_generation is always 0 and
+# resource.generation > 0 matches on every poll.
+#
+# Without a server-side marker to dedupe against, a stateless Sentinel can
+# only publish while a resource looks recently changed. Size the window to
+# cover more than poll_interval: an update that lands just after a poll's
+# list snapshot is only seen by the next poll, and a slow poll burns more
+# of the window before the decision runs. The comparison also crosses
+# clocks — `now` is the Sentinel pod's time while the API writes
+# updated_time — so clock skew between the pods shifts the effective window
+# in either direction. A few minutes absorbs all of this with room to
+# spare, at the cost of roughly window / poll_interval duplicate messages
+# per change (5m / 5s = 60).
+message_decision:
+  params:
+    - name: recently_updated
+      expr: 'now - timestamp(resource.updated_time) < duration("5m")'
+  result: "recently_updated"
+
+# Resource selector (optional) - filter resources by labels.
+# If empty or omitted, all resources of the specified type are watched.
+# This enables horizontal scaling by having multiple Sentinels watch different resource subsets.
+# Multiple selectors use AND logic (all labels must match).
+# resource_selector:
+#   - label: shard
+#     value: "1"
+
+# CloudEvent payload configuration.
+#
+# Each property value is a CEL expression evaluated against "resource" and "reason".
+# A nested map builds a nested object — each leaf value is still a CEL expression.
+#
+# Available CEL variables:
+#   resource — the HyperFleet resource (id, kind, href, generation, status, labels, ...)
+#   reason   — the decision reason string (e.g. "message decision matched")
+#
+# Examples:
+#   field: "resource.id"                                    — field access
+#   field: 'resource.generation > 1 ? "Updated" : "New"'  — conditional
+#   field: '"constant"'                                     — CEL string literal
+#   field: "reason"                                         — decision reason
+#
+# Note: if a field path does not exist on the resource, the key is silently omitted
+# from the payload with no error. Check your field names carefully.
+message_data:
+  id: "resource.id"
+  kind: "resource.kind"
+  href: "resource.href"
+  generation: "resource.generation"
+
+#  For child kinds (any kind with an owner), the message should contain owner_references
+#
+#  owner_references:
+#    id: "resource.owner_references.id"
+#    href: "resource.owner_references.href"
+#    kind: "resource.owner_references.kind"
+
+# See broker.yaml for configuration options.
+#
+# Example RabbitMQ configuration in broker.yaml:
+#   broker:
+#     type: rabbitmq
+#     rabbitmq:
+#       url: amqp://user:password@rabbitmq.hyperfleet-system.svc.cluster.local:5672/
+#       exchange_type: topic

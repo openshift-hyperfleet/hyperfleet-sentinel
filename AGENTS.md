@@ -59,7 +59,7 @@ Quick feedback: `make verify && make test-unit`. Full pre-push: `make test-all`.
 | Alerts and runbooks | [docs/alerts.md](docs/alerts.md), [docs/runbook.md](docs/runbook.md) |
 | Helm values | [charts/values.yaml](charts/values.yaml) |
 | Contributing and setup | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Example configs | `configs/dev-example.yaml`, `configs/rabbitmq-example.yaml`, `configs/gcp-pubsub-example.yaml` |
+| Example configs | `configs/dev-example.yaml`, `configs/rabbitmq-example.yaml`, `configs/gcp-pubsub-example.yaml`, `configs/wifconfigs-example.yaml` |
 | Broker configuration | `broker.yaml` (loaded by hyperfleet-broker; override path via `BROKER_CONFIG_FILE` env var) |
 | CloudEvents / CEL payloads | `internal/payload/` |
 | Resource profiling | [docs/resource-profiling.md](docs/resource-profiling.md) |
@@ -118,12 +118,11 @@ message_data:
   kind: resource.kind
   href: resource.href
 ```
-CEL context:
+CEL context (message_data):
 - `resource` — cluster/nodepool object from API (id, kind, href, generation, status, labels, etc.)
 - `reason` — decision reason string from engine (e.g., `"message decision matched"`, `"message decision result is false"`)
-- `condition("Type")` — custom function to look up resource status condition by type name
-- `now` — current timestamp
 - `timestamp()`, `duration()` — standard CEL time functions
+- `condition("Type")`, `now` — available only in `message_decision`; the `message_data` payload builder declares only `resource` and `reason`, so these fail at startup there
 
 ### Testing
 - Table-driven tests with plain `if` assertions — no testify

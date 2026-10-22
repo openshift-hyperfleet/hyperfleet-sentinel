@@ -365,8 +365,8 @@ message_data:
   # Nested field access
   cluster_id: "resource.owner_references.id"
 
-  # Conditionals (ternary operator) — use condition() function to access status conditions
-  reconciled_status: 'condition("Reconciled").status == "True" ? "Reconciled" : "NotReconciled"'
+  # Conditionals (ternary operator)
+  state: 'resource.generation > 1 ? "Updated" : "New"'
 
   # String literals (must use quotes inside CEL expression)
   source: '"hyperfleet-sentinel"'
@@ -377,6 +377,8 @@ message_data:
   # Nested objects
   owner_references: "resource.owner_references"
 ```
+
+> **Important:** The `condition()` helper and the `now` variable are only available in `message_decision` expressions. The `message_data` environment only declares `resource` and `reason` — a payload expression referencing `condition()` or `now` fails at startup while compiling the payload.
 
 **Cluster Pattern:**
 

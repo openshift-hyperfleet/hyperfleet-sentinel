@@ -162,7 +162,9 @@ func addConfigOverrideFlags(cmd *cobra.Command) {
 	cmd.Flags().String("broker-topic", "", "Broker topic. Env: HYPERFLEET_BROKER_TOPIC")
 
 	// Sentinel-specific
-	cmd.Flags().String("resource-type", "", "Resource type to watch (clusters, nodepools). Env: HYPERFLEET_RESOURCE_TYPE")
+	cmd.Flags().String("resource-type", "",
+		"Resource type plural to watch (any registered entity type, e.g. clusters, nodepools, wifconfigs). "+
+			"Env: HYPERFLEET_RESOURCE_TYPE")
 	cmd.Flags().String("poll-interval", "", "Poll interval (e.g., 5s). Env: HYPERFLEET_POLL_INTERVAL")
 
 	// Observability
