@@ -63,6 +63,7 @@ Quick feedback: `make verify && make test-unit`. Full pre-push: `make test-all`.
 | Broker configuration | `broker.yaml` (loaded by hyperfleet-broker; override path via `BROKER_CONFIG_FILE` env var) |
 | CloudEvents / CEL payloads | `internal/payload/` |
 | Resource profiling | [docs/resource-profiling.md](docs/resource-profiling.md) |
+| Logging standard | [HyperFleet logging specification](https://github.com/openshift-hyperfleet/architecture/blob/main/hyperfleet/standards/logging-specification.md) |
 
 ## Architecture Context
 
@@ -70,7 +71,7 @@ Sentinel's job: **decide when**, not **execute how**. It can be killed and resta
 
 ### Key Internal Patterns
 - **Config validation fails fast** — `Validate()` returns error at startup, `LoadConfig()` propagates to main which exits non-zero
-- **Context propagation** — `context.Context` threaded through all calls with correlation keys (OpID, TraceID, SpanID, DecisionReason)
+- **Context propagation** — `context.Context` goes through all calls with the log fields `trace_id`, `span_id`, `resource_type`, `resource_id`, `subset`, `topic` and `decision_reason`
 - **Health probes** — `/healthz` (liveness: stale poll detection), `/readyz` (readiness: broker + first successful poll)
 
 ## Code Conventions
@@ -106,8 +107,7 @@ Co-Authored-By trailer required on all Claude-assisted commits.
 
 ### Logging
 - Use stdlib `log/slog` directly. Handler is configured in `cmd/sentinel/main.go` via `slog.SetDefault()` using the shared `hyperfleet-logger` package.
-- Patterns: `slog.InfoContext(ctx, "msg", "key", val)`, `slog.With("key", val).InfoContext(ctx, "msg")`
-- For format strings: `slog.InfoContext(ctx, fmt.Sprintf("msg %s", val))`
+- Patterns: `slog.InfoContext(ctx, "msg", "key", val)`
 - **IMPORTANT: always use `log/slog` for logging**
 
 ### CloudEvents Payloads
