@@ -71,7 +71,7 @@ Sentinel's job: **decide when**, not **execute how**. It can be killed and resta
 
 ### Key Internal Patterns
 - **Config validation fails fast** — `Validate()` returns error at startup, `LoadConfig()` propagates to main which exits non-zero
-- **Context propagation** — `context.Context` goes through all calls with the log fields `trace_id`, `span_id`, `resource_type`, `resource_id`, `subset`, `topic` and `decision_reason`
+- **Context propagation** — `context.Context` goes through all calls. The handler adds `trace_id` and `span_id` from it, and `internal/logctx` registers the Sentinel fields `subset`, `topic` and `decision_reason`
 - **Health probes** — `/healthz` (liveness: stale poll detection), `/readyz` (readiness: broker + first successful poll)
 
 ## Code Conventions
