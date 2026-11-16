@@ -4,7 +4,9 @@
 
 Complete local environment setup including prerequisites, installation, and first run.
 
-Production builds and tests use Go's native FIPS 140-3 module (`GOFIPS140=v1.0.0`). `GOEXPERIMENT=noboringcrypto` explicitly disables the incompatible legacy BoringCrypto experiment; the Dockerfile checks the selected module with `go version -m`.
+Production builds and tests use Go's native FIPS 140-3 module (`GOFIPS140=v1.0.0`). `GOEXPERIMENT=noboringcrypto` keeps builds compatible with toolchains where the legacy BoringCrypto experiment was saved with `go env -w`; without the negation, Go rejects the incompatible combination rather than silently falling back to non-FIPS cryptography. The Dockerfile checks the selected module with `go version -m`.
+
+FIPS production deployments must not set `GODEBUG=fips140=off`, including within a comma-separated value. This override disables FIPS without changing the binary's build info. Deployment review must check runtime overrides; the image check does not enforce the runtime mode, and this requirement does not add a startup rejection.
 
 ```bash
 # 1. Clone the repository
@@ -43,7 +45,7 @@ make install-hooks
 
 Overview of key directories and files - what's where and why.
 
-```
+```text
 hyperfleet-sentinel/
 ├── cmd/
 │   └── sentinel/           # Main application entry point
@@ -177,7 +179,7 @@ BROKER_CONFIG_FILE=broker.yaml ./bin/sentinel serve --config configs/dev-example
 
 All commits must follow the HyperFleet commit message format:
 
-```
+```text
 HYPERFLEET-### - type: description
 
 Optional longer description.
