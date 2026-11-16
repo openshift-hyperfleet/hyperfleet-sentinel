@@ -4,6 +4,8 @@
 
 Complete local environment setup including prerequisites, installation, and first run.
 
+Production builds and tests use Go's native FIPS 140-3 module (`GOFIPS140=v1.0.0`). `GOEXPERIMENT=noboringcrypto` explicitly disables the incompatible legacy BoringCrypto experiment; the Dockerfile checks the selected module with `go version -m`.
+
 ```bash
 # 1. Clone the repository
 git clone https://github.com/openshift-hyperfleet/hyperfleet-sentinel.git

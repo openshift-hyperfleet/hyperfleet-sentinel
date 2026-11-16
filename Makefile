@@ -1,10 +1,12 @@
 .DEFAULT_GOAL := help
 
-# CGO_ENABLED=0 is not FIPS compliant. large commercial vendors and FedRAMP require FIPS compliant crypto
-# Use ?= so callers can override on the command line, e.g. CGO_ENABLED=0 make build for a non-FIPS static binary
+# Keep CGO enabled for the supported production image; GOFIPS140 selects
+# Go's native, validated FIPS 140-3 module and enables FIPS mode by default.
+# Explicitly disable the incompatible BoringCrypto experiment, even when
+# it was persisted in the toolchain with "go env -w".
 CGO_ENABLED ?= 1
-GOEXPERIMENT ?= boringcrypto
-GOFIPS140 ?= off
+GOEXPERIMENT ?= noboringcrypto
+GOFIPS140 ?= v1.0.0
 
 GO ?= go
 GOFMT ?= gofmt
@@ -81,22 +83,22 @@ clean: ## Remove build artifacts
 
 .PHONY: test
 test: ## Run unit tests (default)
-	$(GO) test -v -race -coverprofile=coverage.out ./...
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -coverprofile=coverage.out ./...
 
 .PHONY: test-unit
 test-unit: ## Run unit tests only
-	$(GO) test -v -race -cover ./internal/config/
-	$(GO) test -v -race -cover ./internal/client/
-	$(GO) test -v -race -cover ./internal/engine/
-	$(GO) test -v -race -cover ./internal/health/
-	$(GO) test -v -race -cover ./internal/publisher/
-	$(GO) test -v -race -cover ./internal/sentinel/
-	$(GO) test -v -race -cover ./pkg/...
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/config/
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/client/
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/engine/
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/health/
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/publisher/
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/sentinel/
+	GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./pkg/...
 
 .PHONY: test-integration
 test-integration: ## Run integration tests only
 	@echo "Running integration tests..."
-	TESTCONTAINERS_RYUK_DISABLED=true $(GO) test -v -race -tags=integration ./test/integration/... -timeout 30m
+	TESTCONTAINERS_RYUK_DISABLED=true GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -tags=integration ./test/integration/... -timeout 30m
 
 .PHONY: test-all
 test-all: test test-integration test-helm lint ## Run unit tests, integration tests, Helm tests, and lint
