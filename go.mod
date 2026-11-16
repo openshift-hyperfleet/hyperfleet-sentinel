@@ -2,6 +2,8 @@ module github.com/openshift-hyperfleet/hyperfleet-sentinel
 
 go 1.26.0
 
+godebug fips140=on
+
 require (
 	cel.dev/cel-go v0.32.0
 	github.com/cenkalti/backoff/v5 v5.0.3
