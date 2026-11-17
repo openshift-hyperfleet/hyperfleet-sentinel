@@ -14,6 +14,13 @@ override CGO_ENABLED := 1
 endif
 GOEXPERIMENT ?= noboringcrypto
 GOFIPS140 ?= v1.0.0
+# An empty value falls back to the persisted `go env -w` setting, so pin both.
+ifeq ($(strip $(GOEXPERIMENT)),)
+override GOEXPERIMENT := noboringcrypto
+endif
+ifeq ($(strip $(GOFIPS140)),)
+override GOFIPS140 := v1.0.0
+endif
 
 GO ?= go
 GOFMT ?= gofmt
