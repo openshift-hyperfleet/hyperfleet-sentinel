@@ -1,28 +1,16 @@
 .DEFAULT_GOAL := help
 
-# Keep CGO enabled for the supported production image. GOFIPS140 selects
-# Go's native, validated FIPS 140-3 module; the godebug fips140=on directive
-# in go.mod enables FIPS mode by default, because the Red Hat Go toolset does
-# not enable it merely by selecting the module. Go rejects an active
-# BoringCrypto experiment when GOFIPS140 is set, so noboringcrypto is not a
-# guard: it keeps builds working where the legacy experiment was persisted
-# with "go env -w".
+# Use native FIPS even when boringcrypto was persisted with go env -w.
+# go.mod's godebug fips140=on enables FIPS mode on Red Hat Go too.
 CGO_ENABLED ?= 1
-# An empty value falls back to a persisted `go env -w CGO_ENABLED`, so pin it.
-ifeq ($(strip $(CGO_ENABLED)),)
-override CGO_ENABLED := 1
-endif
 GOEXPERIMENT ?= noboringcrypto
 GOFIPS140 ?= v1.0.0
-# An empty value falls back to the persisted `go env -w` setting, so pin both.
-ifeq ($(strip $(GOEXPERIMENT)),)
-override GOEXPERIMENT := noboringcrypto
-endif
-ifeq ($(strip $(GOFIPS140)),)
-override GOFIPS140 := v1.0.0
-endif
+export CGO_ENABLED GOEXPERIMENT GOFIPS140
 
 GO ?= go
+# Honor this module's godebug directive, not an enclosing workspace's defaults.
+override GOWORK := off
+export GOWORK
 GOFMT ?= gofmt
 
 # Invoke a pinned tool: $(call gotool,name)
@@ -42,20 +30,9 @@ GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-m
 APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 
 # Go build flags
-GOFLAGS ?= -trimpath
-# Red Hat Go toolsets use the OpenSSL crypto backend by default on linux+cgo.
-# That backend aborts at startup on FIPS-enabled hosts once a fips140 GODEBUG
-# value is set, so those toolchains must build with Go's native backend.
-ifneq (,$(findstring Red Hat,$(shell $(GO) version 2>/dev/null)))
-# A second -tags flag replaces the first, so merge with any caller-supplied list.
-# Repeated -tags options keep the last list, so merge into that one.
-GOFLAGS_CALLER_TAGS := $(patsubst -tags=%,%,$(lastword $(filter -tags=%,$(GOFLAGS))))
-ifeq (,$(GOFLAGS_CALLER_TAGS))
-override GOFLAGS += -tags=no_openssl
-else
-override GOFLAGS := $(filter-out -tags=%,$(GOFLAGS)) -tags=$(GOFLAGS_CALLER_TAGS),no_openssl
-endif
-endif
+GOFLAGS ?= -trimpath -tags=no_openssl
+# Keep the backend tag in tests without exporting production-only -trimpath.
+GO_TEST_TAGS ?= no_openssl
 LDFLAGS := -s -w \
            -X main.version=$(APP_VERSION) \
            -X main.commit=$(GIT_SHA) \
@@ -87,11 +64,11 @@ help: ## Display this help
 .PHONY: build
 build: ## Build the sentinel binary
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/sentinel
+	$(GO) build $(GOFLAGS) -ldflags "$(LDFLAGS)" -o $(BINARY_NAME) ./cmd/sentinel
 
 .PHONY: install
 install: ## Build and install binary to GOPATH/bin
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) install $(GOFLAGS) -ldflags "$(LDFLAGS)" ./cmd/sentinel
+	$(GO) install $(GOFLAGS) -ldflags "$(LDFLAGS)" ./cmd/sentinel
 
 .PHONY: install-hooks
 install-hooks: ## Install pre-commit hooks
@@ -110,22 +87,22 @@ clean: ## Remove build artifacts
 
 .PHONY: test
 test: ## Run unit tests (default)
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -coverprofile=coverage.out ./...
+	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -coverprofile=coverage.out ./...
 
 .PHONY: test-unit
 test-unit: ## Run unit tests only
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/config/
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/client/
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/engine/
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/health/
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/publisher/
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./internal/sentinel/
-	CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -cover ./pkg/...
+	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/config/
+	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/client/
+	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/engine/
+	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/health/
+	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/publisher/
+	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/sentinel/
+	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./pkg/...
 
 .PHONY: test-integration
 test-integration: ## Run integration tests only
 	@echo "Running integration tests..."
-	TESTCONTAINERS_RYUK_DISABLED=true CGO_ENABLED=$(CGO_ENABLED) GOEXPERIMENT=$(GOEXPERIMENT) GOFIPS140=$(GOFIPS140) $(GO) test -v -race -tags=integration ./test/integration/... -timeout 30m
+	TESTCONTAINERS_RYUK_DISABLED=true $(GO) test -v -race -tags="integration,$(GO_TEST_TAGS)" ./test/integration/... -timeout 30m
 
 .PHONY: test-all
 test-all: test test-integration test-helm lint ## Run unit tests, integration tests, Helm tests, and lint
