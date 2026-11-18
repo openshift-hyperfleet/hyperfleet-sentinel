@@ -1,16 +1,10 @@
 .DEFAULT_GOAL := help
 
-# Use native FIPS even when boringcrypto was persisted with go env -w.
-# go.mod's godebug fips140=on enables FIPS mode on Red Hat Go too.
+# FIPS mode is turned on only in the container image build. See the Dockerfile.
 CGO_ENABLED ?= 1
-GOEXPERIMENT ?= noboringcrypto
-GOFIPS140 ?= v1.0.0
-export CGO_ENABLED GOEXPERIMENT GOFIPS140
+export CGO_ENABLED
 
 GO ?= go
-# Honor this module's godebug directive, not an enclosing workspace's defaults.
-override GOWORK := off
-export GOWORK
 GOFMT ?= gofmt
 
 # Invoke a pinned tool: $(call gotool,name)
@@ -30,10 +24,7 @@ GIT_DIRTY ?= $(shell [ -z "$$(git status --porcelain 2>/dev/null)" ] || echo "-m
 APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.0.0-dev")
 
 # Go build flags
-GOFLAGS ?= -trimpath -tags=no_openssl
-# Keep the backend tag in tests without exporting production-only -trimpath.
-GO_TEST_TAGS ?= no_openssl
-export GO_TEST_TAGS
+GOFLAGS ?= -trimpath
 LDFLAGS := -s -w \
            -X main.version=$(APP_VERSION) \
            -X main.commit=$(GIT_SHA) \
@@ -88,23 +79,22 @@ clean: ## Remove build artifacts
 
 .PHONY: test
 test: ## Run unit tests (default)
-	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -coverprofile=coverage.out ./...
+	$(GO) test -v -race -coverprofile=coverage.out ./...
 
 .PHONY: test-unit
 test-unit: ## Run unit tests only
-	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/config/
-	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/client/
-	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/engine/
-	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/health/
-	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/publisher/
-	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/sentinel/
-	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./pkg/...
+	$(GO) test -v -race -cover ./internal/config/
+	$(GO) test -v -race -cover ./internal/client/
+	$(GO) test -v -race -cover ./internal/engine/
+	$(GO) test -v -race -cover ./internal/health/
+	$(GO) test -v -race -cover ./internal/publisher/
+	$(GO) test -v -race -cover ./internal/sentinel/
+	$(GO) test -v -race -cover ./pkg/...
 
 .PHONY: test-integration
 test-integration: ## Run integration tests only
 	@echo "Running integration tests..."
-	@test_tags=$$(printf '%s' "$${GO_TEST_TAGS}" | tr '[:space:]' ','); \
-	TESTCONTAINERS_RYUK_DISABLED=true $(GO) test -v -race -tags="integration,$$test_tags" ./test/integration/... -timeout 30m
+	TESTCONTAINERS_RYUK_DISABLED=true $(GO) test -v -race -tags=integration ./test/integration/... -timeout 30m
 
 .PHONY: test-all
 test-all: test test-integration test-helm lint ## Run unit tests, integration tests, Helm tests, and lint
