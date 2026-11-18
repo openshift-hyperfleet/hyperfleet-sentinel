@@ -33,6 +33,7 @@ APP_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo 
 GOFLAGS ?= -trimpath -tags=no_openssl
 # Keep the backend tag in tests without exporting production-only -trimpath.
 GO_TEST_TAGS ?= no_openssl
+export GO_TEST_TAGS
 LDFLAGS := -s -w \
            -X main.version=$(APP_VERSION) \
            -X main.commit=$(GIT_SHA) \
@@ -87,22 +88,23 @@ clean: ## Remove build artifacts
 
 .PHONY: test
 test: ## Run unit tests (default)
-	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -coverprofile=coverage.out ./...
+	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -coverprofile=coverage.out ./...
 
 .PHONY: test-unit
 test-unit: ## Run unit tests only
-	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/config/
-	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/client/
-	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/engine/
-	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/health/
-	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/publisher/
-	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./internal/sentinel/
-	$(GO) test -tags="$(GO_TEST_TAGS)" -v -race -cover ./pkg/...
+	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/config/
+	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/client/
+	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/engine/
+	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/health/
+	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/publisher/
+	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./internal/sentinel/
+	$(GO) test -tags="$${GO_TEST_TAGS}" -v -race -cover ./pkg/...
 
 .PHONY: test-integration
 test-integration: ## Run integration tests only
 	@echo "Running integration tests..."
-	TESTCONTAINERS_RYUK_DISABLED=true $(GO) test -v -race -tags="integration,$(GO_TEST_TAGS)" ./test/integration/... -timeout 30m
+	@test_tags=$$(printf '%s' "$${GO_TEST_TAGS}" | tr '[:space:]' ','); \
+	TESTCONTAINERS_RYUK_DISABLED=true $(GO) test -v -race -tags="integration,$$test_tags" ./test/integration/... -timeout 30m
 
 .PHONY: test-all
 test-all: test test-integration test-helm lint ## Run unit tests, integration tests, Helm tests, and lint
